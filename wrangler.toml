@@ -13,11 +13,11 @@ compatibility_date = "2024-11-01"
 [[d1_databases]]
 binding = "DB"                 # 代码里通过 env.DB 访问，请勿改名
 database_name = "zhuanben"
-database_id = "在此填入 wrangler d1 create 返回的 database_id"
+#database_id = "在此填入 wrangler d1 create 返回的 database_id"
 
 # 非敏感变量可写在这里；敏感信息（AI_API_KEY / APP_TOKEN）请用 secret，不要写进文件：
 #   wrangler pages secret put AI_API_KEY
 #   wrangler pages secret put APP_TOKEN
-[vars]
-AI_BASE_URL = "https://你的中转站域名/v1"   # 例：https://api.xxx.com/v1
-AI_MODEL = "gpt-4o"                          # 例：gpt-4o / claude-3-5-sonnet / grok-2 等
+#[vars]
+#AI_BASE_URL = "https://你的中转站域名/v1"   # 例：https://api.xxx.com/v1
+#AI_MODEL = "gpt-4o"                          # 例：gpt-4o / claude-3-5-sonnet / grok-2 等
