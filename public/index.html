@@ -418,7 +418,7 @@ const App={
     stealthHide(){ this.stealth.hidden=true; },
     stealthShow(){ this.stealth.hidden=false; },
     onKey(e){ const tag=(e.target&&e.target.tagName)||'';
-      if(this.stealth.hidden && (e.key==='Escape'||e.key==='`'||e.key==='~')){ e.preventDefault(); this.stealth.hidden=false; return; }
+      if(this.stealth.hidden){ e.preventDefault(); this.stealth.hidden=false; return; }
       if(e.key==='`'||e.key==='~'){ if(tag==='INPUT'||tag==='TEXTAREA')return; e.preventDefault(); this.stealth.hidden=true; } },
     onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
     onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; },
@@ -659,7 +659,11 @@ const App={
 
   <div v-if="toast" class="toast" :class="{err:toast.err}">{{ toast.msg }}</div>
   <div v-if="stealth.hidden" class="stealth" @click="stealthShow">
-    <div class="stealth-box"><span class="spin"></span><div>正在同步数据…</div></div>
+    <div class="stealth-box">
+      <div style="font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--ink)">{{ appName }}</div>
+      <div class="muted" style="font-size:13px;margin-top:8px">已同步 · 暂无更新</div>
+      <div class="muted" style="font-size:12px;margin-top:24px;opacity:.55">点击任意处 / 按任意键 返回</div>
+    </div>
   </div>
   `
 };
