@@ -7,7 +7,7 @@
 -- 题库主表（覆盖全部科目）
 CREATE TABLE IF NOT EXISTS questions (
   id          TEXT PRIMARY KEY,                 -- 题目唯一 ID
-  subject     TEXT NOT NULL,                    -- politics | english | math | chinese | computer
+  subject     TEXT NOT NULL,                    -- politics | english | math | computer
   chapter     TEXT,                             -- 章节 / 知识点，如「数据结构-线性表」
   type        TEXT NOT NULL,                    -- single_choice | multiple_choice | true_false | fill_blank | short_answer | code
   difficulty  INTEGER DEFAULT 3,                -- 难度 1~5

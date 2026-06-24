@@ -157,9 +157,15 @@ a{color:var(--accent)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
 <script>
 const { createApp } = Vue;
-const SUBJECTS=[{v:'politics',t:'政治理论'},{v:'english',t:'英语'},{v:'math',t:'高等数学'},{v:'chinese',t:'大学语文'},{v:'computer',t:'计算机基础与程序设计'}];
+const SUBJECTS=[{v:'politics',t:'政治理论'},{v:'english',t:'英语'},{v:'math',t:'高等数学'},{v:'computer',t:'计算机基础与程序设计'}];
+const CHAPTER_PRESETS={
+  politics:['马原-唯物论','马原-辩证法','马原-认识论','马原-唯物史观','毛中特','习近平新时代中国特色社会主义思想','近代史纲要','思修法基','时政'],
+  english:['英语-词汇语法','英语-阅读理解','英语-完形填空','英语-翻译','英语-写作','英语-固定搭配','英语-长难句'],
+  math:['高数-函数与极限','高数-连续','高数-导数与微分','高数-中值定理','高数-导数应用','高数-不定积分','高数-定积分','高数-微分方程','高数-多元函数','高数-级数'],
+  computer:['计算机基础-信息技术基础','计算机基础-操作系统','计算机基础-Office','计算机基础-网络基础','C语言-基础语法','C语言-选择结构','C语言-循环结构','C语言-数组','C语言-函数','C语言-指针','C语言-结构体','C语言-文件','数据结构-线性表','数据结构-栈和队列','数据结构-树','数据结构-图','数据结构-查找','数据结构-排序']
+};
 const SUBJ_MAP=Object.fromEntries(SUBJECTS.map(s=>[s.v,s.t]));
-const TYPES=[{v:'single_choice',t:'单选题'},{v:'multiple_choice',t:'多选题'},{v:'true_false',t:'判断题'},{v:'fill_blank',t:'填空题'},{v:'short_answer',t:'简答/论述'},{v:'code',t:'程序设计'}];
+const TYPES=[{v:'single_choice',t:'Single choice'},{v:'multiple_choice',t:'Multiple choice'},{v:'true_false',t:'True / False'},{v:'fill_blank',t:'Fill in the blank'},{v:'short_answer',t:'Short answer'},{v:'code',t:'Coding'}];
 const TYPE_MAP=Object.fromEntries(TYPES.map(t=>[t.v,t.t]));
 const OBJECTIVE=['single_choice','multiple_choice','true_false','fill_blank'];
 const AUTO=['single_choice','multiple_choice','true_false'];
@@ -219,8 +225,8 @@ const QuestionCard={
       <span class="chip accent">{{ subjMap[q.subject]||q.subject }}</span>
       <span class="chip">{{ typeMap[q.type]||q.type }}</span>
       <span v-if="q.chapter" class="chip">{{ q.chapter }}</span>
-      <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
-      <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏">★</button>
+      <span class="diff" :title="'Difficulty '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
+      <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="Save">★</button>
     </div>
     <div v-if="q.passage" class="passage"><rich-text :content="q.passage" /></div>
     <div class="stem"><rich-text :content="q.stem" /></div>
@@ -231,43 +237,43 @@ const QuestionCard={
         <span class="mark" v-if="revealed && answerKeys.includes(o.key)">✓</span>
         <span class="mark" v-else-if="revealed && sel.includes(o.key)">✗</span>
       </div>
-      <p class="muted" v-if="isMulti && !revealed">多选题：可选多个选项</p>
+      <p class="muted" v-if="isMulti && !revealed">Multiple choice: select all that apply</p>
     </template>
     <template v-else-if="q.type==='true_false'">
       <div class="tf-row">
-        <div class="tf" :class="tfClass('T')" @click="pickTF('T')">正确</div>
-        <div class="tf" :class="tfClass('F')" @click="pickTF('F')">错误</div>
+        <div class="tf" :class="tfClass('T')" @click="pickTF('T')">True</div>
+        <div class="tf" :class="tfClass('F')" @click="pickTF('F')">False</div>
       </div>
     </template>
     <template v-else-if="q.type==='fill_blank'">
-      <input class="inp" style="width:100%" v-model="blanks" :disabled="revealed" placeholder="输入你的答案（多个空用空格或、分隔）" @keyup.enter="!revealed && canSubmit() && submit()" />
+      <input class="inp" style="width:100%" v-model="blanks" :disabled="revealed" placeholder="Type your answer (separate blanks with spaces)" @keyup.enter="!revealed && canSubmit() && submit()" />
     </template>
     <template v-else>
-      <textarea :class="{code:q.type==='code'}" v-model="text" :disabled="revealed" :placeholder="q.type==='code' ? '在此手写代码（提交后对照参考答案自评）' : '写下作答要点（提交后对照参考答案自评）'"></textarea>
+      <textarea :class="{code:q.type==='code'}" v-model="text" :disabled="revealed" :placeholder="q.type==='code' ? 'Write your code here (self-check against the reference)' : 'Write your key points (self-check against the reference)'"></textarea>
     </template>
     <template v-if="revealed">
       <div v-if="AUTO.includes(q.type)" class="verdict" :class="autoCorrect?'ok':'bad'">
-        <span>{{ autoCorrect ? '回答正确' : '回答错误' }}</span>
-        <span class="tag">正确答案：{{ answerKeys.join('、') }}</span>
+        <span>{{ autoCorrect ? 'Correct' : 'Incorrect' }}</span>
+        <span class="tag">Correct answer: {{ answerKeys.join(', ') }}</span>
       </div>
-      <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="refText" /></div>
+      <div v-if="!AUTO.includes(q.type)" class="ref"><h5>Reference answer</h5><rich-text :content="refText" /></div>
       <div v-if="!AUTO.includes(q.type)" class="selfgrade">
-        <span class="q">{{ q.type==='fill_blank' ? '是否答对？' : '对照参考答案，你答对了吗？' }}</span>
-        <button class="btn subtle" :style="self===true?'border-color:var(--ok);color:var(--ok)':''" @click="grade(true)">✓ 答对了</button>
-        <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ 答错了</button>
+        <span class="q">{{ q.type==='fill_blank' ? 'Correct?' : 'Did you get it right?' }}</span>
+        <button class="btn subtle" :style="self===true?'border-color:var(--ok);color:var(--ok)':''" @click="grade(true)">✓ Correct</button>
+        <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ Wrong</button>
       </div>
-      <div v-if="q.analysis" class="ref" style="margin-top:10px"><h5>解析</h5><rich-text :content="q.analysis" /></div>
-      <button class="note-toggle" @click="showNote=!showNote">{{ showNote?'收起笔记':(q.note?'查看/编辑笔记':'＋ 添加笔记') }}</button>
+      <div v-if="q.analysis" class="ref" style="margin-top:10px"><h5>Explanation</h5><rich-text :content="q.analysis" /></div>
+      <button class="note-toggle" @click="showNote=!showNote">{{ showNote?'Hide note':(q.note?'View / edit note':'+ Add note') }}</button>
       <div v-if="showNote" style="margin-top:8px">
-        <textarea v-model="noteDraft" style="min-height:80px" placeholder="记下易错点、记忆口诀…"></textarea>
-        <button class="btn subtle" style="margin-top:8px" @click="saveNote">保存笔记</button>
+        <textarea v-model="noteDraft" style="min-height:80px" placeholder="Jot down tricky points or mnemonics…"></textarea>
+        <button class="btn subtle" style="margin-top:8px" @click="saveNote">Save note</button>
       </div>
     </template>
     <div class="q-actions" v-if="mode!=='exam'">
-      <button v-if="!revealed" class="btn" :disabled="!canSubmit()" @click="submit">提交 / 查看答案</button>
+      <button v-if="!revealed" class="btn" :disabled="!canSubmit()" @click="submit">Submit / show answer</button>
       <template v-else>
-        <button class="btn" @click="$emit('next')">下一题 →</button>
-        <button class="btn subtle" :style="q.mastered?'border-color:var(--ok);color:var(--ok)':''" @click="markMastered">{{ q.mastered?'已掌握 ✓':'标记已掌握' }}</button>
+        <button class="btn" @click="$emit('next')">Next →</button>
+        <button class="btn subtle" :style="q.mastered?'border-color:var(--ok);color:var(--ok)':''" @click="markMastered">{{ q.mastered?'Mastered ✓':'Mark mastered' }}</button>
       </template>
     </div>
   </div>`
@@ -285,7 +291,7 @@ const App={
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', raw:'', json:'', busy:false, result:null, tab:'ai', pdf:{ pages:0, busy:false, prog:'', done:0 } },
+    ingest:{ subject:'computer', chapter:'', source:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, extracted:'' } },
     stats:null, statsLoading:false,
     mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
     toast:null, toastTimer:null,
@@ -293,6 +299,8 @@ const App={
   computed:{
     sessionMode(){ if(this.view==='wrong')return'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
     chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
+    ingestChapterOptions(){ const preset=(CHAPTER_PRESETS[this.ingest.subject]||[]).map(ch=>({chapter:ch,n:'预设'})); const existing=(this.meta.chapters||[]).filter(c=>c.subject===this.ingest.subject&&!preset.some(p=>p.chapter===c.chapter)); return [...preset,...existing]; },
+    sourcePreview(){ return this.makeSource(); },
     wrongTotal(){ if(!this.stats)return 0; return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); },
     cur(){ return this.queue[this.qi]||null; },
     statTotals(){ const z={totalQ:0,seen:0,wrongOpen:0,mastered:0,fav:0,right:0,wrong:0}; if(!this.stats)return z;
@@ -305,22 +313,30 @@ const App={
     appName(v){ const n=(v||'').trim()||'Docs'; document.title=n; localStorage.setItem('zb_appname',n); },
     'stealth.autoHide'(v){ localStorage.setItem('zb_autohide', v?'1':'0'); },
     'f.subject'(){ this.f.chapter=''; },
+    'ingest.subject'(){ this.ingest.chapter=''; if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
+    'ingest.chapter'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
+    'ingest.bookName'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
+    'ingest.pageNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
+    'ingest.questionNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
+    'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
   },
   methods:{
     flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
     subjName(v){ return SUBJ_MAP[v]||v; },
+    makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
+    currentSource(){ return this.ingest.bookMode ? this.makeSource() : (this.ingest.source||''); },
     async api(path,opts={}){
       const headers=Object.assign({'authorization':'Bearer '+this.token}, opts.headers||{});
       if(opts.body) headers['content-type']='application/json';
       const res=await fetch(path,{ ...opts, headers });
       let data=null; try{ data=await res.json(); }catch(e){}
-      if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('访问口令无效，请重新填写',true); throw new Error('unauth'); }
-      if(!res.ok) throw new Error((data&&data.error)||('请求失败 '+res.status));
+      if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('Invalid access code, please re-enter',true); throw new Error('unauth'); }
+      if(!res.ok) throw new Error((data&&data.error)||('Request failed '+res.status));
       return data;
     },
-    saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问口令',true); return; }
-      this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，开始使用吧'); this.loadMeta(); this.go('practice'); },
-    logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('已退出'); },
+    saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('Enter the access code',true); return; }
+      this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('Saved. You are good to go'); this.loadMeta(); this.go('practice'); },
+    logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('Signed out'); },
     go(v){ this.view=v;
       if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); this.startSession(); }
       if(v==='wrong'||v==='stats') this.loadStats();
@@ -342,50 +358,75 @@ const App={
     next(){ if(this.qi<this.queue.length-1)this.qi++; else this.batchDone=true; },
     findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
     async onAnswered(p){ try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
-    async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
-    async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记掌握':'已取消'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
-    async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){} },
-    async doIngest(){ if(!this.token){ this.flash('请先在「设置」填写访问口令',true); return; }
-      const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.ingest.source };
-      if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON 解析失败：'+e.message,true); return; }
-        if(!Array.isArray(arr)||!arr.length){ this.flash('请粘贴非空的题目 JSON 数组',true); return; } body.questions=arr;
-      } else { if(!this.ingest.raw.trim()){ this.flash('请粘贴题目原文',true); return; } body.raw_text=this.ingest.raw; }
+    async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'Saved':'Removed from saved'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
+    async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'Marked as mastered':'Undone'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
+    async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('Note saved'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){} },
+    buildManualQuestion(){ const m=this.ingest.manual;
+      const type=m.type;
+      const opts=(type==='single_choice'||type==='multiple_choice') ? m.options.map(o=>({key:String(o.key||'').trim().toUpperCase(),text:String(o.text||'').trim()})).filter(o=>o.key&&o.text) : [];
+      const ansRaw=String(m.answer||'').trim();
+      let answer=[];
+      if(type==='multiple_choice') answer=ansRaw.split(/[，,\s]+/).map(x=>x.trim().toUpperCase()).filter(Boolean);
+      else if(type==='single_choice') answer=ansRaw ? [ansRaw[0].toUpperCase()] : [];
+      else if(type==='true_false') answer=[/^t|true|对|正确|是|1$/i.test(ansRaw)?'T':'F'];
+      else if(type==='fill_blank') answer=ansRaw.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+      else answer=ansRaw ? [ansRaw] : [];
+      return { subject:this.ingest.subject, chapter:this.ingest.chapter, type, difficulty:Number(m.difficulty)||3, source:this.currentSource()||'手动录入', passage:m.passage||'', stem:m.stem||'', options:opts, answer, analysis:m.analysis||'', tags:String(m.tags||'').split(/[，,]/).map(x=>x.trim()).filter(Boolean) };
+    },
+    resetManual(){ this.ingest.manual={ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }; this.ingest.photoUrl=''; },
+    async saveManual(){ if(!this.token){ this.flash('Set the access code under Settings first',true); return; }
+      const q=this.buildManualQuestion();
+      if(!String(q.stem||'').trim()){ this.flash('Please enter the question stem',true); return; }
+      if((q.type==='single_choice'||q.type==='multiple_choice') && q.options.length<2){ this.flash('Choice questions need at least 2 options',true); return; }
+      if(!q.answer.length){ this.flash('Please enter the answer',true); return; }
       this.ingest.busy=true; this.ingest.result=null;
-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash('成功入库 '+d.inserted+' 道题'); this.loadMeta();
+      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('Saved 1 item for free'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(); this.loadStats(); }
+      catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
+      this.ingest.busy=false;
+    },
+    onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; if(this.ingest.photoUrl)URL.revokeObjectURL(this.ingest.photoUrl); this.ingest.photoUrl=URL.createObjectURL(file); this.ingest.tab='photo'; this.flash('Photo loaded — copy the item into the form manually'); },
+    async doIngest(){ if(!this.token){ this.flash('Set the access code under Settings first',true); return; }
+      const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.currentSource() };
+      if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON parse failed: '+e.message,true); return; }
+        if(!Array.isArray(arr)||!arr.length){ this.flash('Paste a non-empty JSON array',true); return; } body.questions=arr;
+      } else { if(!this.ingest.raw.trim()){ this.flash('Paste the raw text first',true); return; } body.raw_text=this.ingest.raw; }
+      this.ingest.busy=true; this.ingest.result=null;
+      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash('Imported '+d.inserted+' items'); this.loadMeta();
         if(this.ingest.tab==='ai')this.ingest.raw=''; else this.ingest.json=''; }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.ingest.busy=false;
     },
-    async loadSample(){ try{ const r=await fetch('/sample-questions.json'); const j=await r.json(); this.ingest.json=JSON.stringify(j,null,2); this.ingest.tab='json'; this.flash('已载入示例题库，点「导入入库」即可'); }
-      catch(e){ this.flash('未找到 sample-questions.json',true); } },
-    loadScript(src){ return new Promise((res,rej)=>{ this._scripts=this._scripts||{}; if(this._scripts[src])return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ this._scripts[src]=1; res(); }; s.onerror=()=>rej(new Error('加载失败：'+src)); document.head.appendChild(s); }); },
+    async loadSample(){ try{ const r=await fetch('/sample-questions.json'); const j=await r.json(); this.ingest.json=JSON.stringify(j,null,2); this.ingest.tab='json'; this.flash('Sample loaded — click Import'); }
+      catch(e){ this.flash('sample-questions.json not found',true); } },
+    loadScript(src){ return new Promise((res,rej)=>{ this._scripts=this._scripts||{}; if(this._scripts[src])return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ this._scripts[src]=1; res(); }; s.onerror=()=>rej(new Error('Failed to load: '+src)); document.head.appendChild(s); }); },
     async ensurePdfjs(){ if(window.pdfjsLib)return; await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; },
-    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在载入 PDF…'; this.ingest.pdf.pages=0;
-      try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.prog=''; this.flash('已载入 PDF，共 '+doc.numPages+' 页'); }
-      catch(err){ this.ingest.pdf.prog=''; this.flash('PDF 载入失败：'+err.message,true); } },
+    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='Loading PDF…'; this.ingest.pdf.pages=0;
+      try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.prog=''; this.flash('Loaded PDF, '+doc.numPages+' pages'); }
+      catch(err){ this.ingest.pdf.prog=''; this.flash('Failed to load PDF: '+err.message,true); } },
     chunkText(text,size=6000,overlap=200){ text=String(text).replace(/\n{3,}/g,'\n\n').trim(); const out=[]; let i=0,n=text.length; while(i<n){ let end=Math.min(i+size,n); if(end<n){ const br=text.lastIndexOf('\n',end); if(br>i && br>end-overlap*4) end=br; } const p=text.slice(i,end).trim(); if(p)out.push(p); i=end; } return out; },
-    async pdfExtractText(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在「设置」填写访问口令',true); return; }
+    async pdfExtractText(){ if(!this._pdfDoc){ this.flash('Select a PDF first',true); return; } if(!this.token){ this.flash('Set the access code under Settings first',true); return; }
       const doc=this._pdfDoc; this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.result=null;
       try{ let text='';
-        for(let p=1;p<=doc.numPages;p++){ this.ingest.pdf.prog='提取文字 第 '+p+'/'+doc.numPages+' 页'; const page=await doc.getPage(p); const tc=await page.getTextContent(); text+=tc.items.map(it=>it.str).join(' ')+'\n'; }
+        for(let p=1;p<=doc.numPages;p++){ this.ingest.pdf.prog='Extracting text, page '+p+'/'+doc.numPages+' pages'; const page=await doc.getPage(p); const tc=await page.getTextContent(); text+=tc.items.map(it=>it.str).join(' ')+'\n'; }
         const chunks=this.chunkText(text);
-        if(!chunks.length){ this.flash('没提取到文字，可能是扫描件，请改用「扫描版」识别',true); this.ingest.pdf.busy=false; this.ingest.pdf.prog=''; return; }
+        if(!chunks.length){ this.flash('No text found — likely a scanned PDF. Use Photo/Manual instead',true); this.ingest.pdf.busy=false; this.ingest.pdf.prog=''; return; }
+        this.ingest.pdf.extracted=text.trim(); this.ingest.raw=text.trim(); this.ingest.pdf.prog=''; this.flash('Extracted text locally — copy useful parts into Manual Entry or JSON'); this.ingest.pdf.busy=false; return;
         let total=0;
-        for(let i=0;i<chunks.length;i++){ this.ingest.pdf.prog='AI 结构化 第 '+(i+1)+'/'+chunks.length+' 块（已入库 '+total+'）';
-          try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.ingest.source,raw_text:chunks[i]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
+        for(let i=0;i<chunks.length;i++){ this.ingest.pdf.prog='Structuring chunk '+(i+1)+'/'+chunks.length+' (imported '+total+')';
+          try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),raw_text:chunks[i]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
           catch(e){ if(e.message==='unauth'){ this.ingest.pdf.busy=false; return; } } }
-        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('PDF 文字处理完成，共入库 '+total+' 题'); this.loadMeta(); this.loadStats();
-      }catch(e){ this.flash('处理失败：'+e.message,true); }
+        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('PDF text processed. Imported '+total+' items'); this.loadMeta(); this.loadStats();
+      }catch(e){ this.flash('Failed: '+e.message,true); }
       this.ingest.pdf.busy=false; },
-    async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在「设置」填写访问口令',true); return; }
+    async pdfByImages(){ if(!this._pdfDoc){ this.flash('Select a PDF first',true); return; } if(!this.token){ this.flash('Set the access code under Settings first',true); return; }
       const doc=this._pdfDoc; this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.result=null;
       try{ let total=0;
-        for(let p=1;p<=doc.numPages;p++){ this.ingest.pdf.prog='识别扫描页 第 '+p+'/'+doc.numPages+'（已入库 '+total+'）';
+        for(let p=1;p<=doc.numPages;p++){ this.ingest.pdf.prog='Recognizing page '+p+'/'+doc.numPages+' (imported '+total+')';
           const page=await doc.getPage(p); const vp=page.getViewport({scale:1.6}); const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',0.7);
-          try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.ingest.source,images:[dataUrl]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
+          try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),images:[dataUrl]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
           catch(e){ if(e.message==='unauth'){ this.ingest.pdf.busy=false; return; } } }
-        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('扫描件识别完成，共入库 '+total+' 题'); this.loadMeta(); this.loadStats();
-      }catch(e){ this.flash('识别失败：'+e.message,true); }
+        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('Scanned PDF done. Imported '+total+' items'); this.loadMeta(); this.loadStats();
+      }catch(e){ this.flash('Recognition failed: '+e.message,true); }
       this.ingest.pdf.busy=false; },
     async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
     rate(r){ const t=(r.right_sum||0)+(r.wrong_sum||0); return t?Math.round((r.right_sum||0)/t*100):0; },
@@ -396,7 +437,7 @@ const App={
       try{ const d=await this.api('/api/questions?'+p.toString()); let qs=d.items;
         if(this.mock.objectiveOnly) qs=qs.filter(q=>AUTO.includes(q.type));
         qs=qs.slice(0,this.mock.count||20);
-        if(!qs.length){ this.flash('该科目可用题目不足，请先到「录题」导入',true); this.loading=false; return; }
+        if(!qs.length){ this.flash('Not enough items for this subject. Import some first',true); this.loading=false; return; }
         this.mock.questions=qs; this.mock.started=true; this.mock.elapsed=0; this.mock.remaining=(this.mock.minutes||60)*60;
         clearInterval(this.mock.timer);
         this.mock.timer=setInterval(()=>{ this.mock.remaining--; this.mock.elapsed++; if(this.mock.remaining<=0)this.submitMock(); },1000);
@@ -434,70 +475,70 @@ const App={
   <div class="topbar"><div class="topbar-in">
     <div class="brand"><span class="dot"></span>{{ appName }}</div>
     <div class="spacer"></div>
-    <button class="icon-btn" @click="stealthHide" title="快速隐藏（按 &#96; 键，再按恢复）"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.4 5.2A9 9 0 0 1 21 12a9.4 9.4 0 0 1-1.3 1.9"/><path d="M6.1 6.1A9.4 9.4 0 0 0 3 12a9 9 0 0 0 11 6.6"/></svg></button>
-    <button class="icon-btn" @click="theme=theme==='light'?'dark':'light'" :title="theme==='light'?'夜间模式':'日间模式'">{{ theme==='light'?'☾':'☀' }}</button>
+    <button class="icon-btn" @click="stealthHide" title="Quick hide (press &#96; to toggle)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.4 5.2A9 9 0 0 1 21 12a9.4 9.4 0 0 1-1.3 1.9"/><path d="M6.1 6.1A9.4 9.4 0 0 0 3 12a9 9 0 0 0 11 6.6"/></svg></button>
+    <button class="icon-btn" @click="theme=theme==='light'?'dark':'light'" :title="theme==='light'?'Dark mode':'Light mode'">{{ theme==='light'?'☾':'☀' }}</button>
   </div>
   <div class="tabs">
-    <button class="tab" :class="{active:view==='practice'}" @click="go('practice')">刷题</button>
-    <button class="tab" :class="{active:view==='wrong'}" @click="go('wrong')">错题本<span v-if="wrongTotal" class="badge">{{ wrongTotal }}</span></button>
-    <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">收藏</button>
-    <button class="tab" :class="{active:view==='mock'}" @click="view='mock'">模拟考</button>
-    <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">统计</button>
-    <button class="tab" :class="{active:view==='ingest'}" @click="view='ingest'">录题</button>
-    <button class="tab" :class="{active:view==='settings'}" @click="view='settings'">设置</button>
+    <button class="tab" :class="{active:view==='practice'}" @click="go('practice')">Home</button>
+    <button class="tab" :class="{active:view==='wrong'}" @click="go('wrong')">Review<span v-if="wrongTotal" class="badge">{{ wrongTotal }}</span></button>
+    <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">Saved</button>
+    <button class="tab" :class="{active:view==='mock'}" @click="view='mock'">Test</button>
+    <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
+    <button class="tab" :class="{active:view==='ingest'}" @click="view='ingest'">Import</button>
+    <button class="tab" :class="{active:view==='settings'}" @click="view='settings'">Settings</button>
   </div></div>
 
   <div class="wrap">
 
     <div v-if="['practice','wrong','favorite'].includes(view)">
       <div class="toolbar">
-        <div class="field"><label>科目</label>
+        <div class="field"><label>Subject</label>
           <select v-model="f.subject" @change="startSession">
-            <option value="all">全部科目</option>
+            <option value="all">All subjects</option>
             <option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option>
           </select></div>
-        <div class="field"><label>章节</label>
+        <div class="field"><label>Section</label>
           <select v-model="f.chapter" @change="startSession">
-            <option value="">全部章节</option>
+            <option value="">All sections</option>
             <option v-for="c in chaptersForSubject" :key="c.subject+'|'+c.chapter" :value="c.chapter">{{ c.chapter }} ({{ c.n }})</option>
           </select></div>
-        <div class="field"><label>题型</label>
+        <div class="field"><label>Type</label>
           <select v-model="f.type" @change="startSession">
-            <option value="">全部题型</option>
+            <option value="">All types</option>
             <option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option>
           </select></div>
-        <div class="field" v-if="view==='practice'"><label>范围</label>
+        <div class="field" v-if="view==='practice'"><label>Scope</label>
           <select v-model="f._mode" @change="startSession">
-            <option value="all">全部题目</option>
-            <option value="unseen">只做未做过</option>
-            <option value="wrong">只做错题</option>
-            <option value="favorite">只做收藏</option>
+            <option value="all">All items</option>
+            <option value="unseen">Unseen only</option>
+            <option value="wrong">Wrong only</option>
+            <option value="favorite">Saved only</option>
           </select></div>
-        <div class="field"><label>顺序</label>
+        <div class="field"><label>Order</label>
           <select v-model="f.order" @change="startSession">
-            <option value="random">随机</option>
-            <option value="seq">顺序</option>
+            <option value="random">Shuffle</option>
+            <option value="seq">In order</option>
           </select></div>
-        <button class="btn subtle" @click="startSession" style="margin-left:auto">↻ 换一批</button>
+        <button class="btn subtle" @click="startSession" style="margin-left:auto">↻ Refresh</button>
       </div>
 
-      <div v-if="loading" class="empty"><span class="spin"></span> 加载题目…</div>
+      <div v-if="loading" class="empty"><span class="spin"></span> Loading…</div>
       <template v-else>
         <div v-if="cur">
-          <div class="row" style="margin-bottom:12px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
-            <span class="muted" v-if="view==='wrong'">· 错题复习</span>
-            <span class="muted" v-if="view==='favorite'">· 我的收藏</span>
+          <div class="row" style="margin-bottom:12px"><span class="q-counter">Question {{ qi+1 }} / {{ queue.length }}</span>
+            <span class="muted" v-if="view==='wrong'">· Review</span>
+            <span class="muted" v-if="view==='favorite'">· Saved</span>
           </div>
           <question-card :q="cur" :key="cur.id" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" />
         </div>
         <div v-else class="empty">
           <div class="big">{{ view==='wrong'?'✓':view==='favorite'?'☆':'∅' }}</div>
-          <p v-if="view==='wrong'">错题本是空的 —— 继续保持。</p>
-          <p v-else-if="view==='favorite'">还没有收藏。在题目右上角点 ★ 收藏。</p>
-          <p v-else>没有符合条件的题目。换个筛选，或先到「录题」导入题库。</p>
+          <p v-if="view==='wrong'">No wrong answers — nice work.</p>
+          <p v-else-if="view==='favorite'">Nothing saved yet. Tap ★ on a question to save.</p>
+          <p v-else>No matching items. Change filters, or import some first.</p>
           <div class="row" style="justify-content:center;margin-top:14px">
-            <button class="btn subtle" @click="startSession">再来一批</button>
-            <button class="btn" @click="view='ingest'">去录题</button>
+            <button class="btn subtle" @click="startSession">Reload</button>
+            <button class="btn" @click="view='ingest'">Go to Import</button>
           </div>
         </div>
       </template>
@@ -505,76 +546,76 @@ const App={
 
     <div v-else-if="view==='mock'">
       <div v-if="!mock.started && !mock.finished">
-        <h2 style="margin:.2em 0 .5em">模拟考</h2>
-        <p class="muted" style="margin-bottom:16px">限时答题，交卷后自动判分，并把答错的题计入错题本。</p>
+        <h2 style="margin:.2em 0 .5em">Test</h2>
+        <p class="muted" style="margin-bottom:16px">Timed. Auto-graded on submit; wrong answers go to Review.</p>
         <div class="toolbar">
-          <div class="field"><label>科目</label>
+          <div class="field"><label>Subject</label>
             <select v-model="mock.subject">
-              <option value="all">全部科目</option>
+              <option value="all">All subjects</option>
               <option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option>
             </select></div>
-          <div class="field"><label>题量</label>
+          <div class="field"><label>Count</label>
             <select v-model.number="mock.count"><option :value="10">10</option><option :value="20">20</option><option :value="30">30</option><option :value="50">50</option><option :value="100">100</option></select></div>
-          <div class="field"><label>时长(分钟)</label>
+          <div class="field"><label>Time (min)</label>
             <select v-model.number="mock.minutes"><option :value="15">15</option><option :value="30">30</option><option :value="60">60</option><option :value="90">90</option><option :value="120">120</option></select></div>
         </div>
-        <label class="row" style="margin:6px 0 18px;cursor:pointer"><input type="checkbox" v-model="mock.objectiveOnly" /> <span class="muted">仅客观题（单选 / 多选 / 判断，可自动判分）</span></label>
-        <button class="btn" :disabled="loading" @click="startMock"><span v-if="loading" class="spin"></span>开始模拟考</button>
+        <label class="row" style="margin:6px 0 18px;cursor:pointer"><input type="checkbox" v-model="mock.objectiveOnly" /> <span class="muted">Auto-gradable only (single / multiple / true-false)</span></label>
+        <button class="btn" :disabled="loading" @click="startMock"><span v-if="loading" class="spin"></span>Start test</button>
       </div>
 
       <template v-else>
         <div v-if="mock.started" class="mock-bar">
           <span class="timer" :class="{warn:mock.remaining<60}">{{ fmtTime(mock.remaining) }}</span>
-          <span class="muted">{{ mock.questions.length }} 题 · {{ subjName(mock.subject==='all'?'':mock.subject)||'全部科目' }}</span>
+          <span class="muted">{{ mock.questions.length }} items · {{ subjName(mock.subject==='all'?'':mock.subject)||'All subjects' }}</span>
           <div class="spacer" style="flex:1"></div>
-          <button class="btn" @click="submitMock">交卷</button>
+          <button class="btn" @click="submitMock">Submit</button>
         </div>
 
         <div v-if="mock.finished" class="card" style="text-align:center">
           <div class="stamp" :class="mockPct>=60?'ok':'bad'"><div><div class="s">{{ mockPct }}</div><div class="u">SCORE</div></div></div>
-          <div style="font-weight:700;font-size:18px">得分 {{ mockResult.correct }} / {{ mockResult.total }}</div>
-          <p class="muted" style="margin-top:6px">用时 {{ fmtTime(mock.elapsed) }}<span v-if="mockResult.graded<mockResult.total"> · 还有 {{ mockResult.total-mockResult.graded }} 道主观题待自评</span></p>
+          <div style="font-weight:700;font-size:18px">Score {{ mockResult.correct }} / {{ mockResult.total }}</div>
+          <p class="muted" style="margin-top:6px">Time {{ fmtTime(mock.elapsed) }}<span v-if="mockResult.graded<mockResult.total"> · still {{ mockResult.total-mockResult.graded }} subjective items to self-grade</span></p>
           <div class="row" style="justify-content:center;margin-top:14px">
-            <button class="btn subtle" @click="quitMock">返回</button>
-            <button class="btn" @click="startMock">再来一套</button>
+            <button class="btn subtle" @click="quitMock">Back</button>
+            <button class="btn" @click="startMock">New test</button>
           </div>
         </div>
-        <h3 v-if="mock.finished" style="margin:22px 0 10px">逐题回顾</h3>
+        <h3 v-if="mock.finished" style="margin:22px 0 10px">Review</h3>
 
         <div v-for="(q,i) in mock.questions" :key="q.id" style="margin-bottom:16px">
-          <div class="q-counter" style="margin-bottom:6px">第 {{ i+1 }} 题
+          <div class="q-counter" style="margin-bottom:6px">Question {{ i+1 }}
             <template v-if="mock.finished">·
-              <span v-if="mock.answers[q.id]===true" style="color:var(--ok)">答对</span>
-              <span v-else-if="mock.answers[q.id]===false" style="color:var(--bad)">答错</span>
-              <span v-else class="muted">待自评</span>
+              <span v-if="mock.answers[q.id]===true" style="color:var(--ok)">Correct</span>
+              <span v-else-if="mock.answers[q.id]===false" style="color:var(--bad)">Wrong</span>
+              <span v-else class="muted">Self-grade</span>
             </template>
           </div>
           <question-card ref="mockCards" :q="q" mode="exam" :exam-reveal="mock.finished" @answered="onMockAnswer" />
         </div>
 
-        <button v-if="mock.started" class="btn" style="width:100%" @click="submitMock">交卷</button>
+        <button v-if="mock.started" class="btn" style="width:100%" @click="submitMock">Submit</button>
       </template>
     </div>
 
     <div v-else-if="view==='stats'">
-      <div v-if="statsLoading" class="empty"><span class="spin"></span> 统计中…</div>
+      <div v-if="statsLoading" class="empty"><span class="spin"></span> Loading…</div>
       <template v-else-if="stats">
         <div class="stat-grid">
-          <div class="stat"><div class="n">{{ statTotals.totalQ }}</div><div class="l">题库总量</div></div>
-          <div class="stat"><div class="n">{{ statTotals.seen }}</div><div class="l">已做过</div></div>
-          <div class="stat"><div class="n" style="color:var(--bad)">{{ statTotals.wrongOpen }}</div><div class="l">待复习错题</div></div>
-          <div class="stat"><div class="n" style="color:var(--ok)">{{ statTotals.mastered }}</div><div class="l">已掌握</div></div>
+          <div class="stat"><div class="n">{{ statTotals.totalQ }}</div><div class="l">Total</div></div>
+          <div class="stat"><div class="n">{{ statTotals.seen }}</div><div class="l">Attempted</div></div>
+          <div class="stat"><div class="n" style="color:var(--bad)">{{ statTotals.wrongOpen }}</div><div class="l">To review</div></div>
+          <div class="stat"><div class="n" style="color:var(--ok)">{{ statTotals.mastered }}</div><div class="l">Mastered</div></div>
         </div>
-        <div v-if="!statTotals.totalQ" class="empty"><p>题库为空，先到「录题」导入。</p><button class="btn" @click="view='ingest'">去录题</button></div>
+        <div v-if="!statTotals.totalQ" class="empty"><p>No items yet. Import some under Import.</p><button class="btn" @click="view='ingest'">Go to Import</button></div>
         <template v-else>
-          <h3 style="margin:6px 0 12px">各科正确率</h3>
+          <h3 style="margin:6px 0 12px">Accuracy by subject</h3>
           <div v-for="r in stats.bySubject" :key="r.subject" class="subj-row">
-            <div class="top"><span>{{ subjName(r.subject) }}</span><span class="muted">{{ rate(r) }}% · 答对 {{ r.right_sum||0 }} / 共答 {{ (r.right_sum||0)+(r.wrong_sum||0) }}</span></div>
+            <div class="top"><span>{{ subjName(r.subject) }}</span><span class="muted">{{ rate(r) }}% · correct {{ r.right_sum||0 }} / answered {{ (r.right_sum||0)+(r.wrong_sum||0) }}</span></div>
             <div class="bar"><span :style="{width:rate(r)+'%', background: rate(r)>=60?'var(--ok)':'var(--bad)'}"></span></div>
-            <div class="muted" style="margin-top:6px">题量 {{ r.total_q }} · 待复习 {{ r.wrong_open||0 }} · 收藏 {{ r.favorited||0 }}</div>
+            <div class="muted" style="margin-top:6px">Count {{ r.total_q }} · to review {{ r.wrong_open||0 }} · saved {{ r.favorited||0 }}</div>
           </div>
           <template v-if="stats.mocks && stats.mocks.length">
-            <h3 style="margin:22px 0 12px">最近模拟考</h3>
+            <h3 style="margin:22px 0 12px">Recent tests</h3>
             <div v-for="(m,i) in stats.mocks" :key="i" class="subj-row">
               <div class="top"><span>{{ subjName(m.subject) }} · {{ m.correct }}/{{ m.total }}</span><span class="muted">{{ fmtTime(m.duration_seconds) }}</span></div>
               <div class="bar"><span :style="{width:(m.total?Math.round(m.correct/m.total*100):0)+'%', background:(m.total&&m.correct/m.total>=0.6)?'var(--ok)':'var(--bad)'}"></span></div>
@@ -582,76 +623,109 @@ const App={
           </template>
         </template>
       </template>
-      <div v-else class="empty"><span class="spin"></span> 载入中…</div>
+      <div v-else class="empty"><span class="spin"></span> Loading…</div>
     </div>
 
     <div v-else-if="view==='ingest'">
-      <h2 style="margin:.2em 0 .5em">录题入库</h2>
+      <h2 style="margin:.2em 0 .5em">Import</h2>
       <div class="seg" style="margin-bottom:14px">
-        <button :class="{on:ingest.tab==='ai'}" @click="ingest.tab='ai'">AI 清洗原文</button>
-        <button :class="{on:ingest.tab==='json'}" @click="ingest.tab='json'">直接导入 JSON</button>
-        <button :class="{on:ingest.tab==='pdf'}" @click="ingest.tab='pdf'">上传 PDF</button>
+        <button :class="{on:ingest.tab==='manual'}" @click="ingest.tab='manual'">Manual Entry</button>
+        <button :class="{on:ingest.tab==='photo'}" @click="ingest.tab='photo'">Photo Helper</button>
+        <button :class="{on:ingest.tab==='json'}" @click="ingest.tab='json'">Import JSON</button>
+        <button :class="{on:ingest.tab==='pdf'}" @click="ingest.tab='pdf'">PDF Text</button>
+        <button :class="{on:ingest.tab==='ai'}" @click="ingest.tab='ai'">AI Clean</button>
       </div>
       <div class="toolbar">
-        <div class="field"><label>默认科目</label>
+        <div class="field"><label>Default subject</label>
           <select v-model="ingest.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-        <div class="field"><label>默认章节(可选)</label><input class="inp" v-model="ingest.chapter" placeholder="如 C语言-指针" /></div>
-        <div class="field"><label>来源(可选)</label><input class="inp" v-model="ingest.source" placeholder="如 2023真题" /></div>
+        <div class="field"><label>Chapter preset</label>
+          <select v-model="ingest.chapter"><option value="">Choose / custom below</option><option v-for="c in ingestChapterOptions" :key="c.chapter" :value="c.chapter">{{ c.chapter }} {{ c.n ? '('+c.n+')' : '' }}</option></select></div>
+        <div class="field"><label>Custom chapter</label><input class="inp" v-model="ingest.chapter" placeholder="e.g. C语言-指针" /></div>
+        <div class="field"><label>Book/source mode</label><label class="row" style="height:40px;cursor:pointer"><input type="checkbox" v-model="ingest.bookMode" /> <span class="muted">小红本自动来源</span></label></div>
+        <template v-if="ingest.bookMode">
+          <div class="field"><label>Book</label><input class="inp" v-model="ingest.bookName" placeholder="小红本" /></div>
+          <div class="field"><label>Page</label><input class="inp" v-model="ingest.pageNo" placeholder="12" /></div>
+          <div class="field"><label>Question No.</label><input class="inp" v-model="ingest.questionNo" placeholder="3" /></div>
+        </template>
+        <div class="field" v-else><label>Source</label><input class="inp" v-model="ingest.source" placeholder="e.g. 2023 paper" /></div>
       </div>
-      <template v-if="ingest.tab==='ai'">
-        <textarea v-model="ingest.raw" placeholder="把从 PDF / 文库 / 论坛复制来的、格式混乱的题目原文整段粘贴到这里。AI 会自动识别题型、选项、答案、解析并结构化入库。建议每次 5~20 题。"></textarea>
-        <div class="hint">原文里若已含答案/解析，AI 会自动归位；数学公式与代码会被保留。此操作会消耗你中转站的额度。</div>
-        <button class="btn" style="margin-top:12px" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>用 AI 清洗并入库</button>
+      <div class="hint">Current classification: <b>{{ subjName(ingest.subject) }}</b><span v-if="ingest.chapter"> · {{ ingest.chapter }}</span><br>Source saved as: <code>{{ sourcePreview || '手动录入' }}</code></div>
+      <template v-if="ingest.tab==='manual' || ingest.tab==='photo'">
+        <div v-if="ingest.tab==='photo'" class="card" style="margin-bottom:14px">
+          <label class="btn subtle" style="cursor:pointer">Take / choose photo
+            <input type="file" accept="image/*" capture="environment" @change="onPhotoFile" style="display:none" />
+          </label>
+          <div class="hint">Free mode: the photo stays in your browser as a reference. Cloudflare free features do not OCR it; type the item below and save.</div>
+          <img v-if="ingest.photoUrl" :src="ingest.photoUrl" style="max-width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line)" />
+        </div>
+        <div class="toolbar">
+          <div class="field"><label>Type</label><select v-model="ingest.manual.type"><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
+          <div class="field"><label>Difficulty</label><select v-model.number="ingest.manual.difficulty"><option v-for="n in [1,2,3,4,5]" :key="n" :value="n">{{ n }}</option></select></div>
+        </div>
+        <textarea v-model="ingest.manual.passage" style="min-height:80px;margin-bottom:10px" placeholder="Optional passage / reading material"></textarea>
+        <textarea v-model="ingest.manual.stem" placeholder="Question stem. Math can use $...$; code can use Markdown fenced code blocks."></textarea>
+        <div v-if="ingest.manual.type==='single_choice'||ingest.manual.type==='multiple_choice'" style="margin-top:10px">
+          <div v-for="o in ingest.manual.options" :key="o.key" class="row" style="margin-bottom:8px"><span class="chip">{{ o.key }}</span><input class="inp" style="flex:1" v-model="o.text" :placeholder="'Option '+o.key" /></div>
+        </div>
+        <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.answer" placeholder="Answer: single A; multiple A,C; true/false T or F; fill blanks one per line; subjective reference answer" />
+        <textarea v-model="ingest.manual.analysis" style="min-height:90px;margin-top:10px" placeholder="Explanation / analysis (optional)"></textarea>
+        <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.tags" placeholder="Tags, separated by commas (optional)" />
+        <div class="hint">This saves structured JSON directly to D1 through /api/process. No AI, no OCR, no paid service.</div>
+        <div class="row" style="margin-top:12px"><button class="btn" :disabled="ingest.busy" @click="saveManual"><span v-if="ingest.busy" class="spin"></span>Save item for free</button><button class="btn subtle" @click="resetManual">Clear</button></div>
+      </template>
+      <template v-else-if="ingest.tab==='ai'">
+        <textarea v-model="ingest.raw" placeholder="Paste messy raw text from a PDF, doc, or forum. This uses AI relay credits, not pure Cloudflare free mode."></textarea>
+        <div class="hint">Paid/optional path: AI maps raw text into questions. For pure free use, prefer Manual Entry, Photo Helper, JSON, or PDF Text extraction.</div>
+        <button class="btn" style="margin-top:12px" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>Clean with AI & import</button>
       </template>
       <template v-else-if="ingest.tab==='json'">
-        <textarea class="code" v-model="ingest.json" placeholder='粘贴题目 JSON 数组，例如 [{"subject":"computer","type":"single_choice","stem":"...","options":[{"key":"A","text":"..."}],"answer":["B"]}]'></textarea>
-        <div class="hint">已有结构化题库时用这里，<b>不消耗 AI 额度</b>。字段说明见项目 README。</div>
+        <textarea class="code" v-model="ingest.json" placeholder='Paste a JSON array, e.g. [{"subject":"computer","type":"single_choice","stem":"...","options":[{"key":"A","text":"..."}],"answer":["B"]}]'></textarea>
+        <div class="hint">Use this if you already have structured items. <b>No AI cost</b>. See the project README for the schema.</div>
         <div class="row" style="margin-top:12px">
-          <button class="btn" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>导入入库</button>
-          <button class="btn subtle" @click="loadSample">载入示例题库试试</button>
+          <button class="btn" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>Import</button>
+          <button class="btn subtle" @click="loadSample">Load sample set</button>
         </div>
       </template>
       <template v-else-if="ingest.tab==='pdf'">
-        <label class="btn subtle" style="cursor:pointer">选择 PDF 文件
+        <label class="btn subtle" style="cursor:pointer">Choose a PDF
           <input type="file" accept="application/pdf,.pdf" @change="onPdfFile" style="display:none" />
         </label>
-        <span v-if="ingest.pdf.pages" class="muted" style="margin-left:10px">已载入，共 {{ ingest.pdf.pages }} 页</span>
-        <div class="hint">PDF 在你浏览器里解析，再分块交给 Cloudflare 上的 AI 结构化入库——全程不经过本地脚本或外部服务。</div>
+        <span v-if="ingest.pdf.pages" class="muted" style="margin-left:10px">Loaded, {{ ingest.pdf.pages }} pages</span>
+        <div class="hint">Free mode: the PDF text is extracted locally in your browser and shown as a draft. It is not auto-structured or sent to AI.</div>
         <div class="row" style="margin-top:12px" v-if="ingest.pdf.pages">
-          <button class="btn" :disabled="ingest.pdf.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>文字版 PDF · 提取文字入库</button>
-          <button class="btn subtle" :disabled="ingest.pdf.busy" @click="pdfByImages">扫描版 PDF · 图片识别入库</button>
+          <button class="btn" :disabled="ingest.pdf.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>Extract text locally</button>
         </div>
         <div v-if="ingest.pdf.prog" class="hint" style="margin-top:10px"><span class="spin"></span> {{ ingest.pdf.prog }}</div>
-        <div class="hint" style="margin-top:10px">文字版走文本路径（便宜）；扫描版会把每页转成图片交给视觉模型，<b>需所选模型支持图片输入</b>（如 gpt-4o、claude-3.5-sonnet），花费更高、速度更慢。</div>
+        <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="Extracted PDF text appears here"></textarea><div class="hint" style="margin-top:10px">Copy useful text from here into Manual Entry, or organize it as JSON and import. Scanned PDFs/photos need manual typing in free mode.</div>
       </template>
       <div v-if="ingest.result" class="ref" style="margin-top:16px">
-        <h5>本次入库 {{ ingest.result.inserted }} 题</h5>
+        <h5>Imported {{ ingest.result.inserted }} items</h5>
         <div v-for="(s,i) in ingest.result.sample" :key="i" class="muted">· [{{ subjName(s.subject) }} / {{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
       </div>
     </div>
 
     <div v-else-if="view==='settings'">
-      <h2 style="margin:.2em 0 .5em">设置</h2>
+      <h2 style="margin:.2em 0 .5em">Settings</h2>
       <div class="card" style="max-width:520px">
-        <div class="field" style="margin-bottom:14px"><label>访问口令 (APP_TOKEN)</label>
-          <input class="inp" style="width:100%" type="password" v-model="tokenInput" :placeholder="token?'已设置（如需更换请重新输入）':'输入你在 Cloudflare 设置的 APP_TOKEN'" @keyup.enter="saveToken" />
+        <div class="field" style="margin-bottom:14px"><label>Access code (APP_TOKEN)</label>
+          <input class="inp" style="width:100%" type="password" v-model="tokenInput" :placeholder="token?'Set (re-enter to change)':'Enter the APP_TOKEN you set in Cloudflare'" @keyup.enter="saveToken" />
         </div>
         <div class="row">
-          <button class="btn" @click="saveToken">保存口令</button>
-          <button class="btn subtle" v-if="token" @click="logout">清除</button>
-          <span class="muted" v-if="token">当前：已连接 ✓</span>
+          <button class="btn" @click="saveToken">Save</button>
+          <button class="btn subtle" v-if="token" @click="logout">Clear</button>
+          <span class="muted" v-if="token">Status: connected ✓</span>
         </div>
-        <div class="hint" style="margin-top:16px">访问口令就是你在 Cloudflare Pages 后台设置的环境变量 <code>APP_TOKEN</code>，用来保护题库、防止他人消耗你的 AI 额度。它只保存在你本机浏览器里，不会上传。</div>
+        <div class="hint" style="margin-top:16px">The access code is the <code>APP_TOKEN</code> env var you set in the Cloudflare Pages dashboard. It protects your data and stops others from using your AI credits. Stored only in this browser.</div>
       </div>
       <div class="card" style="max-width:520px;margin-top:14px">
-        <div class="field" style="margin-bottom:14px"><label>显示名称（浏览器标签 + 顶栏，随意改成不起眼的）</label>
-          <input class="inp" style="width:100%" v-model="appName" placeholder="如 Docs / Wiki / Dashboard / 知识库" />
+        <div class="field" style="margin-bottom:14px"><label>Display name (browser tab + header)</label>
+          <input class="inp" style="width:100%" v-model="appName" placeholder="e.g. Docs / Wiki / Dashboard / Notes" />
         </div>
-        <div class="row" style="justify-content:space-between;margin-bottom:12px"><span style="font-weight:600">外观</span>
-          <button class="btn subtle" @click="theme=theme==='light'?'dark':'light'">{{ theme==='light'?'切换夜间模式 ☾':'切换日间模式 ☀' }}</button>
+        <div class="row" style="justify-content:space-between;margin-bottom:12px"><span style="font-weight:600">Appearance</span>
+          <button class="btn subtle" @click="theme=theme==='light'?'dark':'light'">{{ theme==='light'?'Dark mode ☾':'Light mode ☀' }}</button>
         </div>
-        <label class="row" style="cursor:pointer"><input type="checkbox" v-model="stealth.autoHide" /> <span class="muted">切走窗口时自动隐藏内容（回到本页自动恢复）</span></label>
-        <div class="hint" style="margin-top:14px">快速隐藏：点右上角的眼睛图标，或按键盘 <code>&#96;</code> 键（数字 1 左边那个）；隐藏后再按一次或点屏幕即可恢复。隐藏时页面只显示一句「正在同步数据…」。</div>
+        <label class="row" style="cursor:pointer"><input type="checkbox" v-model="stealth.autoHide" /> <span class="muted">Auto-hide when the window loses focus (restores when you return)</span></label>
+        <div class="hint" style="margin-top:14px">Quick hide: click the eye icon, or press <code>&#96;</code> (left of the 1 key). Press again or click to restore. While hidden the page shows only “Syncing…”.</div>
       </div>
     </div>
 
@@ -659,11 +733,7 @@ const App={
 
   <div v-if="toast" class="toast" :class="{err:toast.err}">{{ toast.msg }}</div>
   <div v-if="stealth.hidden" class="stealth" @click="stealthShow">
-    <div class="stealth-box">
-      <div style="font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--ink)">{{ appName }}</div>
-      <div class="muted" style="font-size:13px;margin-top:8px">已同步 · 暂无更新</div>
-      <div class="muted" style="font-size:12px;margin-top:24px;opacity:.55">点击任意处 / 按任意键 返回</div>
-    </div>
+    <div class="stealth-box"><span class="spin"></span><div>Syncing…</div></div>
   </div>
   `
 };

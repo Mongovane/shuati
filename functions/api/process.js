@@ -1,6 +1,6 @@
 import { json, checkAuth } from './_utils.js';
 
-const VALID_SUBJECTS = ['politics', 'english', 'math', 'chinese', 'computer'];
+const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 const VALID_TYPES = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer', 'code'];
 
 export async function onRequestPost({ request, env }) {
@@ -191,7 +191,7 @@ function buildSystemPrompt() {
 输出要求（务必遵守）：
 1. 只输出一个 JSON 对象，形如 {"questions":[ ... ]}，不要任何解释文字或 Markdown 代码块标记。
 2. 每道题对象字段：
-   - subject: "politics"(政治) | "english"(英语) | "math"(高数) | "chinese"(大学语文) | "computer"(计算机基础与程序设计)。用户已指定科目时优先用指定值。
+   - subject: "politics"(政治) | "english"(英语) | "math"(高等数学) | "computer"(计算机基础与程序设计)。用户已指定科目时优先用指定值。
    - chapter: 章节/知识点（如「数据结构-线性表」「C语言-指针」「政治-马原-唯物史观」「英语-阅读理解」；不确定可留空字符串）。
    - type: "single_choice"(单选) | "multiple_choice"(多选) | "true_false"(判断) | "fill_blank"(填空) | "short_answer"(简答/论述/材料分析) | "code"(程序设计/手写代码)。
    - difficulty: 1~5 的整数，凭经验估计，默认 3。
@@ -206,7 +206,7 @@ function buildSystemPrompt() {
 }
 
 function buildHint(subject, chapter, source) {
-  const map = { politics: '政治', english: '英语', math: '高数', chinese: '大学语文', computer: '计算机基础与程序设计' };
+  const map = { politics: '政治理论', english: '英语', math: '高等数学', computer: '计算机基础与程序设计' };
   let hint = `本批题目科目默认为：${map[subject]}（subject="${subject}"）。`;
   if (chapter) hint += `\n章节默认为：「${chapter}」。`;
   if (source) hint += `\n来源默认为：「${source}」。`;
