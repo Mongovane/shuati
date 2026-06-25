@@ -337,6 +337,8 @@ const App={
   },
   methods:{
     bookKeyOf(m){ const s=String(m.source||'').replace(/[-_\s]*P\d+\s*$/i,'').trim(); if(s)return s; const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t||'未命名教材'; },
+    guessSubject(name){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return''; },
+    async setBookSubject(subj){ const b=this.currentBook; if(!b)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.materials.loading=true; try{ for(const m of b.pages){ await this.saveOneMaterial({id:m.id,subject:subj,title:m.title,source:m.source||null,page:m.page||null,page_image:m.page_image||null,content_md:m.content_md,summary:m.summary||'',tags:Array.isArray(m.tags)?m.tags:[]}); } this.flash('已将《'+b.title+'》归到「'+this.subjName(subj)+'」'); await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('修改科目失败：'+e.message,true); } this.materials.loading=false; },
     bookTitleOf(m){ const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t || this.bookKeyOf(m); },
     pageLabel(m){ if(!m)return ''; const raw=String(m.content_md||'').replace(/^!\[[^\]]*\]\([^)]*\)\s*/,'').replace(/^>.*$/gm,''); const lines=raw.split('\n').map(s=>s.trim()).filter(Boolean); let head=''; for(const ln of lines){ const clean=ln.replace(/[#*`>]/g,'').trim(); if(!clean)continue; const mt=clean.match(/^(第[一二三四五六七八九十百零\d]+[章节][^。.]{0,24}|\d+(?:\.\d+){0,3}[\s、.][^。.]{0,24})/); head=(mt?mt[0]:clean).slice(0,24); break; } const pg=m.page?('第'+m.page+'页'):''; if(head&&pg)return head+' · '+pg; return head||pg||(m.title||'未命名'); },
     async deleteCurrentBook(){ const b=this.currentBook; if(!b){ this.flash('请先选择书籍',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除《'+b.title+'》及其全部 '+b.pages.length+' 页？此操作不可恢复（题库不受影响）。')) return; const ids=b.pages.map(m=>m.id).filter(Boolean); try{ const d=await this.api('/api/materials',{method:'DELETE',body:JSON.stringify({ids})}); this.flash('已删除《'+b.title+'》，共 '+(d.deleted||ids.length)+' 页'); this.currentBookId=''; this.bookIdx=0; await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
@@ -429,7 +431,7 @@ const App={
       catch(e){ this.flash('sample-questions.json not found',true); } },
     loadScript(src){ return new Promise((res,rej)=>{ this._scripts=this._scripts||{}; if(this._scripts[src])return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ this._scripts[src]=1; res(); }; s.onerror=()=>rej(new Error('加载失败：'+src)); document.head.appendChild(s); }); },
     async ensurePdfjs(){ if(window.pdfjsLib)return; await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; },
-    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0; const nm=(file.name||'').replace(/\.[Pp][Dd][Ff]$/,'').trim(); if(nm)this.ingest.bookTitle=nm;
+    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0; const nm=(file.name||'').replace(/\.[Pp][Dd][Ff]$/,'').trim(); if(nm)this.ingest.bookTitle=nm; const gs=this.guessSubject(nm); if(gs)this.ingest.subject=gs;
       try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.start=1; this.ingest.pdf.end=Math.min(3,doc.numPages); this.ingest.pdf.prog=''; this.flash('已加载 PDF，共 '+doc.numPages+' 页'); }
       catch(err){ this.ingest.pdf.prog=''; this.flash('PDF 加载失败：'+err.message,true); } },
     chunkText(text,size=6000,overlap=200){ text=String(text).replace(/\n{3,}/g,'\n\n').trim(); const out=[]; let i=0,n=text.length; while(i<n){ let end=Math.min(i+size,n); if(end<n){ const br=text.lastIndexOf('\n',end); if(br>i && br>end-overlap*4) end=br; } const p=text.slice(i,end).trim(); if(p)out.push(p); i=end; } return out; },
@@ -673,7 +675,10 @@ const App={
                 <div style="font-weight:700;font-size:18px">{{ currentPageMat.title }}</div>
                 <div class="muted">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
               </div>
-              <button class="btn subtle" @click="deleteCurrentBook" style="color:#c0392b">删除本书</button>
+              <div class="row" style="gap:8px;align-items:center">
+                <div class="field" style="margin:0"><label>科目</label><select :value="currentPageMat.subject" @change="setBookSubject($event.target.value)"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
+                <button class="btn subtle" @click="deleteCurrentBook" style="color:#c0392b">删除本书</button>
+              </div>
             </div>
             <div class="toolbar" style="margin-bottom:12px;align-items:center">
               <button class="btn subtle" :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
