@@ -150,6 +150,44 @@ a{color:var(--accent)}
   .stem{font-size:16px}
   select,.inp{min-width:0;flex:1}
 }
+/* —— 教材阅读 Books 美化 —— */
+.bk-shelf{margin-bottom:20px}
+.bk-shelf-label{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--ink-soft);margin:0 0 10px;display:flex;align-items:center;gap:10px}
+.bk-shelf-label::after{content:"";flex:1;height:1px;background:var(--line)}
+.bk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.bk-card{position:relative;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px 14px 20px;cursor:pointer;transition:.16s;display:flex;flex-direction:column;gap:10px;min-height:88px}
+.bk-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
+.bk-card.on{border-color:var(--accent);background:var(--accent-soft)}
+.bk-card .spine{position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:0 4px 4px 0;background:var(--accent);opacity:.3}
+.bk-card.on .spine{opacity:1}
+.bk-card .t{font-weight:700;font-size:14.5px;line-height:1.4;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bk-card .m{font-size:12px;color:var(--ink-soft);margin-top:auto}
+.bk-reader{display:grid;grid-template-columns:250px 1fr;gap:18px;align-items:start;margin-top:20px}
+@media(max-width:860px){.bk-reader{grid-template-columns:1fr}}
+.bk-toc{position:sticky;top:74px;max-height:calc(100vh - 92px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px}
+.bk-toc h4{margin:0;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.bk-toc .tip{font-size:11.5px;color:var(--ink-soft);margin:5px 0 12px}
+.bk-toc-item{padding:8px 11px;border-radius:8px;margin-bottom:3px;font-size:13.5px;line-height:1.45;color:var(--ink);cursor:pointer;transition:.12s;border-left:2px solid transparent}
+.bk-toc-item:hover{background:var(--surface-2)}
+.bk-toc-item.on{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+.bk-page{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.bk-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
+.bk-bar .ttl{font-weight:700;font-size:16.5px;line-height:1.35}
+.bk-bar .sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px}
+.bk-nav{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.bk-nav button{height:34px;padding:0 14px;background:transparent;border:none;color:var(--ink);font-weight:600;font-size:13.5px;transition:.12s}
+.bk-nav button:disabled{color:var(--ink-soft);opacity:.45;cursor:default}
+.bk-nav button:not(:disabled):hover{background:var(--accent-soft);color:var(--accent)}
+.bk-nav button+button{border-left:1px solid var(--line)}
+.bk-jump{height:34px;width:74px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:0}
+.bk-mini{height:34px;padding:0 10px;border-radius:8px;min-width:0}
+.bk-del{height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:#c0392b;font-weight:600;font-size:13px;transition:.12s}
+.bk-del:hover{border-color:#c0392b;background:color-mix(in srgb,#c0392b 8%,var(--surface))}
+.bk-body{padding:30px 34px 34px;max-width:760px;margin:0 auto}
+.bk-body .summary{font-size:13px;color:var(--accent);font-weight:600;margin:0 0 16px;padding-left:12px;border-left:3px solid var(--accent)}
+.bk-body .rich{font-size:16px;line-height:1.95;color:var(--ink)}
+.bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
+@media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
 </style>
 </head>
 <body>
@@ -653,52 +691,53 @@ const App={
       </template>
       <template v-else>
         <template v-for="(list,sub) in booksBySubject" :key="sub">
-          <div v-if="list.length" style="margin-bottom:12px">
-            <div class="muted" style="margin:0 0 6px;font-weight:700">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
-            <div class="seg" style="flex-wrap:wrap">
-              <button v-for="b in list" :key="b.key" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">{{ b.title }} <span class="muted">({{ b.pages.length }} 页)</span></button>
+          <div v-if="list.length" class="bk-shelf">
+            <div class="bk-shelf-label">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
+            <div class="bk-grid">
+              <button v-for="b in list" :key="b.key" class="bk-card" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">
+                <span class="spine"></span>
+                <span class="t">{{ b.title }}</span>
+                <span class="m">{{ b.pages.length }} 页</span>
+              </button>
             </div>
           </div>
         </template>
-        <div v-if="currentBook && currentPageMat" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-          <aside class="card" style="flex:1 1 220px;max-width:300px;position:sticky;top:12px;align-self:flex-start;max-height:calc(100vh - 36px);overflow:auto">
-            <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
-              <div style="font-weight:700">目录</div>
-              <span class="muted" style="font-size:12px">{{ currentBook.pages.length }} 篇</span>
-            </div>
-            <div class="muted" style="font-size:12px;margin-bottom:10px">按每页正文标题/首行生成，点击跳转</div>
-            <div v-for="(m,i) in currentBook.pages" :key="m.id" @click="bookGoto(i)" :style="{cursor:'pointer',padding:'7px 10px',borderRadius:'8px',marginBottom:'4px',fontSize:'14px',lineHeight:'1.4',background:i===bookIdx?'var(--accent)':'transparent',color:i===bookIdx?'#fff':'inherit'}">{{ pageLabel(m) }}</div>
+        <div v-if="currentBook && currentPageMat" class="bk-reader">
+          <aside class="bk-toc">
+            <h4>目录 <span class="muted">{{ currentBook.pages.length }} 篇</span></h4>
+            <div class="tip">按每页正文标题/首行生成，点击跳转</div>
+            <div v-for="(m,i) in currentBook.pages" :key="m.id" class="bk-toc-item" :class="{on:i===bookIdx}" @click="bookGoto(i)">{{ pageLabel(m) }}</div>
           </aside>
-          <div class="card" style="flex:3 1 380px;min-width:0">
-            <div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-              <div>
-                <div style="font-weight:700;font-size:18px">{{ currentPageMat.title }}</div>
-                <div class="muted">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
+          <div class="bk-page">
+            <div class="bk-bar">
+              <div style="flex:1;min-width:180px">
+                <div class="ttl">{{ currentPageMat.title }}</div>
+                <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
               </div>
-              <div class="row" style="gap:8px;align-items:center">
-                <div class="field" style="margin:0"><label>科目</label><select :value="currentPageMat.subject" @change="setBookSubject($event.target.value)"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-                <button class="btn subtle" @click="deleteCurrentBook" style="color:#c0392b">删除本书</button>
+              <div class="bk-nav">
+                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
+                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
               </div>
+              <input class="bk-jump inp" type="number" min="1" @keyup.enter="bookJumpPage($event.target.value)" placeholder="跳页" title="输入页码回车跳转" />
+              <select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改本书科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+              <button class="bk-del" @click="deleteCurrentBook">删除本书</button>
             </div>
-            <div class="toolbar" style="margin-bottom:12px;align-items:center">
-              <button class="btn subtle" :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-              <button class="btn subtle" :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-              <div class="field" style="margin-left:auto"><label>跳到页码</label><input class="inp" type="number" min="1" style="width:90px" @keyup.enter="bookJumpPage($event.target.value)" placeholder="如 12" /></div>
-            </div>
-            <div class="ref">
-              <h5 v-if="currentPageMat.summary">{{ currentPageMat.summary }}</h5>
-              <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:12px" />
+            <div class="bk-body">
+              <div v-if="currentPageMat.summary" class="summary">{{ currentPageMat.summary }}</div>
+              <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:16px" />
               <rich-text :content="currentPageMat.content_md" />
+              <div v-if="genq.result" class="ref" style="margin-top:20px">
+                <h5>已生成 {{ genq.result.inserted_questions ?? genq.result.inserted ?? 0 }} 道题（进题库 · {{ subjName(currentPageMat.subject) }}）</h5>
+                <div v-for="(s,i) in (genq.result.sample||[])" :key="i" class="muted">· [{{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
+              </div>
             </div>
-            <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
-              <button class="btn subtle" :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-              <button class="btn subtle" :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-              <button class="btn" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial"><span v-if="genq.busy" class="spin"></span>根据本页生成练习题</button>
-              <span v-if="!ai.hasAI" class="muted">未配置 AI 中转站，无法出题</span>
-            </div>
-            <div v-if="genq.result" class="ref" style="margin-top:12px">
-              <h5>已生成 {{ genq.result.inserted_questions ?? genq.result.inserted ?? 0 }} 道题（进题库 · {{ subjName(currentPageMat.subject) }}）</h5>
-              <div v-for="(s,i) in (genq.result.sample||[])" :key="i" class="muted">· [{{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
+            <div class="bk-foot">
+              <div class="bk-nav">
+                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
+                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
+              </div>
+              <button class="btn" style="margin-left:auto" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial"><span v-if="genq.busy" class="spin"></span>根据本页生成练习题</button>
+              <span v-if="!ai.hasAI" class="muted">未配置 AI，无法出题</span>
             </div>
           </div>
         </div>
