@@ -384,7 +384,7 @@ const App={
     importMsg(d){ const q=d.inserted_questions??d.inserted??0; const m=d.inserted_materials??0; if(q&&m)return '识别为「题目+教材」，已导入 '+q+' 题、整理 '+m+' 段教材'; if(m)return '识别为教材，已整理 '+m+' 段（去「教材阅读」查看）'; return '识别为题库，已导入 '+q+' 题'; },
     subjName(v){ return SUBJ_MAP[v]||v; },
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
-    currentSource(){ return this.ingest.bookMode ? this.makeSource() : (this.ingest.source||''); },
+    currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
     async loadMaterials(){ if(!this.token)return; this.materials.loading=true; try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.materials.loading=false; },
     bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
@@ -827,7 +827,7 @@ const App={
     </div>
 
     <div v-else-if="view==='ingest'">
-      <h2 style="margin:.2em 0 .5em">导入题目</h2>
+      <h2 style="margin:.2em 0 .5em">导入</h2>
       <div class="seg" style="margin-bottom:14px">
         <button :class="{on:ingest.tab==='manual'}" @click="ingest.tab='manual'">手动录入</button>
         <button :class="{on:ingest.tab==='photo'}" @click="ingest.tab='photo'">拍照辅助</button>
@@ -836,23 +836,28 @@ const App={
         <button :class="{on:ingest.tab==='ai'}" @click="ingest.tab='ai'">AI 整理</button>
       </div>
       <div class="toolbar">
-        <div class="field"><label>导入类型</label>
+        <div class="field" v-if="ingest.tab!=='manual' && ingest.tab!=='json'"><label>导入类型</label>
           <select v-model="ingest.kind"><option value="auto">自动分辨（题库 / 教材）</option><option value="questions">只当题库</option><option value="material">只当教材</option></select></div>
         <div class="field"><label>默认科目</label>
           <select v-model="ingest.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-        <div class="field"><label>教材名称（转教材时用作书名，按科目归类）</label><input class="inp" v-model="ingest.bookTitle" placeholder="如 谭浩强C程序设计（选 PDF 会自动填文件名）" /></div>
-        <div class="field"><label>章节预设</label>
-          <select v-model="ingest.chapter"><option value="">选择 / 下方自定义</option><option v-for="c in ingestChapterOptions" :key="c.chapter" :value="c.chapter">{{ c.chapter }} {{ c.n ? '('+c.n+')' : '' }}</option></select></div>
-        <div class="field"><label>自定义章节</label><input class="inp" v-model="ingest.chapter" placeholder="例如：C语言-指针" /></div>
-        <div class="field"><label>书本 / 来源模式</label><label class="row" style="height:40px;cursor:pointer"><input type="checkbox" v-model="ingest.bookMode" /> <span class="muted">小红本自动来源</span></label></div>
-        <template v-if="ingest.bookMode">
-          <div class="field"><label>书名</label><input class="inp" v-model="ingest.bookName" placeholder="小红本" /></div>
-          <div class="field"><label>页码</label><input class="inp" v-model="ingest.pageNo" placeholder="12" /></div>
-          <div class="field"><label>题号</label><input class="inp" v-model="ingest.questionNo" placeholder="3" /></div>
+        <div class="field" v-if="['photo','pdf','ai'].includes(ingest.tab)"><label>教材名称（转教材时用作书名，按科目归类）</label><input class="inp" v-model="ingest.bookTitle" placeholder="如 谭浩强C程序设计（选 PDF 会自动填文件名）" /></div>
+        <template v-if="ingest.tab!=='json'">
+          <div class="field"><label>章节预设</label>
+            <select v-model="ingest.chapter"><option value="">选择 / 下方自定义</option><option v-for="c in ingestChapterOptions" :key="c.chapter" :value="c.chapter">{{ c.chapter }} {{ c.n ? '('+c.n+')' : '' }}</option></select></div>
+          <div class="field"><label>自定义章节</label><input class="inp" v-model="ingest.chapter" placeholder="例如：C语言-指针" /></div>
         </template>
-        <div class="field" v-else><label>来源</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
+        <template v-if="ingest.tab==='manual'">
+          <div class="field"><label>书本 / 来源模式</label><label class="row" style="height:40px;cursor:pointer"><input type="checkbox" v-model="ingest.bookMode" /> <span class="muted">小红本自动来源</span></label></div>
+          <template v-if="ingest.bookMode">
+            <div class="field"><label>书名</label><input class="inp" v-model="ingest.bookName" placeholder="小红本" /></div>
+            <div class="field"><label>页码</label><input class="inp" v-model="ingest.pageNo" placeholder="12" /></div>
+            <div class="field"><label>题号</label><input class="inp" v-model="ingest.questionNo" placeholder="3" /></div>
+          </template>
+          <div class="field" v-else><label>来源</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
+        </template>
+        <div class="field" v-else-if="['photo','ai'].includes(ingest.tab)"><label>来源（可选，作题目出处）</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
       </div>
-      <div class="hint">当前分类： <b>{{ subjName(ingest.subject) }}</b><span v-if="ingest.chapter"> · {{ ingest.chapter }}</span><br>保存来源： <code>{{ sourcePreview || '手动录入' }}</code></div>
+      <div class="hint" v-if="ingest.tab!=='json'">当前分类： <b>{{ subjName(ingest.subject) }}</b><span v-if="ingest.chapter"> · {{ ingest.chapter }}</span><span v-if="['photo','pdf','ai'].includes(ingest.tab) && ingest.bookTitle"> · 教材：{{ ingest.bookTitle }}</span><br>题目来源： <code>{{ currentSource() || '（无）' }}</code></div>
       <template v-if="ingest.tab==='manual' || ingest.tab==='photo'">
         <div v-if="ingest.tab==='photo'" class="card" style="margin-bottom:14px">
           <label class="btn subtle" style="cursor:pointer">拍摄 / 选择照片
