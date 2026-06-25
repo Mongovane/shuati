@@ -296,7 +296,7 @@ const App={
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false } },
+    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, stop:false } },
     stats:null, statsLoading:false,
     ai:{ model:'', visionModel:'', hasAI:false },
     materials:{ subject:'all', items:[], loading:false },
@@ -430,7 +430,56 @@ const App={
     async saveOneMaterial(m){ return this.api('/api/materials',{method:'POST',body:JSON.stringify(m)}); },
     async saveMaterialsLocal(text,baseTitle){ const clean=this.mdFromText(text); if(!clean){ this.flash('没有可保存的文本',true); return 0; } const parts=this.chunkForMaterial(clean); let n=0; this.ingest.local.total=parts.length; for(let i=0;i<parts.length;i++){ this.ingest.local.prog='正在保存第 '+(i+1)+'/'+parts.length+' 段教材'; const title=parts.length>1 ? (baseTitle+' ('+(i+1)+'/'+parts.length+')') : baseTitle; const d=await this.saveOneMaterial({subject:this.ingest.subject,title,source:this.currentSource()||null,content_md:parts[i],summary:'',tags:this.ingest.chapter?[this.ingest.chapter,'本地导入']:['本地导入']}); n+=d.inserted||1; this.ingest.local.done=i+1; this.ingest.local.inserted=n; } return n; },
     async saveTextAsMaterial(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const text=(this.ingest.raw||'').trim(); if(!text){ this.flash('请先粘贴或提取文本',true); return; } this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.inserted=0; this.ingest.result=null; try{ const n=await this.saveMaterialsLocal(text,this.materialBaseTitle()); this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('已保存 '+n+' 段教材到 Books（未调用 AI）'); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } this.ingest.local.busy=false; this.ingest.local.prog=''; },
-    async pdfToMaterialLocal(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const doc=this._pdfDoc; const st=Math.max(1,parseInt(this.ingest.pdf.start||1,10)||1); const ed=Math.min(doc.numPages,parseInt(this.ingest.pdf.end||st,10)||st); if(ed<st){ this.flash('结束页不能小于开始页',true); return; } this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.total=ed-st+1; this.ingest.local.inserted=0; this.ingest.result=null; let tess=null; try{ let saved=0, scanned=0; for(let p=st;p<=ed;p++){ this.ingest.local.prog='正在处理第 '+p+'/'+ed+' 页'; const page=await doc.getPage(p); const tc=await page.getTextContent(); let text=tc.items.map(it=>it.str).join(' ').replace(/\s+\n/g,'\n').trim(); let usedOcr=false; if(text.replace(/\s/g,'').length<10 && this.ingest.local.ocr){ if(!tess){ this.ingest.local.prog='正在加载本地 OCR 引擎…'; tess=await this.ensureTesseract(); } const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; this.ingest.local.prog='本地 OCR 第 '+p+' 页（首次较慢）'; const r=await tess.recognize(cv); text=String(r?.data?.text||'').trim(); usedOcr=true; scanned++; } this.ingest.local.done=(p-st+1); if(!text)continue; const title=this.materialBaseTitle()+' · 第 '+p+' 页'; const md=this.mdFromText(text)+(usedOcr?'\n\n> 本页由本地 OCR 识别，可能有误差。':''); const d=await this.saveOneMaterial({subject:this.ingest.subject,title,source:this.sourceForPage(p),page:p,content_md:md,summary:'',tags:this.ingest.chapter?[this.ingest.chapter,'本地导入']:['本地导入']}); saved+=d.inserted||1; this.ingest.local.inserted=saved; } this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:saved,material_sample:[]}; this.flash('已保存 '+saved+' 段教材到 Books（未调用 AI）'+(scanned?('，其中 '+scanned+' 页用本地 OCR'):'')); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('本地转化失败：'+e.message,true); } if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} } this.ingest.local.busy=false; this.ingest.local.prog=''; },
+    sleep(ms){ return new Promise(r=>setTimeout(r,ms)); },
+    pdfAllToMaterialLocal(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } this.ingest.pdf.start=1; this.ingest.pdf.end=this._pdfDoc.numPages; this.pdfToMaterialLocal(); },
+    async pdfToMaterialLocal(){
+      if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; }
+      if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      const doc=this._pdfDoc;
+      const st=Math.max(1,parseInt(this.ingest.pdf.start||1,10)||1);
+      const ed=Math.min(doc.numPages,parseInt(this.ingest.pdf.end||st,10)||st);
+      if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
+      const n=ed-st+1;
+      if(n>30 && !confirm('将处理 '+n+' 页（第 '+st+'–'+ed+' 页）。\n会自动分批进行；扫描页本地 OCR 较慢，请保持本标签页在前台、勿让电脑休眠。\n确定开始？')) return;
+      const BATCH=25;
+      this.ingest.local.busy=true; this.ingest.local.stop=false; this.ingest.local.done=0; this.ingest.local.total=n; this.ingest.local.inserted=0; this.ingest.result=null;
+      let tess=null, saved=0, scanned=0;
+      try{
+        for(let p=st;p<=ed;p++){
+          if(this.ingest.local.stop){ this.flash('已停止，已保存 '+saved+' 段教材'); break; }
+          // 分批：每处理 BATCH 页就重建 OCR 引擎释放内存并短暂喘息，降低长任务下标签页卡死概率
+          if(p>st && (p-st)%BATCH===0){
+            if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} tess=null; }
+            this.ingest.local.prog='已完成 '+(p-st)+'/'+n+' 页，正在释放内存…';
+            await this.sleep(800);
+          }
+          this.ingest.local.prog='正在处理第 '+p+'/'+ed+' 页';
+          const page=await doc.getPage(p);
+          const tc=await page.getTextContent();
+          let text=tc.items.map(it=>it.str).join(' ').replace(/\s+\n/g,'\n').trim();
+          let usedOcr=false;
+          if(text.replace(/\s/g,'').length<10 && this.ingest.local.ocr){
+            if(!tess){ this.ingest.local.prog='正在加载本地 OCR 引擎…'; tess=await this.ensureTesseract(); }
+            const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale});
+            const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height);
+            await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+            this.ingest.local.prog='本地 OCR 第 '+p+'/'+ed+' 页（首次较慢）';
+            const r=await tess.recognize(cv); text=String(r?.data?.text||'').trim(); usedOcr=true; scanned++;
+            cv.width=cv.height=0;
+          }
+          this.ingest.local.done=(p-st+1);
+          if(!text)continue;
+          const title=this.materialBaseTitle()+' · 第 '+p+' 页';
+          const md=this.mdFromText(text)+(usedOcr?'\n\n> 本页由本地 OCR 识别，可能有误差。':'');
+          const d=await this.saveOneMaterial({subject:this.ingest.subject,title,source:this.sourceForPage(p),page:p,content_md:md,summary:'',tags:this.ingest.chapter?[this.ingest.chapter,'本地导入']:['本地导入']});
+          saved+=d.inserted||1; this.ingest.local.inserted=saved;
+        }
+        if(!this.ingest.local.stop){ this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:saved,material_sample:[]}; this.flash('已保存 '+saved+' 段教材到 Books（未调用 AI）'+(scanned?('，其中 '+scanned+' 页用本地 OCR'):'')); }
+        this.loadMaterials();
+      }catch(e){ if(e.message!=='unauth')this.flash('本地转化中断：已保存 '+saved+' 段，'+e.message,true); this.loadMaterials(); }
+      if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} }
+      this.ingest.local.busy=false; this.ingest.local.prog='';
+    },
     async photoToMaterialLocal(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.local.busy=true; this.ingest.local.prog='正在加载本地 OCR 引擎…'; this.ingest.local.done=0; this.ingest.local.inserted=0; this.ingest.result=null; let tess=null; try{ tess=await this.ensureTesseract(); this.ingest.local.prog='本地 OCR 识别中（首次较慢）…'; const r=await tess.recognize(this.ingest.photoDataUrl); const text=String(r?.data?.text||'').trim(); if(!text){ this.flash('未识别出文字',true); } else { const n=await this.saveMaterialsLocal(text,this.materialBaseTitle()); this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('本地 OCR 完成，已保存 '+n+' 段教材（未调用 AI）'); this.loadMaterials(); } }catch(e){ if(e.message!=='unauth')this.flash('本地 OCR 失败：'+e.message,true); } if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} } this.ingest.local.busy=false; this.ingest.local.prog=''; },
     async genQuestionsFromMaterial(){ const b=this.currentTextbook; if(!b||!b.material){ this.flash('请先选择教材',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI){ this.flash('未配置 AI 中转站，无法生成题目',true); return; } this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:b.subject,chapter:b.material.summary||'',source:'教材出题-'+(b.title||''),kind:'questions',raw_text:String(b.material.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; },
     async pdfExtractText(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
@@ -782,6 +831,8 @@ const App={
           <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>本地提取文本</button>
           <button class="btn" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfByImages"><span v-if="ingest.pdf.busy" class="spin"></span>AI OCR 当前页范围并导入（题库）</button>
           <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>当前页范围转教材存入 Books（不调用 AI）</button>
+          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfAllToMaterialLocal">全部页转教材（共 {{ ingest.pdf.pages }} 页）</button>
+          <button v-if="ingest.local.busy" class="btn subtle" @click="ingest.local.stop=true">停止</button>
           <label class="row" style="height:40px;cursor:pointer;gap:6px"><input type="checkbox" v-model="ingest.local.ocr" /> <span class="muted">扫描页用本地 OCR</span></label>
           <span v-if="ingest.pdf.inserted" class="muted">已导入 {{ ingest.pdf.inserted }} 题</span>
         </div>
