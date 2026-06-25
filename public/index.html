@@ -658,40 +658,43 @@ const App={
             </div>
           </div>
         </template>
-        <div v-if="currentBook && currentPageMat" class="card">
-          <div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <div>
-              <div style="font-weight:700;font-size:18px">{{ currentPageMat.title }}</div>
-              <div class="muted">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
+        <div v-if="currentBook && currentPageMat" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <aside class="card" style="flex:1 1 220px;max-width:300px;position:sticky;top:12px;align-self:flex-start;max-height:calc(100vh - 36px);overflow:auto">
+            <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-weight:700">目录</div>
+              <span class="muted" style="font-size:12px">{{ currentBook.pages.length }} 篇</span>
             </div>
-            <div class="row" style="gap:8px">
-              <button class="btn subtle" @click="bookTocOpen=!bookTocOpen">{{ bookTocOpen?'收起目录':'目录' }}</button>
+            <div class="muted" style="font-size:12px;margin-bottom:10px">按每页正文标题/首行生成，点击跳转</div>
+            <div v-for="(m,i) in currentBook.pages" :key="m.id" @click="bookGoto(i)" :style="{cursor:'pointer',padding:'7px 10px',borderRadius:'8px',marginBottom:'4px',fontSize:'14px',lineHeight:'1.4',background:i===bookIdx?'var(--accent)':'transparent',color:i===bookIdx?'#fff':'inherit'}">{{ pageLabel(m) }}</div>
+          </aside>
+          <div class="card" style="flex:3 1 380px;min-width:0">
+            <div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="font-weight:700;font-size:18px">{{ currentPageMat.title }}</div>
+                <div class="muted">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
+              </div>
               <button class="btn subtle" @click="deleteCurrentBook" style="color:#c0392b">删除本书</button>
             </div>
-          </div>
-          <div class="toolbar" style="margin-bottom:12px;align-items:center">
-            <button class="btn subtle" :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-            <button class="btn subtle" :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-            <div class="field" style="margin-left:auto"><label>跳到页码</label><input class="inp" type="number" min="1" style="width:90px" @keyup.enter="bookJumpPage($event.target.value)" placeholder="如 12" /></div>
-          </div>
-          <div v-if="bookTocOpen" class="ref" style="max-height:300px;overflow:auto;margin-bottom:12px">
-            <div class="muted" style="margin-bottom:8px">目录按每页正文的标题/首行生成，点击跳转</div>
-            <div v-for="(m,i) in currentBook.pages" :key="m.id" @click="bookGoto(i)" :style="{cursor:'pointer',padding:'7px 10px',borderRadius:'8px',marginBottom:'4px',background:i===bookIdx?'var(--accent)':'transparent',color:i===bookIdx?'#fff':'inherit'}">{{ pageLabel(m) }}</div>
-          </div>
-          <div class="ref">
-            <h5 v-if="currentPageMat.summary">{{ currentPageMat.summary }}</h5>
-            <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:12px" />
-            <rich-text :content="currentPageMat.content_md" />
-          </div>
-          <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
-            <button class="btn subtle" :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-            <button class="btn subtle" :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-            <button class="btn" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial"><span v-if="genq.busy" class="spin"></span>根据本页生成练习题</button>
-            <span v-if="!ai.hasAI" class="muted">未配置 AI 中转站，无法出题</span>
-          </div>
-          <div v-if="genq.result" class="ref" style="margin-top:12px">
-            <h5>已生成 {{ genq.result.inserted_questions ?? genq.result.inserted ?? 0 }} 道题（进题库 · {{ subjName(currentPageMat.subject) }}）</h5>
-            <div v-for="(s,i) in (genq.result.sample||[])" :key="i" class="muted">· [{{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
+            <div class="toolbar" style="margin-bottom:12px;align-items:center">
+              <button class="btn subtle" :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
+              <button class="btn subtle" :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
+              <div class="field" style="margin-left:auto"><label>跳到页码</label><input class="inp" type="number" min="1" style="width:90px" @keyup.enter="bookJumpPage($event.target.value)" placeholder="如 12" /></div>
+            </div>
+            <div class="ref">
+              <h5 v-if="currentPageMat.summary">{{ currentPageMat.summary }}</h5>
+              <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:12px" />
+              <rich-text :content="currentPageMat.content_md" />
+            </div>
+            <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+              <button class="btn subtle" :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
+              <button class="btn subtle" :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
+              <button class="btn" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial"><span v-if="genq.busy" class="spin"></span>根据本页生成练习题</button>
+              <span v-if="!ai.hasAI" class="muted">未配置 AI 中转站，无法出题</span>
+            </div>
+            <div v-if="genq.result" class="ref" style="margin-top:12px">
+              <h5>已生成 {{ genq.result.inserted_questions ?? genq.result.inserted ?? 0 }} 道题（进题库 · {{ subjName(currentPageMat.subject) }}）</h5>
+              <div v-for="(s,i) in (genq.result.sample||[])" :key="i" class="muted">· [{{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
+            </div>
           </div>
         </div>
       </template>
