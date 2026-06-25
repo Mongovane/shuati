@@ -450,6 +450,8 @@ const App={
       const st=Math.max(1,parseInt(this.ingest.pdf.start||1,10)||1);
       const ed=Math.min(doc.numPages,parseInt(this.ingest.pdf.end||st,10)||st);
       if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
+      // 预检：首页能否提取到文字；扫描版且未开 OCR 会一无所获，提前提示
+      try{ const pg0=await doc.getPage(st); const tc0=await pg0.getTextContent(); const t0=tc0.items.map(it=>it.str).join('').replace(/\s/g,''); if(t0.length<10 && !this.ingest.local.ocr){ if(confirm('第 '+st+' 页提取不到文字，这本很可能是扫描版 PDF。\n开启「本地 OCR」用浏览器识别图片文字后继续？\n\n确定 = 开启本地 OCR 并继续（较慢，质量一般）\n取消 = 不继续（可改用文字版 PDF，或用「AI OCR…只当教材」）')) this.ingest.local.ocr=true; else return; } }catch(_){}
       const n=ed-st+1;
       if(n>30 && !confirm('将处理 '+n+' 页（第 '+st+'–'+ed+' 页）。\n会自动分批进行；扫描页本地 OCR 较慢，请保持本标签页在前台、勿让电脑休眠。\n确定开始？')) return;
       const BATCH=25;
@@ -485,7 +487,7 @@ const App={
           const d=await this.saveOneMaterial({id:'mat-'+this.ingest.subject+'-'+this.bookHashId(this.materialBaseTitle()+'#p'+p),subject:this.ingest.subject,title,source:this.materialBaseTitle(),page:p,content_md:md,summary:'',tags:this.ingest.chapter?[this.ingest.chapter,'本地导入']:['本地导入']});
           saved+=d.inserted||1; this.ingest.local.inserted=saved;
         }
-        if(!this.ingest.local.stop){ this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:saved,material_sample:[]}; this.flash('已保存 '+saved+' 段教材到 Books（未调用 AI）'+(scanned?('，其中 '+scanned+' 页用本地 OCR'):'')); }
+        if(!this.ingest.local.stop){ this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:saved,material_sample:[]}; if(saved===0){ this.flash(this.ingest.local.ocr?'未保存任何内容：本地 OCR 没识别出文字，可能是空白页或图像太糊，可调高清晰度后重试。':'未保存任何内容：这些页提取不到文字（多为扫描版）。请勾选「扫描页用本地 OCR」后重试，或用「AI OCR…只当教材」。',true); } else { this.flash('已保存 '+saved+' 段教材到 Books（未调用 AI）'+(scanned?('，其中 '+scanned+' 页用本地 OCR'):'')); } }
         this.loadMaterials();
       }catch(e){ if(e.message!=='unauth'){ const nxt=Math.min(ed,(this.ingest.local.lastPage||(st-1))+1); this.ingest.pdf.start=nxt; this.flash('本地转化中断：已保存 '+saved+' 段，开始页已设为 '+nxt+'。'+e.message,true); } this.loadMaterials(); }
       if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} }
