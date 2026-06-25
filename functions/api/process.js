@@ -2,6 +2,8 @@ import { json, checkAuth } from './_utils.js';
 
 const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 const VALID_TYPES = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer', 'code'];
+// kind: auto = AI 自动分辨；questions = 强制当题库；material = 强制当教材
+const VALID_KINDS = ['auto', 'questions', 'material'];
 
 export async function onRequestPost({ request, env }) {
   const auth = checkAuth(request, env);
@@ -13,41 +15,44 @@ export async function onRequestPost({ request, env }) {
   const subject = VALID_SUBJECTS.includes(body.subject) ? body.subject : 'computer';
   const defChapter = (body.chapter || '').trim();
   const defSource = (body.source || '').trim();
+  const kind = VALID_KINDS.includes(body.kind) ? body.kind : 'auto';
 
-  let questions;
+  let questions = [];
+  let materials = [];
 
-  // 路径 A：直接导入已结构化的 JSON 数组（不调用 AI，零成本）
+  // 路径 A：直接导入已结构化的 JSON 数组（不调用 AI，零成本），始终视为题库
   if (Array.isArray(body.questions) && body.questions.length) {
-    // 路径 A：直接导入已结构化 JSON（零成本）
     questions = body.questions;
   } else if (Array.isArray(body.images) && body.images.length) {
-    // 路径 C：扫描件页面图片 → 视觉模型识别（用于扫描版 PDF）
+    // 路径 C：图片/扫描页 → 视觉模型识别（含自动分辨）
     if (!env.AI_BASE_URL || !env.AI_API_KEY) {
       return json({ error: '服务端未配置 AI_BASE_URL / AI_API_KEY，无法调用 AI 中转站' }, 500);
     }
-    const aiOut = await callAIVision(env, body.images.slice(0, 4), subject, defChapter, defSource);
+    const aiOut = await callAI(env, { images: body.images.slice(0, 4) }, subject, defChapter, defSource, kind, true);
     if (aiOut.error) return json(aiOut, aiOut.status || 502);
-    questions = aiOut.questions;
+    questions = aiOut.questions || [];
+    materials = aiOut.materials || [];
   } else {
-    // 路径 B：原文文本 → AI 中转站清洗
+    // 路径 B：原文文本 → AI 中转站（含自动分辨）
     const rawText = (body.raw_text || '').trim();
     if (!rawText) return json({ error: '请提供 raw_text（原文）/ questions（JSON 数组）/ images（图片）' }, 400);
     if (!env.AI_BASE_URL || !env.AI_API_KEY) {
       return json({ error: '服务端未配置 AI_BASE_URL / AI_API_KEY，无法调用 AI 中转站' }, 500);
     }
-    const aiOut = await callAI(env, rawText, subject, defChapter, defSource);
+    const aiOut = await callAI(env, { rawText }, subject, defChapter, defSource, kind, false);
     if (aiOut.error) return json(aiOut, aiOut.status || 502);
-    questions = aiOut.questions;
+    questions = aiOut.questions || [];
+    materials = aiOut.materials || [];
   }
 
-  // 校验 + 入库
-  const cleaned = [];
+  // —— 校验 + 入库：题目 ——
+  const cleanedQ = [];
   for (const q of questions) {
     if (!q || !q.stem) continue;
     const type = VALID_TYPES.includes(q.type) ? q.type : 'single_choice';
     const subj = VALID_SUBJECTS.includes(q.subject) ? q.subject : subject;
     const id = (q.id && String(q.id).trim()) || `${subj}-${crypto.randomUUID().slice(0, 8)}`;
-    cleaned.push({
+    cleanedQ.push({
       id,
       subject: subj,
       chapter: (q.chapter || defChapter || '').trim() || null,
@@ -63,157 +68,199 @@ export async function onRequestPost({ request, env }) {
     });
   }
 
-  if (!cleaned.length) return json({ error: '没有解析出有效题目' }, 422);
+  // —— 校验 + 入库：教材 ——
+  const cleanedM = [];
+  for (const m of materials) {
+    const content = String(m?.content_md || m?.content || '').trim();
+    if (!content) continue;
+    const subj = VALID_SUBJECTS.includes(m.subject) ? m.subject : subject;
+    const id = (m.id && String(m.id).trim()) || `mat-${subj}-${crypto.randomUUID().slice(0, 12)}`;
+    cleanedM.push({
+      id,
+      subject: subj,
+      title: String(m.title || m.chapter || defChapter || '教材整理').trim().slice(0, 200),
+      source: (m.source || defSource || '').trim() || null,
+      page: Number.isInteger(m.page) ? m.page : null,
+      page_image: (m.page_image || '').trim() || null,
+      content_md: content,
+      summary: (m.summary || '').trim() || null,
+      tags: JSON.stringify(Array.isArray(m.tags) ? m.tags : []),
+    });
+  }
 
-  const sql = `INSERT OR REPLACE INTO questions
-    (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`;
-  const stmts = cleaned.map((q) =>
-    env.DB.prepare(sql).bind(
-      q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
-      q.passage, q.stem, q.options, q.answer, q.analysis, q.tags
-    )
-  );
+  if (!cleanedQ.length && !cleanedM.length) {
+    return json({ error: '没有解析出有效内容（既无题目也无可整理的教材）' }, 422);
+  }
 
   try {
-    await env.DB.batch(stmts);
+    if (cleanedQ.length) {
+      const sql = `INSERT OR REPLACE INTO questions
+        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`;
+      await env.DB.batch(cleanedQ.map((q) =>
+        env.DB.prepare(sql).bind(
+          q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
+          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags
+        )
+      ));
+    }
+    if (cleanedM.length) {
+      await ensureMaterialsTable(env);
+      const sqlM = `INSERT OR REPLACE INTO materials
+        (id, subject, title, source, page, page_image, content_md, summary, tags)
+        VALUES (?,?,?,?,?,?,?,?,?)`;
+      await env.DB.batch(cleanedM.map((m) =>
+        env.DB.prepare(sqlM).bind(
+          m.id, m.subject, m.title, m.source, m.page,
+          m.page_image, m.content_md, m.summary, m.tags
+        )
+      ));
+    }
   } catch (e) {
     return json({ error: '写入数据库失败：' + e.message }, 500);
   }
 
+  // detected：本次 AI 实际判定的类型，前端可据此提示用户
+  const detected = cleanedQ.length && cleanedM.length ? 'mixed'
+    : cleanedQ.length ? 'questions'
+    : 'material';
+
   return json({
     ok: true,
-    inserted: cleaned.length,
-    sample: cleaned.slice(0, 3).map((q) => ({ subject: q.subject, type: q.type, stem: q.stem.slice(0, 60) })),
+    kind: detected,
+    inserted: cleanedQ.length,            // 兼容旧前端：仍表示题目数
+    inserted_questions: cleanedQ.length,
+    inserted_materials: cleanedM.length,
+    sample: cleanedQ.slice(0, 3).map((q) => ({ subject: q.subject, type: q.type, stem: q.stem.slice(0, 60) })),
+    material_sample: cleanedM.slice(0, 3).map((m) => ({ subject: m.subject, title: m.title })),
   });
 }
 
-// —— 调用 OpenAI 兼容的中转站，把原文转成题目数组 ——
-async function callAI(env, rawText, subject, chapter, source) {
-  const base = env.AI_BASE_URL.replace(/\/+$/, '');
-  const sys = buildSystemPrompt();
-  const user = buildUserPrompt(rawText, subject, chapter, source);
-
-  let resp;
-  try {
-    resp = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${env.AI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: env.AI_MODEL || 'gpt-4o',
-        temperature: 0.1,
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: user },
-        ],
-        response_format: { type: 'json_object' },
-      }),
-    });
-  } catch (e) {
-    return { error: '调用 AI 中转站失败：' + e.message, status: 502 };
-  }
-
-  if (!resp.ok) {
-    const t = await resp.text().catch(() => '');
-    return { error: `AI 中转站返回 ${resp.status}`, detail: t.slice(0, 400), status: 502 };
-  }
-
-  const data = await resp.json().catch(() => null);
-  const content = data?.choices?.[0]?.message?.content || '';
-  const questions = safeParseQuestions(content);
-  if (!questions.length) {
-    return { error: 'AI 未解析出题目，可换更强的模型或缩短单次原文', raw: String(content).slice(0, 800), status: 422 };
-  }
-  return { questions };
+async function ensureMaterialsTable(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS materials (
+    id TEXT PRIMARY KEY, subject TEXT NOT NULL, title TEXT NOT NULL, source TEXT,
+    page INTEGER, page_image TEXT, content_md TEXT, summary TEXT, tags TEXT,
+    created_at INTEGER DEFAULT (unixepoch())
+  )`).run();
 }
 
-// —— 调用视觉模型识别扫描页图片（扫描版 PDF 用） ——
-async function callAIVision(env, images, subject, chapter, source) {
+// —— 统一的 AI 调用：根据 kind 让模型分辨并返回 {kind, questions, materials} ——
+async function callAI(env, input, subject, chapter, source, kind, vision) {
   const base = env.AI_BASE_URL.replace(/\/+$/, '');
-  const content = [
-    { type: 'text', text: buildHint(subject, chapter, source) + '\n\n下面是试卷扫描页图片，请先准确识别图中文字（含数学公式、代码），再按上述要求结构化为 JSON。' },
-  ];
-  for (const img of images) content.push({ type: 'image_url', image_url: { url: img } });
+  const model = vision ? (env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (env.AI_MODEL || 'gpt-4o');
+  const sys = buildSystemPrompt(kind);
+  const hint = buildHint(subject, chapter, source, kind);
+
+  let messages;
+  if (vision) {
+    const content = [{ type: 'text', text: hint + '\n\n下面是页面图片，请先准确识别图中文字（含数学公式、代码），再按上述要求处理。' }];
+    for (const img of input.images) content.push({ type: 'image_url', image_url: { url: img } });
+    messages = [{ role: 'system', content: sys }, { role: 'user', content }];
+  } else {
+    messages = [
+      { role: 'system', content: sys },
+      { role: 'user', content: `${hint}\n\n请处理下面的原文：\n\n"""\n${input.rawText}\n"""` },
+    ];
+  }
 
   let resp;
   try {
     resp = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
-      body: JSON.stringify({
-        model: env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o',
-        temperature: 0.1,
-        messages: [{ role: 'system', content: buildSystemPrompt() }, { role: 'user', content }],
-        response_format: { type: 'json_object' },
-      }),
+      body: JSON.stringify({ model, temperature: 0.1, messages, response_format: { type: 'json_object' } }),
     });
   } catch (e) {
-    return { error: '调用视觉模型失败：' + e.message, status: 502 };
+    return { error: '调用 AI 中转站失败：' + e.message, status: 502 };
   }
   if (!resp.ok) {
     const t = await resp.text().catch(() => '');
-    return { error: `AI 中转站返回 ${resp.status}（请确认所选模型支持图片输入）`, detail: t.slice(0, 400), status: 502 };
+    const extra = vision ? '（请确认所选模型支持图片输入）' : '';
+    return { error: `AI 中转站返回 ${resp.status}${extra}`, detail: t.slice(0, 400), status: 502 };
   }
   const data = await resp.json().catch(() => null);
   const out = data?.choices?.[0]?.message?.content || '';
-  const questions = safeParseQuestions(out);
-  if (!questions.length) {
-    return { error: '未从图片识别出题目，请确认模型支持视觉，或改用文字版 PDF', raw: String(out).slice(0, 800), status: 422 };
+  const parsed = safeParse(out);
+  if (!parsed.questions.length && !parsed.materials.length) {
+    return { error: 'AI 未解析出有效内容，可换更强的模型或缩短单次输入', raw: String(out).slice(0, 800), status: 422 };
   }
-  return { questions };
+  return parsed;
 }
 
-function safeParseQuestions(text) {
-  if (!text) return [];
-  let t = String(text).trim()
-    .replace(/^```(?:json)?/i, '')
-    .replace(/```$/, '')
-    .trim();
+function safeParse(text) {
+  const empty = { kind: 'unknown', questions: [], materials: [] };
+  if (!text) return empty;
+  let t = String(text).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
   let obj;
-  try {
-    obj = JSON.parse(t);
-  } catch {
+  try { obj = JSON.parse(t); }
+  catch {
     const m = t.match(/[\[{][\s\S]*[\]}]/);
-    if (!m) return [];
-    try { obj = JSON.parse(m[0]); } catch { return []; }
+    if (!m) return empty;
+    try { obj = JSON.parse(m[0]); } catch { return empty; }
   }
-  const arr = Array.isArray(obj) ? obj : (obj.questions || obj.data || obj.items || []);
-  return Array.isArray(arr) ? arr.filter((q) => q && q.stem) : [];
+  // 兼容：模型有时直接返回题目数组
+  if (Array.isArray(obj)) return { kind: 'questions', questions: obj.filter((q) => q && q.stem), materials: [] };
+  const questions = (obj.questions || obj.data || obj.items || []).filter((q) => q && q.stem);
+  let materials = obj.materials || [];
+  if (obj.material && typeof obj.material === 'object') materials = [obj.material, ...materials];
+  materials = materials.filter((m) => m && (m.content_md || m.content));
+  return { kind: obj.kind || 'unknown', questions, materials };
 }
 
-function buildSystemPrompt() {
-  return `你是专业的考试题库结构化助手，服务于「广东普通专升本（专插本）」备考。
-任务：把用户提供的、可能格式混乱的题目原文，转换为严格符合下述结构的题目数组。
+function buildSystemPrompt(kind) {
+  const base = `你是「广东普通专升本（专插本）」备考资料的智能整理助手。用户会给你一段可能格式混乱的内容，可能是【试题/习题】，也可能是【教材正文/讲义】，也可能两者混在一起。
 
-输出要求（务必遵守）：
-1. 只输出一个 JSON 对象，形如 {"questions":[ ... ]}，不要任何解释文字或 Markdown 代码块标记。
-2. 每道题对象字段：
-   - subject: "politics"(政治) | "english"(英语) | "math"(高等数学) | "computer"(计算机基础与程序设计)。用户已指定科目时优先用指定值。
-   - chapter: 章节/知识点（如「数据结构-线性表」「C语言-指针」「政治-马原-唯物史观」「英语-阅读理解」；不确定可留空字符串）。
-   - type: "single_choice"(单选) | "multiple_choice"(多选) | "true_false"(判断) | "fill_blank"(填空) | "short_answer"(简答/论述/材料分析) | "code"(程序设计/手写代码)。
-   - difficulty: 1~5 的整数，凭经验估计，默认 3。
-   - source: 来源（如「2023真题」），不确定留空字符串。
-   - passage: 阅读理解/完形填空的公共材料文本；无公共材料则空字符串。同一篇阅读的多个小题请拆成多道题，每道都重复带相同 passage。
-   - stem: 题干（必填）。数学公式用 LaTeX，行内用 $...$、独立用 $$...$$；代码用 Markdown 围栏 \`\`\`c ... \`\`\`。
-   - options: 选择题选项数组，元素 {"key":"A","text":"..."}；非选择题为 []。
-   - answer: 答案数组。single_choice/multiple_choice 用选项 key，如 ["B"] 或 ["A","C"]；true_false 用 ["T"](正确)/["F"](错误)；fill_blank 用各空标准答案字符串数组（按顺序）；short_answer/code 把参考答案文本放进数组首元素。
-   - analysis: 解析；原文无解析则你补写一段简明解析，代码题给出关键思路。
-   - tags: 关键词标签字符串数组。
-3. 保持原意，不臆造题目；把混在一起的答案、解析正确归位到对应题目；非题目内容（目录、页码、广告等）忽略。
-4. 如果用户给的是教材正文而不是习题/试题，不要把普通段落硬编成选择题；只有页面中确实存在题目、例题、习题、答案或明确可训练的问题时才输出。`;
+【第一步：判断内容类型】
+- questions（题库）：存在明确的题目、例题、习题、选择项、答案或可训练的问题。
+- material（教材）：是讲解性正文、概念定义、定理推导、知识点叙述，没有可直接作答的题目。
+- mixed（混合）：同一段里既有讲解又有习题。
+
+【第二步：按类型整理】只输出一个 JSON 对象，不要任何解释或 Markdown 围栏，结构如下：
+{
+  "kind": "questions" | "material" | "mixed",
+  "questions": [ 题目对象… ],   // 没有题目则空数组
+  "materials": [ 教材对象… ]    // 没有教材则空数组
 }
 
-function buildHint(subject, chapter, source) {
+题目对象字段：
+  - subject: "politics"(政治) | "english"(英语) | "math"(高等数学) | "computer"(计算机基础与程序设计)。用户指定时优先。
+  - chapter: 章节/知识点（如「数据结构-线性表」「C语言-指针」；不确定留空字符串）。
+  - type: "single_choice" | "multiple_choice" | "true_false" | "fill_blank" | "short_answer" | "code"。
+  - difficulty: 1~5 整数，默认 3。
+  - source: 来源（如「2023真题」），不确定留空。
+  - passage: 阅读理解/完形填空公共材料，无则空字符串；同篇多题各自重复。
+  - stem: 题干（必填）。数学公式用 LaTeX（$...$ 或 $$...$$），代码用 \`\`\`c ... \`\`\`。
+  - options: 选择题选项 [{"key":"A","text":"..."}]；非选择题为 []。
+  - answer: 答案数组。选择题用 key（["B"] / ["A","C"]）；判断用 ["T"]/["F"]；填空按顺序给各空标准答案；简答/代码把参考答案文本放进首元素。
+  - analysis: 解析；原文没有就你补一段简明解析。
+  - tags: 关键词标签字符串数组。
+
+教材对象字段（这是你要主动做的"整理分析"，不是照抄原文）：
+  - subject: 同上四选一。
+  - title: 这页/这段教材的小标题（如「极限的定义与性质」「指针与数组的关系」）。
+  - chapter: 所属章节。
+  - summary: 一两句话概括本段核心内容。
+  - content_md: 用 Markdown 把知识点整理成结构化笔记——提炼要点、列出关键定义/公式/定理、必要时配简短例子；公式用 LaTeX，代码用围栏。这是给学生复习用的精炼笔记，不是原文复制。
+  - tags: 关键概念标签字符串数组。
+
+【规则】保持原意不臆造；把混在一起的答案、解析正确归位；目录、页码、广告等无关内容忽略；只有当原文确实是讲解性正文时才放进 materials，确实是题目时才放进 questions。`;
+
+  if (kind === 'questions') {
+    return base + `\n\n【本次强制】用户已指定只要题库：materials 一律返回空数组，把内容尽量结构化为题目。`;
+  }
+  if (kind === 'material') {
+    return base + `\n\n【本次强制】用户已指定只要教材整理：questions 一律返回空数组，把内容整理成结构化教材笔记。`;
+  }
+  return base + `\n\n【本次】自动分辨，按真实类型填充 questions 与 materials。`;
+}
+
+function buildHint(subject, chapter, source, kind) {
   const map = { politics: '政治理论', english: '英语', math: '高等数学', computer: '计算机基础与程序设计' };
-  let hint = `本批题目科目默认为：${map[subject]}（subject="${subject}"）。`;
+  let hint = `本批内容科目默认为：${map[subject]}（subject="${subject}"）。`;
   if (chapter) hint += `\n章节默认为：「${chapter}」。`;
   if (source) hint += `\n来源默认为：「${source}」。`;
+  if (kind === 'questions') hint += `\n用户选择了"只导入题库"。`;
+  else if (kind === 'material') hint += `\n用户选择了"只导入教材"。`;
+  else hint += `\n用户选择了"自动分辨"，请你判断这是题目还是教材。`;
   return hint;
-}
-
-function buildUserPrompt(rawText, subject, chapter, source) {
-  return `${buildHint(subject, chapter, source)}\n\n请把下面的原文结构化为 JSON：\n\n"""\n${rawText}\n"""`;
 }
