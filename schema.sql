@@ -62,3 +62,12 @@ CREATE TABLE IF NOT EXISTS materials (
 );
 CREATE INDEX IF NOT EXISTS idx_m_subject ON materials(subject);
 CREATE INDEX IF NOT EXISTS idx_m_source  ON materials(source);
+
+-- 上传的原版 PDF（文件存 R2，元信息存这里；R2 binding 名须为 PDF_BUCKET）
+CREATE TABLE IF NOT EXISTS pdfs (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  subject     TEXT,
+  size        INTEGER,
+  created_at  INTEGER DEFAULT (unixepoch())
+);
