@@ -80,3 +80,27 @@ export async function onRequestPost({ request, env }) {
     return json({ error: '写入教材失败：' + e.message }, 500);
   }
 }
+
+// DELETE：按 id 批量删除教材页。body: { ids: ["mat-...","..."] }
+export async function onRequestDelete({ request, env }) {
+  const auth = checkAuth(request, env);
+  if (!auth.ok) return auth.resp;
+  await ensureMaterialsTable(env);
+  let b;
+  try { b = await request.json(); } catch { return json({ error: '请求体不是合法 JSON' }, 400); }
+  const ids = Array.isArray(b.ids) ? b.ids.map((x) => String(x)).filter(Boolean) : [];
+  if (!ids.length) return json({ error: '缺少要删除的 ids 数组' }, 400);
+  try {
+    // 分批，避免单条语句绑定参数过多
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += 100) {
+      const part = ids.slice(i, i + 100);
+      const placeholders = part.map(() => '?').join(',');
+      const rs = await env.DB.prepare(`DELETE FROM materials WHERE id IN (${placeholders})`).bind(...part).run();
+      deleted += (rs.meta && rs.meta.changes) || 0;
+    }
+    return json({ ok: true, deleted });
+  } catch (e) {
+    return json({ error: '删除教材失败：' + e.message }, 500);
+  }
+}
