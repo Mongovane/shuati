@@ -46,3 +46,19 @@ CREATE TABLE IF NOT EXISTS mock_results (
   duration_seconds INTEGER,
   taken_at         INTEGER DEFAULT (unixepoch())
 );
+
+-- OCR 导入的教材/资料页（动态内置到 Books 教材阅读）
+CREATE TABLE IF NOT EXISTS materials (
+  id          TEXT PRIMARY KEY,
+  subject     TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  source      TEXT,
+  page        INTEGER,
+  page_image  TEXT,
+  content_md  TEXT,
+  summary     TEXT,
+  tags        TEXT,
+  created_at  INTEGER DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_m_subject ON materials(subject);
+CREATE INDEX IF NOT EXISTS idx_m_source  ON materials(source);
