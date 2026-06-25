@@ -429,7 +429,7 @@ const App={
       catch(e){ this.flash('sample-questions.json not found',true); } },
     loadScript(src){ return new Promise((res,rej)=>{ this._scripts=this._scripts||{}; if(this._scripts[src])return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ this._scripts[src]=1; res(); }; s.onerror=()=>rej(new Error('加载失败：'+src)); document.head.appendChild(s); }); },
     async ensurePdfjs(){ if(window.pdfjsLib)return; await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; },
-    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0; if(!this.ingest.bookTitle.trim()) this.ingest.bookTitle=(file.name||'').replace(/\.[Pp][Dd][Ff]$/,'').trim();
+    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0; const nm=(file.name||'').replace(/\.[Pp][Dd][Ff]$/,'').trim(); if(nm)this.ingest.bookTitle=nm;
       try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.start=1; this.ingest.pdf.end=Math.min(3,doc.numPages); this.ingest.pdf.prog=''; this.flash('已加载 PDF，共 '+doc.numPages+' 页'); }
       catch(err){ this.ingest.pdf.prog=''; this.flash('PDF 加载失败：'+err.message,true); } },
     chunkText(text,size=6000,overlap=200){ text=String(text).replace(/\n{3,}/g,'\n\n').trim(); const out=[]; let i=0,n=text.length; while(i<n){ let end=Math.min(i+size,n); if(end<n){ const br=text.lastIndexOf('\n',end); if(br>i && br>end-overlap*4) end=br; } const p=text.slice(i,end).trim(); if(p)out.push(p); i=end; } return out; },
@@ -863,6 +863,7 @@ const App={
           <label class="row" style="height:40px;cursor:pointer;gap:6px"><input type="checkbox" v-model="ingest.local.ocr" /> <span class="muted">扫描页用本地 OCR</span></label>
           <span v-if="ingest.pdf.inserted" class="muted">已导入 {{ ingest.pdf.inserted }} 题</span>
         </div>
+        <div class="hint" v-if="ingest.pdf.pages">转教材将存入：<b>{{ materialBaseTitle() }}</b>（即上方「教材名称」；同名同页会覆盖，换书请改书名）</div>
         <div v-if="ingest.local.busy || (ingest.local.prog && !ingest.pdf.busy)" class="ocr-panel">
           <div class="top"><div><b>本地转教材进度</b><div class="muted">不调用 AI，全程在浏览器内完成</div></div><div class="pct">{{ ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0 }}%</div></div>
           <div class="bar accent"><span :style="{width:(ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0)+'%'}"></span></div>
