@@ -201,3 +201,29 @@
 - 日常：反复刷「错题本」直到清零；政治配合预测卷背大题。
 
 加油，9 个月足够把这件事做扎实。
+
+## Cloudflare Pages 上启用 AI OCR 自动录题
+
+本项目的 `/api/process` 已支持三种导入：结构化 JSON、文本 AI 整理、图片/PDF 页面 AI OCR。Cloudflare Pages 运行时不能直接修改 GitHub 仓库里的 Markdown 文件；自动识别出的题目会写入 D1 数据库，并按前端选择的「科目 / 章节 / 来源」进入对应题库。
+
+### 需要在 Cloudflare Pages 后台配置
+
+进入 Pages 项目 → Settings → Environment variables，添加：
+
+- `APP_TOKEN`：网站访问码，前端 Settings 中填写同一个值。
+- `AI_BASE_URL`：你的 OpenAI 兼容中转地址，例如 `https://api.example.com/v1`。
+- `AI_API_KEY`：你的中转 API Key。不要写进 GitHub。
+- `AI_MODEL`：支持视觉的模型名，例如 `gpt-4o`、`gpt-4o-mini` 或你的中转支持的视觉模型。
+
+还需要绑定 D1 数据库，binding 名必须是 `DB`，并先执行 `schema.sql` 初始化表。
+
+### 使用方式
+
+1. 打开网站 → Settings，填写 `APP_TOKEN`。
+2. 进入 Import。
+3. 选择默认科目、章节，填写书名/来源。
+4. 单张图片：进入「拍照辅助」→ 选择照片 → 点击「AI OCR 识别并导入」。
+5. PDF：进入「PDF 文本」→ 选择 PDF → 设置开始页/结束页 → 点击「AI OCR 当前页范围并导入」。
+
+建议第一次只测试 1–3 页，确认模型能正确识别题目、选项、答案和解析后，再扩大页码范围，避免浪费额度。
+

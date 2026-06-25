@@ -167,6 +167,16 @@ const CHAPTER_PRESETS={
 const SUBJ_MAP=Object.fromEntries(SUBJECTS.map(s=>[s.v,s.t]));
 const TYPES=[{v:'single_choice',t:'单选题'},{v:'multiple_choice',t:'多选题'},{v:'true_false',t:'判断题'},{v:'fill_blank',t:'填空题'},{v:'short_answer',t:'简答题'},{v:'code',t:'编程题'}];
 const TYPE_MAP=Object.fromEntries(TYPES.map(t=>[t.v,t.t]));
+const TEXTBOOKS=[
+  {id:'gaoshu-1', title:'高等数学（上册）', file:'textbooks/高等数学 第八版 上册 (同济大学数学科学学院 编) .pdf', text:'textbooks-text/gaoshu-1.md', notes:'textbooks-notes/gaoshu-1/README.md'},
+  {id:'gaoshu-2', title:'高等数学（下册）', file:'textbooks/高等数学 第八版 下册 (同济大学数学科学学院 编) .pdf', text:'textbooks-text/gaoshu-2.md', notes:'textbooks-notes/gaoshu-2/README.md'},
+  {id:'gaoshu-solutions-1', title:'高数习题全解（上册）', file:'textbooks/高等数学习题全解指导 上册 同济（第八版） (同济大学数学科学学院).pdf', text:'textbooks-text/gaoshu-solutions-1.md', notes:'textbooks-notes/gaoshu-solutions-1/README.md'},
+  {id:'gaoshu-solutions-2', title:'高数习题全解（下册）', file:'textbooks/高等数学习题全解指导 下册 同济（第八版） (同济大学数学科学学院).pdf', text:'textbooks-text/gaoshu-solutions-2.md', notes:'textbooks-notes/gaoshu-solutions-2/README.md'},
+  {id:'maogai-true-pdf', title:'毛概（True PDF）', file:'textbooks/毛泽东思想和中国特色社会主义理论体系概论（2023年版）（True PDF）.pdf', text:'textbooks-text/maogai-true-pdf.md', notes:'textbooks-notes/maogai-true-pdf/README.md'},
+  {id:'maogai-ocr-scan', title:'毛概（OCR 扫描版）', file:'textbooks/毛泽东思想和中国特色社会主义理论体系概论（2023年版）（OCR 扫描版）.pdf', text:'textbooks-text/maogai-ocr-scan.md', notes:'textbooks-notes/maogai-ocr-scan/README.md'},
+  {id:'c-programming', title:'C 程序设计', file:'textbooks/C程序设计（第五版） (谭浩强) (OCR扫描版).pdf', text:'textbooks-text/c-programming.md', notes:'textbooks-notes/c-programming/README.md'},
+  {id:'data-structure', title:'数据结构', file:'textbooks/数据结构（C语言版）（第2版） (严蔚敏 李冬梅 吴伟民)  .pdf', text:'textbooks-text/data-structure.md', notes:'textbooks-notes/data-structure/README.md'},
+];
 const OBJECTIVE=['single_choice','multiple_choice','true_false','fill_blank'];
 const AUTO=['single_choice','multiple_choice','true_false'];
 
@@ -287,16 +297,17 @@ const App={
     appName: localStorage.getItem('zb_appname')||'刷题文档',
     stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
     tokenInput:'', view:'practice',
-    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP,
+    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, textbooks:TEXTBOOKS, currentBookId:'gaoshu-1',
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, extracted:'' } },
+    ingest:{ subject:'computer', chapter:'', source:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 } },
     stats:null, statsLoading:false,
     mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
     toast:null, toastTimer:null,
   }; },
   computed:{
+    currentTextbook(){ return this.textbooks.find(b=>b.id===this.currentBookId)||this.textbooks[0]||null; },
     sessionMode(){ if(this.view==='wrong')return'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
     chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
     ingestChapterOptions(){ const preset=(CHAPTER_PRESETS[this.ingest.subject]||[]).map(ch=>({chapter:ch,n:'预设'})); const existing=(this.meta.chapters||[]).filter(c=>c.subject===this.ingest.subject&&!preset.some(p=>p.chapter===c.chapter)); return [...preset,...existing]; },
@@ -325,6 +336,7 @@ const App={
     subjName(v){ return SUBJ_MAP[v]||v; },
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return this.ingest.bookMode ? this.makeSource() : (this.ingest.source||''); },
+    sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
     async api(path,opts={}){
       const headers=Object.assign({'authorization':'Bearer '+this.token}, opts.headers||{});
       if(opts.body) headers['content-type']='application/json';
@@ -384,7 +396,8 @@ const App={
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.ingest.busy=false;
     },
-    onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; if(this.ingest.photoUrl)URL.revokeObjectURL(this.ingest.photoUrl); this.ingest.photoUrl=URL.createObjectURL(file); this.ingest.tab='photo'; this.flash('Photo loaded — copy the item into the form manually'); },
+    onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ this.ingest.photoDataUrl=String(rd.result||''); this.ingest.photoUrl=this.ingest.photoDataUrl; this.ingest.tab='photo'; this.flash('图片已加载，可手动录入或调用 AI OCR'); }; rd.onerror=()=>this.flash('图片读取失败',true); rd.readAsDataURL(file); },
+    async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash('AI OCR 已导入 '+d.inserted+' 题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
     async doIngest(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.currentSource() };
       if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON parse failed: '+e.message,true); return; }
@@ -401,7 +414,7 @@ const App={
     loadScript(src){ return new Promise((res,rej)=>{ this._scripts=this._scripts||{}; if(this._scripts[src])return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ this._scripts[src]=1; res(); }; s.onerror=()=>rej(new Error('加载失败：'+src)); document.head.appendChild(s); }); },
     async ensurePdfjs(){ if(window.pdfjsLib)return; await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; },
     async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0;
-      try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.prog=''; this.flash('已加载 PDF，共 '+doc.numPages+' 页'); }
+      try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.start=1; this.ingest.pdf.end=Math.min(3,doc.numPages); this.ingest.pdf.prog=''; this.flash('已加载 PDF，共 '+doc.numPages+' 页'); }
       catch(err){ this.ingest.pdf.prog=''; this.flash('PDF 加载失败：'+err.message,true); } },
     chunkText(text,size=6000,overlap=200){ text=String(text).replace(/\n{3,}/g,'\n\n').trim(); const out=[]; let i=0,n=text.length; while(i<n){ let end=Math.min(i+size,n); if(end<n){ const br=text.lastIndexOf('\n',end); if(br>i && br>end-overlap*4) end=br; } const p=text.slice(i,end).trim(); if(p)out.push(p); i=end; } return out; },
     async pdfExtractText(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
@@ -419,14 +432,17 @@ const App={
       }catch(e){ this.flash('Failed: '+e.message,true); }
       this.ingest.pdf.busy=false; },
     async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      const doc=this._pdfDoc; this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.result=null;
-      try{ let total=0;
-        for(let p=1;p<=doc.numPages;p++){ this.ingest.pdf.prog='正在识别第 '+p+'/'+doc.numPages+' 页（已导入 '+total+'）';
-          const page=await doc.getPage(p); const vp=page.getViewport({scale:1.6}); const cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',0.7);
-          try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),images:[dataUrl]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
-          catch(e){ if(e.message==='unauth'){ this.ingest.pdf.busy=false; return; } } }
-        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('扫描版 PDF 处理完成，已导入 '+total+' 题'); this.loadMeta(); this.loadStats();
-      }catch(e){ this.flash('Recognition failed: '+e.message,true); }
+      const doc=this._pdfDoc; const st=Math.max(1, parseInt(this.ingest.pdf.start||1,10)||1); const ed=Math.min(doc.numPages, parseInt(this.ingest.pdf.end||st,10)||st);
+      if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
+      if(ed-st+1>20 && !confirm('一次将识别 '+(ed-st+1)+' 页，可能消耗较多 AI 额度。确定继续？')) return;
+      this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.result=null;
+      try{ let total=0; const samples=[];
+        for(let p=st;p<=ed;p++){ this.ingest.pdf.prog='正在 AI OCR 第 '+p+'/'+ed+' 页（已导入 '+total+'）';
+          const page=await doc.getPage(p); const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',Number(this.ingest.pdf.quality)||0.72);
+          const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),images:[dataUrl]})}); total+=d.inserted||0; this.ingest.pdf.done=total; if(d.sample) samples.push(...d.sample);
+        }
+        this.ingest.result={inserted:total,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'); this.loadMeta(); this.loadStats();
+      }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
       this.ingest.pdf.busy=false; },
     async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
     rate(r){ const t=(r.right_sum||0)+(r.wrong_sum||0); return t?Math.round((r.right_sum||0)/t*100):0; },
@@ -480,6 +496,7 @@ const App={
   </div>
   <div class="tabs">
     <button class="tab" :class="{active:view==='practice'}" @click="go('practice')">Home</button>
+    <button class="tab" :class="{active:view==='books'}" @click="view='books'">Books</button>
     <button class="tab" :class="{active:view==='wrong'}" @click="go('wrong')">Review<span v-if="wrongTotal" class="badge">{{ wrongTotal }}</span></button>
     <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">Saved</button>
     <button class="tab" :class="{active:view==='mock'}" @click="view='mock'">Test</button>
@@ -542,6 +559,33 @@ const App={
           </div>
         </div>
       </template>
+    </div>
+
+
+    <div v-else-if="view==='books'">
+      <h2 style="margin:.2em 0 .5em">教材阅读</h2>
+      <p class="muted" style="margin-bottom:16px">把 PDF 放进 <code>public/textbooks/</code> 后，就可以在这里直接阅读。</p>
+      <div class="seg" style="margin-bottom:14px;flex-wrap:wrap">
+        <button v-for="b in textbooks" :key="b.id" :class="{on:currentBookId===b.id}" @click="currentBookId=b.id">{{ b.title }}</button>
+      </div>
+      <div v-if="currentTextbook" class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-weight:700;font-size:18px">{{ currentTextbook.title }}</div>
+            <div class="muted">文件路径：<code>{{ currentTextbook.file }}</code></div>
+          </div>
+          <a class="btn subtle" :href="currentTextbook.file" target="_blank" rel="noopener">新窗口打开</a>
+          <a v-if="currentTextbook.text" class="btn subtle" :href="currentTextbook.text" target="_blank" rel="noopener">查看提取文字</a>
+          <a v-if="currentTextbook.notes" class="btn subtle" :href="currentTextbook.notes" target="_blank" rel="noopener">章节整理</a>
+        </div>
+        <object :data="currentTextbook.file" type="application/pdf" style="width:100%;height:min(78vh,900px);border:1px solid var(--line);border-radius:12px;background:var(--surface-2)">
+          <div class="empty">
+            <p>浏览器无法内嵌显示这个 PDF。请点击“新窗口打开”。</p>
+            <a class="btn" :href="currentTextbook.file" target="_blank" rel="noopener">打开 PDF</a>
+          </div>
+        </object>
+      </div>
+      <div class="hint">已按当前上传的 PDF 文件名配置。点击“查看提取文字”可打开已提取的 Markdown 文本；点击“章节整理”可查看按章节拆分的整理结果；若替换 PDF，请同步修改源码里的 <code>TEXTBOOKS</code> 配置。</div>
     </div>
 
     <div v-else-if="view==='mock'">
@@ -655,7 +699,8 @@ const App={
           <label class="btn subtle" style="cursor:pointer">拍摄 / 选择照片
             <input type="file" accept="image/*" capture="environment" @change="onPhotoFile" style="display:none" />
           </label>
-          <div class="hint">免费模式：照片只保留在浏览器中作为参考。Cloudflare 免费功能不会 OCR，请在下方手动录入并保存。</div>
+          <div class="hint">照片会先保留在浏览器本地。点击下方“AI OCR 识别并导入”后，图片会发送到你在 Cloudflare 配置的 AI 中转站；识别出的题目会写入 D1 题库。</div>
+          <div class="row" style="margin-top:12px"><button class="btn" :disabled="ingest.busy || !ingest.photoDataUrl" @click="aiPhotoImport"><span v-if="ingest.busy" class="spin"></span>AI OCR 识别并导入</button></div>
           <img v-if="ingest.photoUrl" :src="ingest.photoUrl" style="max-width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line)" />
         </div>
         <div class="toolbar">
@@ -691,12 +736,19 @@ const App={
           <input type="file" accept="application/pdf,.pdf" @change="onPdfFile" style="display:none" />
         </label>
         <span v-if="ingest.pdf.pages" class="muted" style="margin-left:10px">已加载，{{ ingest.pdf.pages }} 页</span>
-        <div class="hint">免费模式：PDF 文本会在浏览器本地提取并作为草稿显示，不会自动结构化，也不会发送给 AI。</div>
+        <div class="hint">可先本地提取文本；扫描版/题目版 PDF 可按页渲染成图片，调用你配置的 AI 视觉模型 OCR + 结构化，并自动写入 D1 题库。建议每次先测 1–3 页，确认效果后再批量。</div>
+        <div class="toolbar" style="margin-top:12px" v-if="ingest.pdf.pages">
+          <div class="field"><label>开始页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.start" /></div>
+          <div class="field"><label>结束页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.end" /></div>
+          <div class="field"><label>清晰度</label><input class="inp" type="number" step="0.1" min="1" max="2.5" v-model.number="ingest.pdf.scale" /></div>
+        </div>
         <div class="row" style="margin-top:12px" v-if="ingest.pdf.pages">
-          <button class="btn" :disabled="ingest.pdf.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>本地提取文本</button>
+          <button class="btn subtle" :disabled="ingest.pdf.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>本地提取文本</button>
+          <button class="btn" :disabled="ingest.pdf.busy" @click="pdfByImages"><span v-if="ingest.pdf.busy" class="spin"></span>AI OCR 当前页范围并导入</button>
+          <span v-if="ingest.pdf.done" class="muted">已导入 {{ ingest.pdf.done }} 题</span>
         </div>
         <div v-if="ingest.pdf.prog" class="hint" style="margin-top:10px"><span class="spin"></span> {{ ingest.pdf.prog }}</div>
-        <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">从这里复制有用文本到手动录入，或整理成 JSON 后导入。扫描版 PDF / 照片在免费模式下需要手动输入。</div>
+        <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">如果是文字 PDF，可复制文本到“AI 整理”；如果是扫描版，直接用“AI OCR 当前页范围并导入”。</div>
       </template>
       <div v-if="ingest.result" class="ref" style="margin-top:16px">
         <h5>已导入 {{ ingest.result.inserted }} 题</h5>

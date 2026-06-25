@@ -144,7 +144,7 @@ async function callAIVision(env, images, subject, chapter, source) {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
       body: JSON.stringify({
-        model: env.AI_MODEL || 'gpt-4o',
+        model: env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o',
         temperature: 0.1,
         messages: [{ role: 'system', content: buildSystemPrompt() }, { role: 'user', content }],
         response_format: { type: 'json_object' },
@@ -202,7 +202,8 @@ function buildSystemPrompt() {
    - answer: 答案数组。single_choice/multiple_choice 用选项 key，如 ["B"] 或 ["A","C"]；true_false 用 ["T"](正确)/["F"](错误)；fill_blank 用各空标准答案字符串数组（按顺序）；short_answer/code 把参考答案文本放进数组首元素。
    - analysis: 解析；原文无解析则你补写一段简明解析，代码题给出关键思路。
    - tags: 关键词标签字符串数组。
-3. 保持原意，不臆造题目；把混在一起的答案、解析正确归位到对应题目；非题目内容（目录、页码、广告等）忽略。`;
+3. 保持原意，不臆造题目；把混在一起的答案、解析正确归位到对应题目；非题目内容（目录、页码、广告等）忽略。
+4. 如果用户给的是教材正文而不是习题/试题，不要把普通段落硬编成选择题；只有页面中确实存在题目、例题、习题、答案或明确可训练的问题时才输出。`;
 }
 
 function buildHint(subject, chapter, source) {
