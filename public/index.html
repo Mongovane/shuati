@@ -171,24 +171,7 @@ const CHAPTER_PRESETS={
 const SUBJ_MAP=Object.fromEntries(SUBJECTS.map(s=>[s.v,s.t]));
 const TYPES=[{v:'single_choice',t:'单选题'},{v:'multiple_choice',t:'多选题'},{v:'true_false',t:'判断题'},{v:'fill_blank',t:'填空题'},{v:'short_answer',t:'简答题'},{v:'code',t:'编程题'}];
 const TYPE_MAP=Object.fromEntries(TYPES.map(t=>[t.v,t.t]));
-const TEXTBOOKS=[
-  {id:'gaoshu-1', title:'高等数学（上册）', file:'textbooks/高等数学 第八版 上册 (同济大学数学科学学院 编) .pdf', text:'textbooks-text/gaoshu-1.md', notes:'textbooks-notes/gaoshu-1/README.md'},
-  {id:'gaoshu-2', title:'高等数学（下册）', file:'textbooks/高等数学 第八版 下册 (同济大学数学科学学院 编) .pdf', text:'textbooks-text/gaoshu-2.md', notes:'textbooks-notes/gaoshu-2/README.md'},
-  {id:'gaoshu-solutions-1', title:'高数习题全解（上册）', file:'textbooks/高等数学习题全解指导 上册 同济（第八版） (同济大学数学科学学院).pdf', text:'textbooks-text/gaoshu-solutions-1.md', notes:'textbooks-notes/gaoshu-solutions-1/README.md'},
-  {id:'gaoshu-solutions-2', title:'高数习题全解（下册）', file:'textbooks/高等数学习题全解指导 下册 同济（第八版） (同济大学数学科学学院).pdf', text:'textbooks-text/gaoshu-solutions-2.md', notes:'textbooks-notes/gaoshu-solutions-2/README.md'},
-  {id:'maogai-true-pdf', title:'毛概（True PDF）', file:'textbooks/毛泽东思想和中国特色社会主义理论体系概论（2023年版）（True PDF）.pdf', text:'textbooks-text/maogai-true-pdf.md', notes:'textbooks-notes/maogai-true-pdf/README.md'},
-  {id:'maogai-ocr-scan', title:'毛概（OCR 扫描版）', file:'textbooks/毛泽东思想和中国特色社会主义理论体系概论（2023年版）（OCR 扫描版）.pdf', text:'textbooks-text/maogai-ocr-scan.md', notes:'textbooks-notes/maogai-ocr-scan/README.md'},
-  {id:'c-programming', title:'C 程序设计', file:'textbooks/C程序设计（第五版） (谭浩强) (OCR扫描版).pdf', text:'textbooks-text/c-programming.md', notes:'textbooks-notes/c-programming/README.md'},
-  {id:'data-structure', title:'数据结构', file:'textbooks/数据结构（C语言版）（第2版） (严蔚敏 李冬梅 吴伟民)  .pdf', text:'textbooks-text/data-structure.md', notes:'textbooks-notes/data-structure/README.md'},
-];
-const TEXTBOOK_PAGE_COUNTS={
-  'gaoshu-1':442,'gaoshu-2':354,'gaoshu-solutions-1':393,'gaoshu-solutions-2':328,
-  'maogai-true-pdf':278,'maogai-ocr-scan':280,'c-programming':395,'data-structure':274
-};
-const TEXTBOOK_SUBJECTS={
-  'gaoshu-1':'math','gaoshu-2':'math','gaoshu-solutions-1':'math','gaoshu-solutions-2':'math',
-  'maogai-true-pdf':'politics','maogai-ocr-scan':'politics','c-programming':'computer','data-structure':'computer'
-};
+// 教材阅读已改为「智能导入」产出的动态资料（D1 materials 表），不再依赖仓库里的静态 PDF。
 const OBJECTIVE=['single_choice','multiple_choice','true_false','fill_blank'];
 const AUTO=['single_choice','multiple_choice','true_false'];
 
@@ -309,24 +292,21 @@ const App={
     appName: localStorage.getItem('zb_appname')||'刷题文档',
     stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
     tokenInput:'', view:'practice',
-    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, textbooks:TEXTBOOKS, currentBookId:'gaoshu-1',
+    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'',
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 } },
+    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 } },
     stats:null, statsLoading:false,
     ai:{ model:'', visionModel:'', hasAI:false },
-    bookOcr:{ target:'question', subject:'math', chapter:'', start:1, end:1, busy:false, done:0, total:0, inserted:0, prog:'', result:null },
     materials:{ subject:'all', items:[], loading:false },
     mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
     toast:null, toastTimer:null,
   }; },
   computed:{
-    allBooks(){ const dyn=(this.materials.items||[]).map(m=>({id:'mat-'+m.id,title:m.title,file:'',text:'',notes:'',material:m,subject:m.subject,isMaterial:true})); return [...this.textbooks,...dyn]; },
-    booksBySubject(){ const groups={math:[],computer:[],politics:[],english:[],other:[]}; for(const b of this.allBooks){ const sub=b.subject||TEXTBOOK_SUBJECTS[b.id]||'other'; (groups[sub]||groups.other).push(b); } return groups; },
+    allBooks(){ return (this.materials.items||[]).map(m=>({id:'mat-'+m.id,title:m.title,material:m,subject:m.subject,isMaterial:true})); },
+    booksBySubject(){ const groups={math:[],computer:[],politics:[],english:[],other:[]}; for(const b of this.allBooks){ const sub=b.subject||'other'; (groups[sub]||groups.other).push(b); } return groups; },
     currentTextbook(){ return this.allBooks.find(b=>b.id===this.currentBookId)||this.allBooks[0]||null; },
-    currentBookPages(){ return TEXTBOOK_PAGE_COUNTS[this.currentBookId]||0; },
-    ocrPct(){ return this.bookOcr.total ? Math.round(this.bookOcr.done/this.bookOcr.total*100) : 0; },
     ocrModelName(){ return this.ai.visionModel || this.ai.model || '未读取模型'; },
     sessionMode(){ if(this.view==='wrong')return'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
     chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
@@ -350,16 +330,14 @@ const App={
     'ingest.pageNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.questionNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
-    currentBookId(){ this.resetBookOcrDefaults(); },
   },
   methods:{
     flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
+    importMsg(d){ const q=d.inserted_questions??d.inserted??0; const m=d.inserted_materials??0; if(q&&m)return '识别为「题目+教材」，已导入 '+q+' 题、整理 '+m+' 段教材'; if(m)return '识别为教材，已整理 '+m+' 段（去「教材阅读」查看）'; return '识别为题库，已导入 '+q+' 题'; },
     subjName(v){ return SUBJ_MAP[v]||v; },
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return this.ingest.bookMode ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    resetBookOcrDefaults(){ const pages=this.currentBookPages||1; this.bookOcr.subject=TEXTBOOK_SUBJECTS[this.currentBookId]||this.currentTextbook?.subject||'computer'; this.bookOcr.chapter=''; this.bookOcr.start=1; this.bookOcr.end=Math.min(3,pages); this.bookOcr.done=0; this.bookOcr.total=0; this.bookOcr.inserted=0; this.bookOcr.prog=''; this.bookOcr.result=null; },
-    bookImageUrl(bookId,p){ return location.origin + '/textbooks-pages/' + bookId + '/' + String(p).padStart(4,'0') + '.jpg'; },
     async loadMaterials(){ if(!this.token)return; this.materials.loading=true; try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; if(!this.currentTextbook&&this.allBooks[0])this.currentBookId=this.allBooks[0].id; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.materials.loading=false; },
     async loadConfig(){ if(!this.token)return; try{ const c=await this.api('/api/config'); this.ai.model=c.ai_model||''; this.ai.visionModel=c.ai_vision_model||''; this.ai.hasAI=!!c.has_ai; }catch(e){} },
     async api(path,opts={}){
@@ -422,14 +400,14 @@ const App={
       this.ingest.busy=false;
     },
     onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ this.ingest.photoDataUrl=String(rd.result||''); this.ingest.photoUrl=this.ingest.photoDataUrl; this.ingest.tab='photo'; this.flash('图片已加载，可手动录入或调用 AI OCR'); }; rd.onerror=()=>this.flash('图片读取失败',true); rd.readAsDataURL(file); },
-    async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash('AI OCR 已导入 '+d.inserted+' 题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
+    async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(); this.loadStats(); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
     async doIngest(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.currentSource() };
       if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON parse failed: '+e.message,true); return; }
         if(!Array.isArray(arr)||!arr.length){ this.flash('请粘贴非空 JSON 数组',true); return; } body.questions=arr;
-      } else { if(!this.ingest.raw.trim()){ this.flash('请先粘贴原始文本',true); return; } body.raw_text=this.ingest.raw; }
+      } else { if(!this.ingest.raw.trim()){ this.flash('请先粘贴原始文本',true); return; } body.raw_text=this.ingest.raw; body.kind=this.ingest.kind; }
       this.ingest.busy=true; this.ingest.result=null;
-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash('已导入 '+d.inserted+' 题'); this.loadMeta();
+      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(); this.loadStats(); this.loadMaterials();
         if(this.ingest.tab==='ai')this.ingest.raw=''; else this.ingest.json=''; }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.ingest.busy=false;
@@ -461,35 +439,14 @@ const App={
       if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
       if(ed-st+1>20 && !confirm('一次将识别 '+(ed-st+1)+' 页，可能消耗较多 AI 额度。确定继续？')) return;
       this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.pdf.total=ed-st+1; this.ingest.pdf.inserted=0; this.ingest.result=null;
-      try{ await this.loadConfig(); let total=0; const samples=[];
+      try{ await this.loadConfig(); let total=0; let mats=0; const samples=[];
         for(let p=st;p<=ed;p++){ this.ingest.pdf.prog='模型：'+this.ocrModelName+' · 第 '+(p-st+1)+'/'+(ed-st+1)+' 页 · 已导入 '+total+' 题';
           const page=await doc.getPage(p); const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',Number(this.ingest.pdf.quality)||0.72);
-          const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),images:[dataUrl]})}); total+=d.inserted||0; this.ingest.pdf.inserted=total; this.ingest.pdf.done=(p-st+1); if(d.sample) samples.push(...d.sample);
+          const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),kind:this.ingest.kind,images:[dataUrl]})}); total+=(d.inserted_questions??d.inserted)||0; mats+=d.inserted_materials||0; this.ingest.pdf.inserted=total; this.ingest.pdf.done=(p-st+1); if(d.sample) samples.push(...d.sample);
         }
-        this.ingest.result={inserted:total,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'); this.loadMeta(); this.loadStats();
+        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(); this.loadStats(); this.loadMaterials();
       }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
       this.ingest.pdf.busy=false; },
-    async ocrCurrentBookPages(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const book=this.currentTextbook; if(!book || book.isMaterial){ this.flash('请选择一本静态教材 PDF 页面进行导入',true); return; }
-      const pages=this.currentBookPages||0; const st=Math.max(1,parseInt(this.bookOcr.start||1,10)||1); const ed=Math.min(pages,parseInt(this.bookOcr.end||st,10)||st);
-      if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
-      if(ed-st+1>20 && !confirm('一次将识别 '+(ed-st+1)+' 页，可能消耗较多 AI 额度。确定继续？')) return;
-      this.bookOcr.busy=true; this.bookOcr.done=0; this.bookOcr.total=ed-st+1; this.bookOcr.inserted=0; this.bookOcr.result=null;
-      try{ await this.loadConfig(); const samples=[];
-        for(let p=st;p<=ed;p++){ this.bookOcr.prog='正在识别《'+book.title+'》第 '+p+' 页'; const img=this.bookImageUrl(book.id,p); const src=book.title+'-P'+p;
-          if(this.bookOcr.target==='material'){
-            const title=book.title+' · 第 '+p+' 页';
-            const md='![第 '+p+' 页原图]('+img+')\n\n> 本页由 Books AI OCR 导入，按原图阅读，识别文本仅供检索。\n';
-            const d=await this.api('/api/materials',{method:'POST',body:JSON.stringify({subject:this.bookOcr.subject,title,source:src,page:p,page_image:img,content_md:md,summary:this.bookOcr.chapter||'',tags:[book.title,'OCR教材']})});
-            this.bookOcr.inserted+=d.inserted||0; samples.push({subject:this.bookOcr.subject,type:'教材',stem:title});
-          }else{
-            const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.bookOcr.subject,chapter:this.bookOcr.chapter,source:src,images:[img]})});
-            this.bookOcr.inserted+=d.inserted||0; if(d.sample)samples.push(...d.sample);
-          }
-          this.bookOcr.done++;
-        }
-        this.bookOcr.result={inserted:this.bookOcr.inserted,sample:samples.slice(0,8)}; this.bookOcr.prog='完成'; this.flash((this.bookOcr.target==='material'?'已导入教材 ':'已从 Books 导入 ')+this.bookOcr.inserted+(this.bookOcr.target==='material'?' 页':' 题')); this.loadMeta(); this.loadStats(); this.loadMaterials();
-      }catch(e){ if(e.message!=='unauth')this.flash('Books OCR 失败：'+e.message,true); }
-      this.bookOcr.busy=false; },
     async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
     rate(r){ const t=(r.right_sum||0)+(r.wrong_sum||0); return t?Math.round((r.right_sum||0)/t*100):0; },
     async startMock(){ if(!this.token)return; this.mock.finished=false; this.mock.answers={}; this.loading=true;
@@ -530,7 +487,7 @@ const App={
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('focus', this.onFocus);
-    if(this.token){ this.resetBookOcrDefaults(); this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.startSession(); } else { this.resetBookOcrDefaults(); this.view='settings'; }
+    if(this.token){ this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.startSession(); } else { this.view='settings'; }
   },
   beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); },
   template:`
@@ -610,49 +567,36 @@ const App={
 
     <div v-else-if="view==='books'">
       <h2 style="margin:.2em 0 .5em">教材阅读</h2>
-      <p class="muted" style="margin-bottom:16px">把 PDF 放进 <code>public/textbooks/</code> 后，就可以在这里直接阅读。</p>
-      <div class="hint" style="margin-bottom:12px">教材按科目分类；静态 PDF 和从 AI OCR 导入的教材页都会显示在这里。</div>
-      <template v-for="(list,sub) in booksBySubject" :key="sub">
-        <div v-if="list.length" style="margin-bottom:12px">
-          <div class="muted" style="margin:0 0 6px;font-weight:700">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
-          <div class="seg" style="flex-wrap:wrap">
-            <button v-for="b in list" :key="b.id" :class="{on:currentBookId===b.id}" @click="currentBookId=b.id">{{ b.title }}</button>
+      <p class="muted" style="margin-bottom:16px">这里显示由「导入」用 AI 整理出的教材笔记。在「导入」里粘贴教材正文或上传教材 PDF，选「自动分辨」或「只当教材」，整理好的知识点会出现在这里。</p>
+      <template v-if="!allBooks.length">
+        <div class="empty">
+          <p>还没有教材资料。去「导入」粘贴一段教材正文，AI 会整理成知识点笔记并显示在这里。</p>
+          <button class="btn" @click="view='ingest'">去导入教材</button>
+        </div>
+      </template>
+      <template v-else>
+        <template v-for="(list,sub) in booksBySubject" :key="sub">
+          <div v-if="list.length" style="margin-bottom:12px">
+            <div class="muted" style="margin:0 0 6px;font-weight:700">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
+            <div class="seg" style="flex-wrap:wrap">
+              <button v-for="b in list" :key="b.id" :class="{on:currentBookId===b.id}" @click="currentBookId=b.id">{{ b.title }}</button>
+            </div>
+          </div>
+        </template>
+        <div v-if="currentTextbook" class="card">
+          <div class="row" style="justify-content:space-between;margin-bottom:12px">
+            <div>
+              <div style="font-weight:700;font-size:18px">{{ currentTextbook.title }}</div>
+              <div class="muted">{{ subjName(currentTextbook.subject) }}<span v-if="currentTextbook.material.source"> · {{ currentTextbook.material.source }}</span><span v-if="currentTextbook.material.page"> · 第 {{ currentTextbook.material.page }} 页</span></div>
+            </div>
+          </div>
+          <div class="ref">
+            <h5 v-if="currentTextbook.material.summary">{{ currentTextbook.material.summary }}</h5>
+            <img v-if="currentTextbook.material.page_image" :src="currentTextbook.material.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:12px" />
+            <rich-text :content="currentTextbook.material.content_md" />
           </div>
         </div>
       </template>
-      <div v-if="currentTextbook" class="card">
-        <div class="row" style="justify-content:space-between;margin-bottom:12px">
-          <div>
-            <div style="font-weight:700;font-size:18px">{{ currentTextbook.title }}</div>
-            <div class="muted" v-if="!currentTextbook.isMaterial">文件路径：<code>{{ currentTextbook.file }}</code></div><div class="muted" v-else>AI OCR 导入教材 · {{ subjName(currentTextbook.subject) }} · {{ currentTextbook.material.source }}</div>
-          </div>
-          <a v-if="!currentTextbook.isMaterial" class="btn subtle" :href="currentTextbook.file" target="_blank" rel="noopener">新窗口打开</a>
-          <a v-if="currentTextbook.text" class="btn subtle" :href="currentTextbook.text" target="_blank" rel="noopener">查看提取文字</a>
-          <a v-if="currentTextbook.notes" class="btn subtle" :href="currentTextbook.notes" target="_blank" rel="noopener">章节整理</a>
-        </div>
-        <div class="ocr-panel" v-if="!currentTextbook.isMaterial">
-          <div class="top"><div><b>AI OCR 导入</b><div class="muted">模型：{{ ocrModelName }} · 来源：Books / {{ currentTextbook.title }}</div></div><div class="pct">{{ ocrPct }}%</div></div>
-          <div class="toolbar" style="margin-bottom:10px">
-            <div class="field"><label>导入类型</label><select v-model="bookOcr.target"><option value="question">题库：识别成练习题</option><option value="material">教材：内置到教材阅读</option></select></div>
-            <div class="field"><label>科目</label><select v-model="bookOcr.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-            <div class="field"><label>章节 / 知识点</label><input class="inp" v-model="bookOcr.chapter" :placeholder="bookOcr.target==='material'?'例如：教材-指针章节':'例如：C语言-指针'" /></div>
-            <div class="field"><label>开始页</label><input class="inp" type="number" min="1" :max="currentBookPages" v-model.number="bookOcr.start" /></div>
-            <div class="field"><label>结束页</label><input class="inp" type="number" min="1" :max="currentBookPages" v-model.number="bookOcr.end" /></div>
-            <button class="btn" :disabled="bookOcr.busy || !currentBookPages" @click="ocrCurrentBookPages"><span v-if="bookOcr.busy" class="spin"></span>{{ bookOcr.target==='material'?'导入为教材':'识别成题库' }}</button>
-          </div>
-          <div class="bar accent"><span :style="{width:ocrPct+'%'}"></span></div>
-          <div class="hint" v-if="bookOcr.busy || bookOcr.done || bookOcr.prog">{{ bookOcr.prog || '等待开始' }} · {{ bookOcr.done }}/{{ bookOcr.total || (Math.max(0,(bookOcr.end||0)-(bookOcr.start||0)+1)) }} 页 · 已导入 {{ bookOcr.inserted }} {{ bookOcr.target==='material'?'页':'题' }}</div>
-          <div v-if="bookOcr.result" class="ref"><h5>导入结果</h5><div>已导入 {{ bookOcr.result.inserted }} {{ bookOcr.target==='material'?'页':'题' }}</div><div v-for="(s,i) in bookOcr.result.sample" :key="i" class="muted">· [{{ subjName(s.subject) }} / {{ typeMap[s.type]||s.type }}] {{ s.stem }}</div></div>
-        </div>
-        <div v-if="currentTextbook.isMaterial" class="ref"><h5>{{ currentTextbook.material.title }}</h5><img v-if="currentTextbook.material.page_image" :src="currentTextbook.material.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:12px" /><rich-text :content="currentTextbook.material.content_md" /></div>
-        <object v-else :data="currentTextbook.file" type="application/pdf" style="width:100%;height:min(78vh,900px);border:1px solid var(--line);border-radius:12px;background:var(--surface-2)">
-          <div class="empty">
-            <p>浏览器无法内嵌显示这个 PDF。请点击“新窗口打开”。</p>
-            <a class="btn" :href="currentTextbook.file" target="_blank" rel="noopener">打开 PDF</a>
-          </div>
-        </object>
-      </div>
-      <div class="hint">已按当前上传的 PDF 文件名配置。点击“查看提取文字”可打开已提取的 Markdown 文本；点击“章节整理”可查看按章节拆分的整理结果；若替换 PDF，请同步修改源码里的 <code>TEXTBOOKS</code> 配置。</div>
     </div>
 
     <div v-else-if="view==='mock'">
@@ -747,6 +691,8 @@ const App={
         <button :class="{on:ingest.tab==='ai'}" @click="ingest.tab='ai'">AI 整理</button>
       </div>
       <div class="toolbar">
+        <div class="field"><label>导入类型</label>
+          <select v-model="ingest.kind"><option value="auto">自动分辨（题库 / 教材）</option><option value="questions">只当题库</option><option value="material">只当教材</option></select></div>
         <div class="field"><label>默认科目</label>
           <select v-model="ingest.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
         <div class="field"><label>章节预设</label>
@@ -786,8 +732,8 @@ const App={
         <div class="row" style="margin-top:12px"><button class="btn" :disabled="ingest.busy" @click="saveManual"><span v-if="ingest.busy" class="spin"></span>免费保存题目</button><button class="btn subtle" @click="resetManual">清空</button></div>
       </template>
       <template v-else-if="ingest.tab==='ai'">
-        <textarea v-model="ingest.raw" placeholder="粘贴从 PDF、文档或论坛复制的杂乱原文。此功能会使用 AI 中转额度，不是纯 Cloudflare 免费模式。"></textarea>
-        <div class="hint">付费 / 可选路径：AI 会把原始文本整理成题目。纯免费使用建议选择手动录入、拍照辅助、JSON 或 PDF 文本提取。</div>
+        <textarea v-model="ingest.raw" placeholder="粘贴任意原文：可以是杂乱的题目，也可以是教材正文。AI 会自动分辨——是题目就结构化进题库，是教材就整理成知识点笔记进「教材阅读」。此功能消耗 AI 中转额度。"></textarea>
+        <div class="hint">上方「导入类型」选<b>自动分辨</b>时，AI 会判断这段是题库还是教材并分别入库；也可强制只当题库 / 只当教材。纯免费零成本请用手动录入、JSON 或 PDF 本地提取文本。</div>
         <button class="btn" style="margin-top:12px" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>用 AI 整理并导入</button>
       </template>
       <template v-else-if="ingest.tab==='json'">
@@ -822,8 +768,10 @@ const App={
         <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">如果是文字 PDF，可复制文本到“AI 整理”；如果是扫描版，直接用“AI OCR 当前页范围并导入”。</div>
       </template>
       <div v-if="ingest.result" class="ref" style="margin-top:16px">
-        <h5>已导入 {{ ingest.result.inserted }} 题</h5>
+        <h5>导入完成<span v-if="ingest.result.kind"> · 识别为{{ ingest.result.kind==='material'?'教材':ingest.result.kind==='mixed'?'题目+教材':'题库' }}</span></h5>
+        <div class="muted">题目 {{ ingest.result.inserted_questions ?? ingest.result.inserted ?? 0 }} 道<span v-if="ingest.result.inserted_materials"> · 教材 {{ ingest.result.inserted_materials }} 段（已进「教材阅读」）</span></div>
         <div v-for="(s,i) in ingest.result.sample" :key="i" class="muted">· [{{ subjName(s.subject) }} / {{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
+        <div v-for="(s,i) in (ingest.result.material_sample||[])" :key="'m'+i" class="muted">· [{{ subjName(s.subject) }} / 教材] {{ s.title }}</div>
       </div>
     </div>
 
