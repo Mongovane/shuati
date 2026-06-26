@@ -13,9 +13,6 @@ const PROMPT = [
 export async function onRequestPost({ request, env }) {
   const auth = checkAuth(request, env);
   if (!auth.ok) return auth.resp;
-  if (!env.AI_BASE_URL || !env.AI_API_KEY) {
-    return json({ error: '服务端未配置 AI 中转站（AI_BASE_URL / AI_API_KEY）。请在环境变量配置后重新部署。' }, 500);
-  }
 
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
@@ -23,9 +20,18 @@ export async function onRequestPost({ request, env }) {
   if (!b64) return json({ error: '缺少图片数据' }, 400);
   const dataUrl = b64.startsWith('data:') ? b64 : ('data:image/png;base64,' + b64);
 
-  const base = env.AI_BASE_URL.replace(/\/+$/, '');
-  const model = (body && typeof body.model === 'string' && body.model.trim())
-    || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o';
+  // 允许前端临时覆盖中转站配置（便于指定真正支持图片的视觉模型）
+  const ovBase = (body && typeof body.base_url === 'string' && /^https?:\/\//i.test(body.base_url.trim())) ? body.base_url.trim() : '';
+  const ovKey = (body && typeof body.api_key === 'string' && body.api_key.trim()) ? body.api_key.trim() : '';
+  const ovModel = (body && typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : '';
+
+  const baseRaw = ovBase || env.AI_BASE_URL;
+  const apiKey = ovKey || env.AI_API_KEY;
+  if (!baseRaw || !apiKey) {
+    return json({ error: '未配置中转站：请在下方「OCR 模型设置」填写 Base URL 与 API Key，或在服务端配置 AI_BASE_URL / AI_API_KEY。' }, 500);
+  }
+  const base = baseRaw.replace(/\/+$/, '');
+  const model = ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o';
 
   const messages = [{
     role: 'user',
@@ -39,7 +45,7 @@ export async function onRequestPost({ request, env }) {
   try {
     resp = await fetch(`${base}/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, temperature: 0.1, max_tokens: 4000, messages }),
     });
   } catch (e) {
