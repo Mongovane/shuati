@@ -2,16 +2,19 @@ import { json, checkAuth } from './_utils.js';
 
 const DEFAULT_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const PROMPT = [
-  'You are a precise OCR engine for textbook pages.',
-  'Transcribe ALL text in the image in its original language (Chinese and/or English).',
-  'Preserve reading order, paragraphs and line breaks.',
-  'Render every mathematical formula, equation, symbol, subscript and superscript as LaTeX,',
-  'wrapped in $...$ for inline math and $$...$$ for display math.',
-  'Output ONLY the transcribed content as Markdown. No explanations, no preamble, no translation.',
-].join(' ');
+  '你是一个精确的 OCR 引擎，只转写图片中“真实存在”的文字，不做任何创作。',
+  '规则：',
+  '1) 用图片本来的语言（简体中文/英文）逐字转写，严禁翻译、严禁音译成拼音、严禁改写或润色。',
+  '2) 保留阅读顺序、段落与换行。',
+  '3) 数学公式、符号、上下标、积分、求和等一律转成 LaTeX：行内用 $...$，独立公式用 $$...$$。',
+  '4) 只输出图片里出现的内容本身（Markdown），不要添加任何解释、前言、标题、“Title”“Introduction”等自创内容。',
+  '5) 看不清或空白处就留空，绝不编造。',
+].join('\n');
 
 function todayUTC() { return new Date().toISOString().slice(0, 10); }
-function limitOf(env) { const n = parseInt(env.AI_DAILY_PAGE_LIMIT || '60', 10); return Number.isFinite(n) ? n : 60; }
+function limitOf(env) { const n = parseInt(env.AI_DAILY_PAGE_LIMIT || '70', 10); return Number.isFinite(n) ? n : 70; }
+const NEURON_BUDGET = 10000;          // 免费层每日神经元
+const EST_NEURONS_PER_PAGE = 115;     // 实测 llama-3.2-vision 约 111/页（2.4× 分辨率），取 115 留余量
 
 async function ensureUsage(env) {
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_usage (day TEXT PRIMARY KEY, pages INTEGER DEFAULT 0)`).run();
@@ -27,7 +30,7 @@ export async function onRequestGet({ request, env }) {
   if (!auth.ok) return auth.resp;
   await ensureUsage(env);
   const used = await usedToday(env);
-  return json({ used, limit: limitOf(env), has_cf_ai: !!env.AI });
+  return json({ used, limit: limitOf(env), has_cf_ai: !!env.AI, budget: NEURON_BUDGET, npp: EST_NEURONS_PER_PAGE });
 }
 
 // POST { image_b64 } → 用 Workers AI 视觉模型 OCR 一页；先查配额，到上限直接拒绝（不调用 AI）
@@ -58,17 +61,19 @@ export async function onRequestPost({ request, env }) {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   } catch { return json({ error: '图片解码失败' }, 400); }
 
-  const model = env.CF_OCR_MODEL || DEFAULT_MODEL;
+  const reqModel = (body && typeof body.model === 'string' && body.model.trim().startsWith('@cf/')) ? body.model.trim() : '';
+  const model = reqModel || env.CF_OCR_MODEL || DEFAULT_MODEL;
   let text = '';
   try {
     let out;
+    const input = { image: [...bytes], prompt: PROMPT, max_tokens: 2048, temperature: 0.1 };
     try {
-      out = await env.AI.run(model, { image: [...bytes], prompt: PROMPT, max_tokens: 2048 });
+      out = await env.AI.run(model, input);
     } catch (e1) {
       // Llama 3.2 等模型首次使用需先提交 'agree' 接受许可（错误码 5016）。自动接受后重试一次。
       if (/\b5016\b|submit the prompt 'agree'|must submit/i.test(e1.message || '')) {
         try { await env.AI.run(model, { prompt: 'agree' }); } catch (_) {}
-        out = await env.AI.run(model, { image: [...bytes], prompt: PROMPT, max_tokens: 2048 });
+        out = await env.AI.run(model, input);
       } else {
         throw e1;
       }
@@ -83,5 +88,5 @@ export async function onRequestPost({ request, env }) {
     await env.DB.prepare(`INSERT INTO ai_usage (day, pages) VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET pages = pages + 1`).bind(todayUTC()).run();
   } catch (_) {}
 
-  return json({ text, used: used + 1, limit });
+  return json({ text, used: used + 1, limit, budget: NEURON_BUDGET, npp: EST_NEURONS_PER_PAGE });
 }
