@@ -351,10 +351,10 @@ const App={
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', stop:false, lastPage:0, endPage:0 }, mdFiles:[] },
+    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, stop:false, lastPage:0, endPage:0 }, mdFiles:[] },
     stats:null, statsLoading:false,
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
-    cfocr:{ used:0, limit:60 },
+    cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
     pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'' },
@@ -419,8 +419,8 @@ const App={
     bookNext(){ this.bookGoto(this.bookIdx+1); },
     bookJumpPage(p){ const b=this.currentBook; if(!b)return; const n=parseInt(p,10); if(!Number.isFinite(n))return; const idx=b.pages.findIndex(m=>Number(m.page)===n); if(idx>=0)this.bookGoto(idx); else this.flash('没有第 '+n+' 页',true); },
     async loadConfig(){ if(!this.token)return; try{ const c=await this.api('/api/config'); this.ai.model=c.ai_model||''; this.ai.visionModel=c.ai_vision_model||''; this.ai.hasAI=!!c.has_ai; this.ai.hasCfAI=!!c.has_cf_ai; }catch(e){} },
-    async loadCfUsage(){ if(!this.token)return; try{ const res=await fetch('/api/cfocr',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(ct.includes('json')){ const d=await res.json(); if(res.ok){ this.cfocr.used=d.used||0; this.cfocr.limit=d.limit||60; this.ai.hasCfAI=!!d.has_cf_ai; } } }catch(e){} },
-    async cfocrOcrCanvas(cv){ const b64=cv.toDataURL('image/png').split(',')[1]; const res=await fetch('/api/cfocr',{method:'POST',headers:{'authorization':'Bearer '+this.token,'content-type':'application/json'},body:JSON.stringify({image_b64:b64})}); const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } if(res.status===404 || !ct.includes('json')){ const e=new Error('Workers AI 接口不可用：请确认已部署 functions/api/cfocr.js 并绑定 Workers AI（变量名 AI），然后重新部署。'); e.fatal=true; throw e; } if(d){ if(typeof d.used==='number')this.cfocr.used=d.used; if(typeof d.limit==='number')this.cfocr.limit=d.limit; } if(res.status===429){ const e=new Error((d&&d.error)||'今日免费额度已用完'); e.quota=true; throw e; } if(!res.ok){ const e=new Error((d&&d.error)||('Workers AI 失败 HTTP '+res.status)); if(/未绑定|绑定/.test(e.message))e.fatal=true; throw e; } return String((d&&d.text)||'').trim(); },
+    async loadCfUsage(){ if(!this.token)return; try{ const res=await fetch('/api/cfocr',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(ct.includes('json')){ const d=await res.json(); if(res.ok){ this.cfocr.used=d.used||0; this.cfocr.limit=d.limit||150; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; this.ai.hasCfAI=!!d.has_cf_ai; } } }catch(e){} },
+    async cfocrOcrCanvas(cv){ const b64=cv.toDataURL('image/png').split(',')[1]; const body={image_b64:b64}; if((this.ingest.local.cfModel||'').trim().startsWith('@cf/'))body.model=this.ingest.local.cfModel.trim(); const res=await fetch('/api/cfocr',{method:'POST',headers:{'authorization':'Bearer '+this.token,'content-type':'application/json'},body:JSON.stringify(body)}); const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } if(res.status===404 || !ct.includes('json')){ const e=new Error('Workers AI 接口不可用：请确认已部署 functions/api/cfocr.js 并绑定 Workers AI（变量名 AI），然后重新部署。'); e.fatal=true; throw e; } if(d){ if(typeof d.used==='number')this.cfocr.used=d.used; if(typeof d.limit==='number')this.cfocr.limit=d.limit; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; } if(res.status===429){ const e=new Error((d&&d.error)||'今日免费额度已用完'); e.quota=true; throw e; } if(!res.ok){ const e=new Error((d&&d.error)||('Workers AI 失败 HTTP '+res.status)); if(/未绑定|绑定/.test(e.message))e.fatal=true; throw e; } return String((d&&d.text)||'').trim(); },
     async api(path,opts={}){
       const headers=Object.assign({'authorization':'Bearer '+this.token}, opts.headers||{});
       if(opts.body) headers['content-type']='application/json';
@@ -542,7 +542,7 @@ const App={
           let text=tc.items.map(it=>it.str).join(' ').replace(/\s+\n/g,'\n').trim();
           let usedOcr=false;
           if(text.replace(/\s/g,'').length<10 && this.ingest.local.ocr){
-            const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale});
+            const scale=Math.max(2.4, Number(this.ingest.pdf.scale)||1.7); const vp=page.getViewport({scale});
             const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height);
             await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
             const eng=this.ingest.local.engine==='scribe'?'Scribe.js':(this.ingest.local.engine==='cfai'?'Workers AI':'tesseract');
@@ -551,7 +551,9 @@ const App={
               try{ text=await this.scribeOcrCanvas(cv); }
               catch(e){ this.flash('Scribe.js 不可用，已回退 tesseract：'+e.message,true); this.ingest.local.engine='tesseract'; if(!tess)tess=await this.ensureTesseract(); const r=await tess.recognize(cv); text=String(r?.data?.text||'').trim(); }
             } else if(this.ingest.local.engine==='cfai'){
-              this.ingest.local.prog='Workers AI 第 '+p+'/'+ed+' 页（今日 '+this.cfocr.used+'/'+this.cfocr.limit+'）';
+              const effLimit=Math.min(Number(this.ingest.local.cfPageLimit)||50, this.cfocr.limit||70);
+              if(this.cfocr.used>=effLimit){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.flash('已达今日设定上限（'+effLimit+' 页，约 '+(effLimit*this.cfocr.npp)+' 神经元）。停在第 '+p+' 页，明天或调高上限再继续。',true); cv.width=cv.height=0; break; }
+              this.ingest.local.prog='Workers AI 第 '+p+'/'+ed+' 页（今日 '+this.cfocr.used+'/'+effLimit+'）';
               try{ text=await this.cfocrOcrCanvas(cv); }
               catch(e){ cv.width=cv.height=0; if(e.message==='unauth')throw e; if(e.quota||e.fatal){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.flash(e.message+(e.quota?('（已停在第 '+p+' 页，明天或换引擎从这继续）'):''),true); break; } this.flash('第 '+p+' 页 Workers AI 出错，已跳过：'+e.message,true); this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p; continue; }
             } else {
@@ -1025,7 +1027,18 @@ const App={
           <button v-if="ingest.local.busy" class="btn subtle" @click="ingest.local.stop=true">停止</button>
           <label class="row" style="height:40px;cursor:pointer;gap:6px"><input type="checkbox" v-model="ingest.local.ocr" /> <span class="muted">扫描页用本地 OCR</span></label>
           <div class="field" v-if="ingest.local.ocr" style="margin:0"><label>OCR 引擎</label><select v-model="ingest.local.engine" @change="ingest.local.engine==='cfai' && loadCfUsage()"><option value="scribe">Scribe.js（更准·较慢）</option><option value="tesseract">tesseract（更快·一般）</option><option value="cfai" :disabled="!ai.hasCfAI">Workers AI（免费额度{{ ai.hasCfAI?'':'·未绑定' }}）</option></select></div>
-          <span v-if="ingest.local.ocr && ingest.local.engine==='cfai'" class="muted" style="align-self:center">今日免费用量 {{ cfocr.used }} / {{ cfocr.limit }} 页{{ cfocr.used>=cfocr.limit?'（已用完）':'' }}</span>
+          <template v-if="ingest.local.ocr && ingest.local.engine==='cfai'">
+            <div class="field" style="margin:0"><label>每日页数上限（防超额度）</label><select v-model.number="ingest.local.cfPageLimit"><option :value="30">30 页（约 {{ 30*cfocr.npp }} 神经元·很保守）</option><option :value="50">50 页（约 {{ 50*cfocr.npp }} 神经元·推荐）</option><option :value="70">70 页（约 {{ 70*cfocr.npp }} 神经元·接近上限）</option></select></div>
+            <div class="field" style="margin:0;min-width:320px"><label>Workers AI 模型（留空=默认 Llama 3.2 Vision；可粘贴 @cf/ 模型）</label><input class="inp" v-model="ingest.local.cfModel" list="cfModelList" placeholder="@cf/meta/llama-3.2-11b-vision-instruct" />
+              <datalist id="cfModelList">
+                <option value="@cf/meta/llama-3.2-11b-vision-instruct">Llama 3.2 11B Vision（默认·最稳妥）</option>
+                <option value="@cf/meta/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B（更新·多模态·可试）</option>
+                <option value="@cf/google/gemma-3-12b-it">Gemma 3 12B（多模态·可试）</option>
+                <option value="@cf/mistralai/mistral-small-3.1-24b-instruct">Mistral Small 3.1 24B（多模态·可试）</option>
+              </datalist>
+            </div>
+            <div class="hint" style="flex-basis:100%">今日 Workers AI：已用 <b>{{ cfocr.used }}</b> 页 · 约 <b>{{ cfocr.used*cfocr.npp }}</b> / {{ cfocr.budget }} 神经元，剩约 <b>{{ Math.max(0, cfocr.budget - cfocr.used*cfocr.npp) }}</b>（估算 {{ cfocr.npp }}/页，实际因模型与页面内容而异；精确值看 Cloudflare 后台「神经元」）。免费层每天 {{ cfocr.budget }} 神经元，UTC 0 点重置。默认 Llama 3.2 最稳；其它为多模态模型，<b>调用图片的格式不一定兼容，可能识别效果差或报错，不行就换回默认</b>。Workers AI 模型库里没有 Qwen-VL。</div>
+          </template>
           <span v-if="ingest.pdf.inserted" class="muted">已导入 {{ ingest.pdf.inserted }} 题</span>
         </div>
         <div class="hint" v-if="ingest.pdf.pages">转教材将存入：<b>{{ materialBaseTitle() }}</b>（即上方「教材名称」；同名同页会覆盖，换书请改书名）</div>
