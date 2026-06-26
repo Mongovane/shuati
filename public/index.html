@@ -1,7 +1,6 @@
 <!doctype html>
 <html lang="zh-CN" data-theme="light">
 <head>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>刷题文档</title>
@@ -227,6 +226,7 @@ const CHAPTER_PRESETS={
 const SUBJ_MAP=Object.fromEntries(SUBJECTS.map(s=>[s.v,s.t]));
 const TYPES=[{v:'single_choice',t:'单选题'},{v:'multiple_choice',t:'多选题'},{v:'true_false',t:'判断题'},{v:'fill_blank',t:'填空题'},{v:'short_answer',t:'简答题'},{v:'code',t:'编程题'}];
 const TYPE_MAP=Object.fromEntries(TYPES.map(t=>[t.v,t.t]));
+// 教材阅读已改为「智能导入」产出的动态资料（D1 materials 表），不再依赖仓库里的静态 PDF。
 const OBJECTIVE=['single_choice','multiple_choice','true_false','fill_blank'];
 const AUTO=['single_choice','multiple_choice','true_false'];
 
@@ -351,7 +351,7 @@ const App={
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ file:null, pages:0, busy:false, mineruBusy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[] },
+    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[] },
     stats:null, statsLoading:false,
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
@@ -401,7 +401,7 @@ const App={
     guessSubject(name){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return''; },
     async setBookSubject(subj){ const b=this.currentBook; if(!b)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.materials.loading=true; try{ for(const m of b.pages){ await this.saveOneMaterial({id:m.id,subject:subj,title:m.title,source:m.source||null,page:m.page||null,page_image:m.page_image||null,content_md:m.content_md,summary:m.summary||'',tags:Array.isArray(m.tags)?m.tags:[]}); } this.flash('已将《'+b.title+'》归到「'+this.subjName(subj)+'」'); await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('修改科目失败：'+e.message,true); } this.materials.loading=false; },
     rewriteMdImages(s){ return String(s||'').replace(/\]\(\s*\.?\/?public\//g,'](/').replace(/\]\(\s*textbooks-pages\//g,'](/textbooks-pages/').replace(/(<img[^>]*\bsrc=["'])\.?\/?public\//g,'$1/'); },
-    parseChapterMd(text){ const t=String(text||''); const ch=t.match(/^#\s+(.+)$/m); const chapterTitle=ch?ch[1].trim():''; const src=t.match(/来源[:：]\s*(.+)/); const source=src?src[1].trim().replace(/[`*]/g,''); const parts=t.split(/^##\s*第\s*(\d+)\s*页\s*$/m); const pages=[]; for(let i=1;i<parts.length;i+=2){ const pageNo=parseInt(parts[i],10); const body=(parts[i+1]||'').trim(); if(Number.isFinite(pageNo))pages.push({page:pageNo,body}); } return {chapterTitle,source,pages,whole:t}; },
+    parseChapterMd(text){ const t=String(text||''); const ch=t.match(/^#\s+(.+)$/m); const chapterTitle=ch?ch[1].trim():''; const src=t.match(/来源[:：]\s*(.+)/); const source=src?src[1].trim().replace(/[`*]/g,''):''; const parts=t.split(/^##\s*第\s*(\d+)\s*页\s*$/m); const pages=[]; for(let i=1;i<parts.length;i+=2){ const pageNo=parseInt(parts[i],10); const body=(parts[i+1]||'').trim(); if(Number.isFinite(pageNo))pages.push({page:pageNo,body}); } return {chapterTitle,source,pages,whole:t}; },
     async onMdFiles(e){ const files=[...(e.target.files||[])]; if(!files.length)return; const out=[]; for(const f of files){ try{ out.push({name:f.name,text:await f.text()}); }catch(_){} } this.ingest.mdFiles=out; if(!this.ingest.bookTitle.trim()&&out[0]){ const m=out[0].text.match(/来源[:：]\s*(.+)/); this.ingest.bookTitle=(m?m[1].trim().replace(/[`*]/g,''):out[0].name.replace(/\.md$/i,'')); const gs=this.guessSubject(this.ingest.bookTitle); if(gs)this.ingest.subject=gs; } this.flash('已读取 '+out.length+' 个 Markdown 文件'); },
     async importMarkdown(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ingest.mdFiles.length){ this.flash('请先选择 .md 文件',true); return; } const parsed=this.ingest.mdFiles.map(f=>({name:f.name,...this.parseChapterMd(f.text)})); let book=(this.ingest.bookTitle||'').trim(); if(!book){ const ps=parsed.find(p=>p.source); book=ps?ps.source:this.ingest.mdFiles[0].name.replace(/\.md$/i,''); } const subj=this.guessSubject(book)||this.ingest.subject; const items=[]; let seq=0; for(const p of parsed){ if(p.pages.length){ p.pages.forEach((pg,idx)=>{ let body=this.rewriteMdImages(pg.body); if(idx===0&&p.chapterTitle)body='**'+p.chapterTitle+'**\n\n'+body; items.push({page:pg.page,content:body,chapter:p.chapterTitle}); }); } else { seq++; items.push({page:seq,content:this.rewriteMdImages(p.whole),chapter:p.chapterTitle}); } } items.sort((a,b)=>(a.page||0)-(b.page||0)); this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.total=items.length; this.ingest.local.inserted=0; this.ingest.result=null; try{ let n=0; for(const it of items){ this.ingest.local.prog='正在导入第 '+(n+1)+'/'+items.length+' 页'; await this.saveOneMaterial({id:'mat-'+subj+'-'+this.bookHashId(book+'#p'+it.page),subject:subj,title:book+' · 第 '+it.page+' 页',source:book,page:it.page,content_md:it.content,summary:'',tags:it.chapter?[it.chapter,'Markdown导入']:['Markdown导入']}); n++; this.ingest.local.done=n; this.ingest.local.inserted=n; } this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('已导入《'+book+'》'+n+' 页到 Books（去 Books 查看）'); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('Markdown 导入中断：已存 '+this.ingest.local.inserted+' 页，'+e.message,true); this.loadMaterials(); } this.ingest.local.busy=false; this.ingest.local.prog=''; },
     bookTitleOf(m){ const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t || this.bookKeyOf(m); },
@@ -498,7 +498,7 @@ const App={
       catch(e){ this.flash('sample-questions.json not found',true); } },
     loadScript(src){ return new Promise((res,rej)=>{ this._scripts=this._scripts||{}; if(this._scripts[src])return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ this._scripts[src]=1; res(); }; s.onerror=()=>rej(new Error('加载失败：'+src)); document.head.appendChild(s); }); },
     async ensurePdfjs(){ if(window.pdfjsLib)return; await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; },
-    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0; this.ingest.pdf.file=file; const nm=(file.name||'').replace(/\.[Pp][Dd][Ff]$/,'').trim(); if(nm)this.ingest.bookTitle=nm; const gs=this.guessSubject(nm); if(gs)this.ingest.subject=gs;
+    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0; const nm=(file.name||'').replace(/\.[Pp][Dd][Ff]$/,'').trim(); if(nm)this.ingest.bookTitle=nm; const gs=this.guessSubject(nm); if(gs)this.ingest.subject=gs;
       try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.start=1; this.ingest.pdf.end=Math.min(3,doc.numPages); this.ingest.pdf.prog=''; this.flash('已加载 PDF，共 '+doc.numPages+' 页'); }
       catch(err){ this.ingest.pdf.prog=''; this.flash('PDF 加载失败：'+err.message,true); } },
     chunkText(text,size=6000,overlap=200){ text=String(text).replace(/\n{3,}/g,'\n\n').trim(); const out=[]; let i=0,n=text.length; while(i<n){ let end=Math.min(i+size,n); if(end<n){ const br=text.lastIndexOf('\n',end); if(br>i && br>end-overlap*4) end=br; } const p=text.slice(i,end).trim(); if(p)out.push(p); i=end; } return out; },
@@ -521,6 +521,7 @@ const App={
       const st=Math.max(1,parseInt(this.ingest.pdf.start||1,10)||1);
       const ed=Math.min(doc.numPages,parseInt(this.ingest.pdf.end||st,10)||st);
       if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
+      // 预检：首页能否提取到文字；扫描版且未开 OCR 会一无所获，提前提示
       try{ const pg0=await doc.getPage(st); const tc0=await pg0.getTextContent(); const t0=tc0.items.map(it=>it.str).join('').replace(/\s/g,''); if(t0.length<10 && !this.ingest.local.ocr){ if(confirm('第 '+st+' 页提取不到文字，这本很可能是扫描版 PDF。\n开启「本地 OCR」用浏览器识别图片文字后继续？\n\n确定 = 开启本地 OCR 并继续（较慢，质量一般）\n取消 = 不继续（可改用文字版 PDF，或用「AI OCR…只当教材」）')) this.ingest.local.ocr=true; else return; } }catch(_){}
       const n=ed-st+1;
       if(n>30 && !confirm('将处理 '+n+' 页（第 '+st+'–'+ed+' 页）。\n会自动分批进行；扫描页本地 OCR 较慢，请保持本标签页在前台、勿让电脑休眠。\n确定开始？')) return;
@@ -530,6 +531,7 @@ const App={
       try{
         for(let p=st;p<=ed;p++){
           if(this.ingest.local.stop){ const nxt=Math.min(ed,(this.ingest.local.lastPage||(st-1))+1); this.ingest.pdf.start=nxt; this.flash('已停止，已保存 '+saved+' 段。开始页已设为 '+nxt+'，可再点继续'); break; }
+          // 分批：每处理 BATCH 页就重建 OCR 引擎释放内存并短暂喘息，降低长任务下标签页卡死概率
           if(p>st && (p-st)%BATCH===0){
             if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} tess=null; }
             this.ingest.local.prog='已完成 '+(p-st)+'/'+n+' 页，正在释放内存…';
@@ -626,164 +628,6 @@ const App={
         this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(); this.loadStats(); this.loadMaterials();
       }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
       this.ingest.pdf.busy=false; },
-    
-    // ==========================================
-    // 新增 MinerU 高精度全本 PDF 解析功能
-    // ==========================================
-    // ==========================================
-    // 新增 MinerU 高精度全本 PDF 解析功能 (已修复白屏Bug)
-    // ==========================================
-    async pdfToMinerU() {
-      const pdfFile = this.ingest.pdf.file;
-      if (!pdfFile) { this.flash('请先选择 PDF 文件', true); return; }
-      if (!this.token) { this.flash('请先在设置中填写访问码', true); return; }
-      if (!confirm(`即将上传整本 PDF [${pdfFile.name}] 给 MinerU 进行解析。支持保留原版插图、多模态公式，适合高数/物理等复杂教材。过程约需 1~5 分钟，期间请勿刷新页面。确定开始？`)) return;
-
-      // 复用原本的 busy 状态来触发现有的 OCR 进度面板
-      this.ingest.pdf.mineruBusy = true;
-      this.ingest.pdf.busy = true; 
-      this.ingest.pdf.total = 100;
-      this.ingest.pdf.done = 0;
-      this.ingest.pdf.inserted = 0;
-      this.ingest.result = null;
-
-      try {
-        // 1. 获取直传链接
-        this.ingest.pdf.prog = "1/4 正在获取 MinerU 云端上传通道...";
-        let res = await fetch('/api/mineru?action=get_upload_url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
-          body: JSON.stringify({ filename: pdfFile.name })
-        });
-        let data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || '获取上传链接失败');
-        const ossFileUrl = data.data.file_urls[0];
-
-        // 2. 直传 PDF 
-        this.ingest.pdf.prog = "2/4 正在高速直传 PDF 到云端进行解析...";
-        this.ingest.pdf.done = 5;
-        let putRes = await fetch(ossFileUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/pdf' },
-          body: pdfFile
-        });
-        if (!putRes.ok) throw new Error('上传 PDF 到云端失败');
-
-        // 3. 启动高精度排版解析
-        this.ingest.pdf.prog = "3/4 正在启动 AI 提取插图和数学公式，请耐心等待...";
-        this.ingest.pdf.done = 10;
-        res = await fetch('/api/mineru?action=start_task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
-          body: JSON.stringify({ file_url: ossFileUrl })
-        });
-        data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || '启动解析任务失败');
-        const taskId = data.data.task_id;
-
-        // 4. 轮询等待解析完成
-        let zipDownloadUrl = null;
-        while (true) {
-          await this.sleep(5000);
-          res = await fetch(`/api/mineru?action=status&task_id=${taskId}`, {
-            headers: { 'Authorization': 'Bearer ' + this.token }
-          });
-          data = await res.json();
-          if (!res.ok || data.error) throw new Error(data.error || '查询进度失败');
-
-          if (data.data.state === 'done') {
-            zipDownloadUrl = data.data.extract_result.download_url;
-            this.ingest.pdf.done = 100;
-            break;
-          }
-          if (data.data.state === 'failed') {
-            throw new Error("MinerU 解析异常终止，请确认该 PDF 未加密或已损坏。");
-          }
-          const p = data.data.progress || 0;
-          this.ingest.pdf.prog = `3/4 云端处理中 (保留原版排版与公式)... 当前进度: ${p}%`;
-          this.ingest.pdf.done = 10 + Math.floor(p * 0.85); // 视觉上的进度增长
-        }
-
-        // 5. 下载结果 ZIP 并组装终极 Markdown
-        this.ingest.pdf.prog = "4/4 解析完成！正在下载结果并组装免图床插图...";
-        const zipRes = await fetch(zipDownloadUrl);
-        const zipBlob = await zipRes.blob();
-        
-        // 【修复 1】JSZip 必须实例化调用 new window.JSZip()
-        const zip = await new window.JSZip().loadAsync(zipBlob);
-        
-        let markdownText = "";
-        const imageMap = {};
-
-        // 提取 Markdown 文件和图片
-        for (const filename of Object.keys(zip.files)) {
-          if (filename.endsWith('.md')) {
-            markdownText = await zip.files[filename].async('string');
-          } else if (filename.match(/\.(png|jpe?g|gif|svg)$/i)) {
-            const base64 = await zip.files[filename].async('base64');
-            const ext = filename.split('.').pop();
-            imageMap[filename] = `data:image/${ext};base64,${base64}`;
-          }
-        }
-
-        if (!markdownText) throw new Error("解压失败：未找到有效文本结果");
-
-        // 【修复 2】增加安全转义函数，防止文件名中含有 ( ) [ ] 等正则保留字导致页面崩溃白屏
-        const escapeRegExp = (string) => {
-          return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        };
-
-        // 纯本地化替换：把 Markdown 里的外部图片链接换成本地的 Base64 数据
-        for (const [imagePath, base64Data] of Object.entries(imageMap)) {
-          const shortName = imagePath.split('/').pop(); 
-          // 使用转义后的短文件名构造正则
-          const safeShortName = escapeRegExp(shortName);
-          const regex = new RegExp(`\\!\\[.*?\\]\\(.*?(?:/|\\\\)?${safeShortName}\\)`, 'g');
-          markdownText = markdownText.replace(regex, `![](${base64Data})`);
-        }
-
-        // ==========================================
-        // 核心安全算法：按 Markdown 原书标题切分保存，避免大图导致超过 DB 大小限制
-        // ==========================================
-        this.ingest.pdf.prog = "正在将排版完美的章节存入 Books 库...";
-        const sections = markdownText.split(/(?=\n#{1,3}\s)/);
-        let savedCount = 0;
-        
-        for (let i = 0; i < sections.length; i++) {
-          const sec = sections[i].trim();
-          if (!sec) continue;
-          this.ingest.pdf.prog = `正在存入第 ${savedCount + 1} 章节...`;
-          const title = this.materialBaseTitle() + (sections.length > 1 ? ` (节选 ${savedCount + 1})` : '');
-          
-          await this.saveOneMaterial({
-            id: 'mat-' + this.ingest.subject + '-' + this.bookHashId(this.materialBaseTitle() + '#miner' + i),
-            subject: this.ingest.subject,
-            title: title,
-            source: this.materialBaseTitle(),
-            page: i + 1, // 借用 page 字段作为章节排序
-            content_md: sec,
-            summary: '',
-            tags: this.ingest.chapter ? [this.ingest.chapter, 'MinerU'] : ['MinerU']
-          });
-          savedCount++;
-          this.ingest.pdf.inserted = savedCount;
-        }
-
-        this.ingest.result = { kind: 'material', inserted_questions: 0, inserted_materials: savedCount, material_sample: [] };
-        this.flash(`MinerU 解析完美结束！已将包含原版插图与公式的 ${savedCount} 个章节存入 Books。`);
-        this.loadMaterials();
-
-      } catch (error) {
-        this.flash("MinerU 提取失败: " + error.message, true);
-      } finally {
-        this.ingest.pdf.mineruBusy = false;
-        this.ingest.pdf.busy = false;
-        this.ingest.pdf.prog = '';
-      }
-    },
-    // ==========================================
-    // ==========================================
-
     async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
     rate(r){ const t=(r.right_sum||0)+(r.wrong_sum||0); return t?Math.round((r.right_sum||0)/t*100):0; },
     async startMock(){ if(!this.token)return; this.mock.finished=false; this.mock.answers={}; this.loading=true;
@@ -1178,26 +1022,17 @@ const App={
           <input type="file" accept="application/pdf,.pdf" @change="onPdfFile" style="display:none" />
         </label>
         <span v-if="ingest.pdf.pages" class="muted" style="margin-left:10px">已加载，{{ ingest.pdf.pages }} 页</span>
-        
         <div class="hint">扫描版勾「扫描页用本地 OCR」后选引擎：<b>中转站·你的视觉模型</b>（最准，识别成带标题/公式的 Markdown，按你中转额度计费）；Scribe.js / tesseract（免费本地，公式弱）；Workers AI（Cloudflare 免费额度，每天 {{ cfocr.limit }} 页封顶）。公式会输出 LaTeX 并用 KaTeX 显示。建议每次先测 1–3 页。</div>
-        
         <div class="toolbar" style="margin-top:12px" v-if="ingest.pdf.pages">
           <div class="field"><label>开始页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.start" /></div>
           <div class="field"><label>结束页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.end" /></div>
           <div class="field"><label>清晰度</label><input class="inp" type="number" step="0.1" min="1" max="2.5" v-model.number="ingest.pdf.scale" /></div>
         </div>
-        
         <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px" v-if="ingest.pdf.pages">
-          
-          <!-- 新增的高精度 MinerU 提取按钮 -->
-          <button class="btn" style="background: #4F46E5; border-color: #4F46E5;" :disabled="ingest.pdf.busy || ingest.local.busy || ingest.pdf.mineruBusy" @click="pdfToMinerU">
-            <span v-if="ingest.pdf.mineruBusy" class="spin"></span>🚀 MinerU 全本高精度解析 (完美保留公式/插图)
-          </button>
-          
-          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy || ingest.pdf.mineruBusy" @click="pdfExtractText"><span v-if="ingest.pdf.busy && !ingest.pdf.mineruBusy" class="spin"></span>本地提取文本</button>
-          <button class="btn" :disabled="ingest.pdf.busy || ingest.local.busy || ingest.pdf.mineruBusy" @click="pdfByImages"><span v-if="ingest.pdf.busy && !ingest.pdf.mineruBusy" class="spin"></span>AI OCR 当前页范围并导入（题库）</button>
-          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy || ingest.pdf.mineruBusy" @click="pdfToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>当前页范围转教材存入 Books（不调用 AI）</button>
-          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy || ingest.pdf.mineruBusy" @click="pdfAllToMaterialLocal">全部页转教材（共 {{ ingest.pdf.pages }} 页）</button>
+          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>本地提取文本</button>
+          <button class="btn" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfByImages"><span v-if="ingest.pdf.busy" class="spin"></span>AI OCR 当前页范围并导入（题库）</button>
+          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>当前页范围转教材存入 Books（不调用 AI）</button>
+          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfAllToMaterialLocal">全部页转教材（共 {{ ingest.pdf.pages }} 页）</button>
           <button v-if="ingest.local.busy" class="btn subtle" @click="ingest.local.stop=true">停止</button>
           <label class="row" style="height:40px;cursor:pointer;gap:6px"><input type="checkbox" v-model="ingest.local.ocr" /> <span class="muted">扫描页用本地 OCR</span></label>
           <div class="field" v-if="ingest.local.ocr" style="margin:0"><label>OCR 引擎</label><select v-model="ingest.local.engine" @change="ingest.local.engine==='cfai' && loadCfUsage()"><option value="relay" :disabled="!ai.hasAI && !ocrCfg.key">中转站·你的视觉模型（最准）</option><option value="scribe">Scribe.js（免费·较慢）</option><option value="tesseract">tesseract（免费·一般）</option><option value="cfai" :disabled="!ai.hasCfAI">Workers AI（免费额度{{ ai.hasCfAI?'':'·未绑定' }}）</option></select></div>
@@ -1226,7 +1061,6 @@ const App={
           <span v-if="ingest.pdf.inserted" class="muted">已导入 {{ ingest.pdf.inserted }} 题</span>
         </div>
         <div class="hint" v-if="ingest.pdf.pages">转教材将存入：<b>{{ materialBaseTitle() }}</b>（即上方「教材名称」；同名同页会覆盖，换书请改书名）</div>
-        
         <div v-if="ingest.local.busy || (ingest.local.prog && !ingest.pdf.busy)" class="ocr-panel">
           <div class="top"><div><b>本地转教材进度</b><div class="muted">不调用 AI，全程在浏览器内完成</div></div><div class="row" style="gap:10px;align-items:center"><button v-if="ingest.local.busy" class="btn subtle" style="color:#c0392b;height:32px;padding:0 14px" @click="ingest.local.stop=true">■ 停止</button><div class="pct">{{ ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0 }}%</div></div></div>
           <div class="bar accent"><span :style="{width:(ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0)+'%'}"></span></div>
@@ -1240,9 +1074,9 @@ const App={
         </div>
         <div v-if="!ingest.local.busy && ingest.local.lastPage && ingest.local.lastPage < ingest.local.endPage" class="hint" style="margin-top:10px;color:var(--accent)">已处理到第 {{ ingest.local.lastPage }} 页（共到第 {{ ingest.local.endPage }} 页未完）。「开始页」已自动设为 {{ ingest.pdf.start }}，直接再点「当前页范围转教材」即可从断点继续。</div>
         <div v-if="ingest.pdf.busy || ingest.pdf.prog" class="ocr-panel">
-          <div class="top"><div><b>{{ ingest.pdf.mineruBusy ? 'MinerU 解析进度' : 'AI OCR 进度' }}</b><div class="muted">模型：{{ ingest.pdf.mineruBusy ? 'MinerU V4 高级排版引擎' : ocrModelName }}</div></div><div class="pct">{{ ingest.pdf.total ? Math.round(ingest.pdf.done/ingest.pdf.total*100) : 0 }}%</div></div>
+          <div class="top"><div><b>AI OCR 进度</b><div class="muted">模型：{{ ocrModelName }}</div></div><div class="pct">{{ ingest.pdf.total ? Math.round(ingest.pdf.done/ingest.pdf.total*100) : 0 }}%</div></div>
           <div class="bar accent"><span :style="{width:(ingest.pdf.total ? Math.round(ingest.pdf.done/ingest.pdf.total*100) : 0)+'%'}"></span></div>
-          <div class="hint" style="margin-top:10px"><span v-if="ingest.pdf.busy" class="spin"></span> {{ ingest.pdf.prog || '等待开始' }}</div>
+          <div class="hint" style="margin-top:10px"><span v-if="ingest.pdf.busy" class="spin"></span> {{ ingest.pdf.prog || '等待开始' }} · {{ ingest.pdf.done }}/{{ ingest.pdf.total || 0 }} 页 · 已导入 {{ ingest.pdf.inserted }} 题</div>
         </div>
         <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">如果是文字 PDF，可复制文本到“AI 整理”；如果是扫描版，直接用“AI OCR 当前页范围并导入”。</div>
       </template>
