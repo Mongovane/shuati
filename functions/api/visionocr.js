@@ -56,7 +56,8 @@ export async function onRequestPost({ request, env }) {
     return json({ error: `中转站返回 ${resp.status}（请确认该模型支持图片输入）`, detail: t.slice(0, 300) }, 502);
   }
   const data = await resp.json().catch(() => null);
-  let text = String(data?.choices?.[0]?.message?.content || '').trim();
+  const choice = data?.choices?.[0];
+  let text = String(choice?.message?.content || '').trim();
   text = text.replace(/^```(?:markdown|md)?\s*/i, '').replace(/\s*```$/, '').trim();
-  return json({ text, model });
+  return json({ text, model, finish: choice?.finish_reason || '' });
 }
