@@ -71,3 +71,9 @@ CREATE TABLE IF NOT EXISTS pdfs (
   size        INTEGER,
   created_at  INTEGER DEFAULT (unixepoch())
 );
+
+-- Workers AI OCR 每日用量计数（按 UTC 日，用于免费额度硬上限）
+CREATE TABLE IF NOT EXISTS ai_usage (
+  day    TEXT PRIMARY KEY,
+  pages  INTEGER DEFAULT 0
+);
