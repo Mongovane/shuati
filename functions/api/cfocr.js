@@ -1,14 +1,17 @@
 import { json, checkAuth } from './_utils.js';
 
 const DEFAULT_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+
+// 【修改点 1】：加强 Prompt，加上更严厉的格式禁令
 const PROMPT = [
   '你是一个精确的 OCR 引擎，只转写图片中“真实存在”的文字，不做任何创作。',
   '规则：',
   '1) 用图片本来的语言（简体中文/英文）逐字转写，严禁翻译、严禁音译成拼音、严禁改写或润色。',
   '2) 保留阅读顺序、段落与换行。',
-  '3) 数学公式、符号、上下标、积分、求和等一律转成 LaTeX：行内用 $...$，独立公式用 $$...$$。',
-  '4) 只输出图片里出现的内容本身（Markdown），不要添加任何解释、前言、标题、“Title”“Introduction”等自创内容。',
-  '5) 看不清或空白处就留空，绝不编造。',
+  '3) 核心规则：数学公式、符号、上下标等一律转成 LaTeX，行内公式必须用 $ 包裹，独立段落公式必须用 $$ 包裹。',
+  '4) 严禁使用 \\[ \\] 或 \\( \\) 作为公式界定符！严禁！多行对齐推导公式请使用 $$ \\begin{aligned} ... \\end{aligned} $$。',
+  '5) 只输出纯文本（Markdown），绝对不要用 ```markdown 或 ```latex 代码块包裹，也不要输出任何无关前言。',
+  '6) 看不清或空白处就留空，绝不编造。',
 ].join('\n');
 
 function todayUTC() { return new Date().toISOString().slice(0, 10); }
@@ -22,6 +25,28 @@ async function ensureUsage(env) {
 async function usedToday(env) {
   const row = await env.DB.prepare(`SELECT pages FROM ai_usage WHERE day = ?`).bind(todayUTC()).first();
   return row ? (row.pages || 0) : 0;
+}
+
+// 【修改点 2：新增清洗函数】在 AI 返回后强制纠正格式错误
+function cleanAIOutput(text) {
+  if (!text) return '';
+  
+  // 1. 去除 AI 经常自作主张加的 markdown 代码块外壳 (如 ```markdown ... ```)
+  text = text.replace(/^```(?:markdown|latex|html|text)?\s*\n/i, '');
+  text = text.replace(/\n```\s*$/i, '');
+
+  // 2. 强制转换 LaTeX 默认定界符为前端 Markdown 兼容的 $ 和 $$
+  // Llama 经常不听话输出 \[ 和 \]，前端解析 Markdown 时会吞掉反斜杠变成 [ 和 ]
+  // 注意：在 JS 的 replace 中，'$$$$' 代表插入真实的 "$$" 字符串
+  text = text.replace(/\\\[/g, '$$$$'); 
+  text = text.replace(/\\\]/g, '$$$$');
+  
+  // 将 \( 和 \) 替换为 $
+  // 注意：在 JS 的 replace 中，'$$' 代表插入真实的 "$" 字符串
+  text = text.replace(/\\\(/g, '$$'); 
+  text = text.replace(/\\\)/g, '$$');
+
+  return text.trim();
 }
 
 // GET → 返回今日用量与上限（前端展示与闸门提示）
@@ -79,6 +104,10 @@ export async function onRequestPost({ request, env }) {
       }
     }
     text = String((out && (out.response || out.text || out.description)) || '').trim();
+    
+    // 【修改点 3】：在这里调用清洗函数，拦截并修复 AI 输出格式
+    text = cleanAIOutput(text);
+
   } catch (e) {
     return json({ error: 'Workers AI 调用失败：' + e.message, used, limit }, 502);
   }
