@@ -630,6 +630,9 @@ const App={
     // ==========================================
     // 新增 MinerU 高精度全本 PDF 解析功能
     // ==========================================
+    // ==========================================
+    // 新增 MinerU 高精度全本 PDF 解析功能 (已修复白屏Bug)
+    // ==========================================
     async pdfToMinerU() {
       const pdfFile = this.ingest.pdf.file;
       if (!pdfFile) { this.flash('请先选择 PDF 文件', true); return; }
@@ -705,7 +708,9 @@ const App={
         this.ingest.pdf.prog = "4/4 解析完成！正在下载结果并组装免图床插图...";
         const zipRes = await fetch(zipDownloadUrl);
         const zipBlob = await zipRes.blob();
-        const zip = await window.JSZip.loadAsync(zipBlob);
+        
+        // 【修复 1】JSZip 必须实例化调用 new window.JSZip()
+        const zip = await new window.JSZip().loadAsync(zipBlob);
         
         let markdownText = "";
         const imageMap = {};
@@ -723,10 +728,17 @@ const App={
 
         if (!markdownText) throw new Error("解压失败：未找到有效文本结果");
 
+        // 【修复 2】增加安全转义函数，防止文件名中含有 ( ) [ ] 等正则保留字导致页面崩溃白屏
+        const escapeRegExp = (string) => {
+          return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        };
+
         // 纯本地化替换：把 Markdown 里的外部图片链接换成本地的 Base64 数据
         for (const [imagePath, base64Data] of Object.entries(imageMap)) {
           const shortName = imagePath.split('/').pop(); 
-          const regex = new RegExp(`\\!\\[.*?\\]\\(.*?(?:/|\\\\)?${shortName}\\)`, 'g');
+          // 使用转义后的短文件名构造正则
+          const safeShortName = escapeRegExp(shortName);
+          const regex = new RegExp(`\\!\\[.*?\\]\\(.*?(?:/|\\\\)?${safeShortName}\\)`, 'g');
           markdownText = markdownText.replace(regex, `![](${base64Data})`);
         }
 
@@ -769,6 +781,7 @@ const App={
         this.ingest.pdf.prog = '';
       }
     },
+    // ==========================================
     // ==========================================
 
     async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
