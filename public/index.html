@@ -351,7 +351,7 @@ const App={
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, stop:false, lastPage:0, endPage:0 }, mdFiles:[] },
+    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[] },
     stats:null, statsLoading:false,
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
@@ -526,7 +526,7 @@ const App={
       const n=ed-st+1;
       if(n>30 && !confirm('将处理 '+n+' 页（第 '+st+'–'+ed+' 页）。\n会自动分批进行；扫描页本地 OCR 较慢，请保持本标签页在前台、勿让电脑休眠。\n确定开始？')) return;
       const BATCH=25;
-      this.ingest.local.busy=true; this.ingest.local.stop=false; this.ingest.local.done=0; this.ingest.local.total=n; this.ingest.local.inserted=0; this.ingest.local.lastPage=0; this.ingest.local.endPage=ed; this.ingest.result=null;
+      this.ingest.local.busy=true; this.ingest.local.stop=false; this.ingest.local.done=0; this.ingest.local.total=n; this.ingest.local.inserted=0; this.ingest.local.lastPage=0; this.ingest.local.endPage=ed; this.ingest.local.log=[]; this.ingest.result=null;
       let tess=null, saved=0, scanned=0;
       try{
         for(let p=st;p<=ed;p++){
@@ -556,11 +556,11 @@ const App={
               if(this.cfocr.used>=effLimit){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.flash('已达今日设定上限（'+effLimit+' 页，约 '+(effLimit*this.cfocr.npp)+' 神经元）。停在第 '+p+' 页，明天或调高上限再继续。',true); cv.width=cv.height=0; break; }
               this.ingest.local.prog='Workers AI 第 '+p+'/'+ed+' 页（今日 '+this.cfocr.used+'/'+effLimit+'）';
               try{ text=await this.cfocrOcrCanvas(cv); }
-              catch(e){ cv.width=cv.height=0; if(e.message==='unauth')throw e; if(e.quota||e.fatal){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.flash(e.message+(e.quota?('（已停在第 '+p+' 页，明天或换引擎从这继续）'):''),true); break; } this.flash('第 '+p+' 页 Workers AI 出错，已跳过：'+e.message,true); this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p; continue; }
+              catch(e){ cv.width=cv.height=0; if(e.message==='unauth')throw e; if(e.quota||e.fatal){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.logPage(p,'err',e.message); this.flash(e.message+(e.quota?('（已停在第 '+p+' 页，明天或换引擎从这继续）'):''),true); break; } this.logPage(p,'err','Workers AI 出错：'+e.message); this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p; continue; }
             } else if(this.ingest.local.engine==='relay'){
               this.ingest.local.prog='中转站视觉 OCR 第 '+p+'/'+ed+' 页…';
               try{ text=await this.relayOcrCanvas(cv); }
-              catch(e){ cv.width=cv.height=0; if(e.message==='unauth')throw e; if(e.fatal){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.flash(e.message,true); break; } this.flash('第 '+p+' 页中转站出错，已跳过：'+e.message,true); this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p; continue; }
+              catch(e){ cv.width=cv.height=0; if(e.message==='unauth')throw e; if(e.fatal){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.logPage(p,'err',e.message); this.flash(e.message,true); break; } this.logPage(p,'err','中转站出错：'+e.message); this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p; continue; }
             } else {
               if(!tess)tess=await this.ensureTesseract(); const r=await tess.recognize(cv); text=String(r?.data?.text||'').trim();
             }
@@ -568,11 +568,11 @@ const App={
             cv.width=cv.height=0;
           }
           this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p;
-          if(!text)continue;
+          if(!text){ this.logPage(p,'skip', usedOcr?'OCR 没识别出文字（模型可能不支持图片/空白页）':'无文字层（扫描页？可勾选 OCR）'); continue; }
           const title=this.materialBaseTitle()+' · 第 '+p+' 页';
           const md=this.mdFromText(text)+(usedOcr?('\n\n> 本页由'+(this.ingest.local.engine==='relay'?'中转站视觉模型':this.ingest.local.engine==='cfai'?'Workers AI':'本地 OCR')+'识别，可能有误差。'):'');
           const d=await this.saveOneMaterial({id:'mat-'+this.ingest.subject+'-'+this.bookHashId(this.materialBaseTitle()+'#p'+p),subject:this.ingest.subject,title,source:this.materialBaseTitle(),page:p,content_md:md,summary:'',tags:this.ingest.chapter?[this.ingest.chapter,'本地导入']:['本地导入']});
-          saved+=d.inserted||1; this.ingest.local.inserted=saved;
+          saved+=d.inserted||1; this.ingest.local.inserted=saved; this.logPage(p,'ok','已存 '+md.length+' 字'+(usedOcr?'（'+(this.ingest.local.engine==='relay'?'中转站':this.ingest.local.engine==='cfai'?'Workers AI':this.ingest.local.engine)+'）':'（文字层）'));
         }
         if(!this.ingest.local.stop){ this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:saved,material_sample:[]}; if(saved===0){ this.flash(this.ingest.local.ocr?'未保存任何内容：本地 OCR 没识别出文字，可能是空白页或图像太糊，可调高清晰度后重试。':'未保存任何内容：这些页提取不到文字（多为扫描版）。请勾选「扫描页用本地 OCR」后重试，或用「AI OCR…只当教材」。',true); } else { this.flash('已保存 '+saved+' 段教材到 Books（未调用 AI）'+(scanned?('，其中 '+scanned+' 页用本地 OCR'):'')); } }
         this.loadMaterials();
@@ -594,6 +594,7 @@ const App={
     async pdfvRenderThumb(n,el){ const doc=this._pdfvDoc; if(!doc||!el)return; try{ const page=await doc.getPage(n); const vp=page.getViewport({scale:0.28}); const cv=el.querySelector('canvas'); if(!cv)return; cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; }catch(e){} },
     pdfvClose(){ this.pdfv.open=false; this._pdfvDoc=null; if(this._pdfvObs){ this._pdfvObs.disconnect(); this._pdfvObs=null; } },
     saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },
+    logPage(p,t,msg){ const arr=this.ingest.local.log; arr.push({p,t,msg}); if(arr.length>500)arr.splice(0,arr.length-500); },
     async relayOcrCanvas(cv){ const b64=cv.toDataURL('image/png').split(',')[1]; const body={image_b64:b64}; if((this.ocrCfg.model||'').trim())body.model=this.ocrCfg.model.trim(); if((this.ocrCfg.base||'').trim())body.base_url=this.ocrCfg.base.trim(); if((this.ocrCfg.key||'').trim())body.api_key=this.ocrCfg.key.trim(); const res=await fetch('/api/visionocr',{method:'POST',headers:{'authorization':'Bearer '+this.token,'content-type':'application/json'},body:JSON.stringify(body)}); const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } if(res.status===404 || !ct.includes('json')){ const e=new Error('中转站 OCR 接口不可用：请确认已部署 functions/api/visionocr.js 并重新部署。'); e.fatal=true; throw e; } if(!res.ok){ const e=new Error((d&&d.error)||('中转站失败 HTTP '+res.status)); if(/未配置/.test(e.message))e.fatal=true; throw e; } return String((d&&d.text)||'').trim(); },
     pdfShelfBySubject(){ const g={math:[],computer:[],politics:[],english:[],other:[]}; for(const it of (this.pdfShelf.items||[])){ (g[it.subject]||g.other).push(it); } return g; },
     async loadPdfShelf(){ if(!this.token)return; this.pdfShelf.loading=true; this.pdfShelf.note=''; try{ const res=await fetch('/api/pdfs',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(res.status===404 || !ct.includes('json')){ this.pdfShelf.cloudReady=false; this.pdfShelf.note='云端未就绪：检测不到 /api/pdfs 接口。请确认已把 functions/api/pdfs.js 提交并重新部署。'; } else { const d=await res.json().catch(()=>null); if(!res.ok){ this.pdfShelf.cloudReady=false; this.pdfShelf.note=(d&&d.error)||('云端不可用（HTTP '+res.status+'）'); } else { this.pdfShelf.items=d.items||[]; this.pdfShelf.cloudReady=true; } } }catch(e){ this.pdfShelf.cloudReady=false; this.pdfShelf.note='云端连接失败：'+e.message; } this.pdfShelf.loading=false; },
@@ -1064,6 +1065,12 @@ const App={
           <div class="top"><div><b>本地转教材进度</b><div class="muted">不调用 AI，全程在浏览器内完成</div></div><div class="pct">{{ ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0 }}%</div></div>
           <div class="bar accent"><span :style="{width:(ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0)+'%'}"></span></div>
           <div class="hint" style="margin-top:10px"><span v-if="ingest.local.busy" class="spin"></span> {{ ingest.local.prog || '等待开始' }} · {{ ingest.local.done }}/{{ ingest.local.total || 0 }} · 已存 {{ ingest.local.inserted }} 段教材</div>
+          <div v-if="ingest.local.log.length" style="margin-top:10px">
+            <div class="muted" style="font-size:12px;margin-bottom:4px">逐页明细（共 {{ ingest.local.log.length }} 条，最新在下）：</div>
+            <div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px;font-size:12.5px;line-height:1.6;font-family:var(--mono,monospace)">
+              <div v-for="(l,i) in ingest.local.log" :key="i" :style="{color: l.t==='ok'?'var(--ink)': l.t==='skip'?'#b8860b':'#c0392b'}">{{ l.t==='ok'?'✓':l.t==='skip'?'⚠':'✗' }} 第 {{ l.p }} 页 · {{ l.msg }}</div>
+            </div>
+          </div>
         </div>
         <div v-if="!ingest.local.busy && ingest.local.lastPage && ingest.local.lastPage < ingest.local.endPage" class="hint" style="margin-top:10px;color:var(--accent)">已处理到第 {{ ingest.local.lastPage }} 页（共到第 {{ ingest.local.endPage }} 页未完）。「开始页」已自动设为 {{ ingest.pdf.start }}，直接再点「当前页范围转教材」即可从断点继续。</div>
         <div v-if="ingest.pdf.busy || ingest.pdf.prog" class="ocr-panel">
