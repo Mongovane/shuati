@@ -61,7 +61,18 @@ export async function onRequestPost({ request, env }) {
   const model = env.CF_OCR_MODEL || DEFAULT_MODEL;
   let text = '';
   try {
-    const out = await env.AI.run(model, { image: [...bytes], prompt: PROMPT, max_tokens: 2048 });
+    let out;
+    try {
+      out = await env.AI.run(model, { image: [...bytes], prompt: PROMPT, max_tokens: 2048 });
+    } catch (e1) {
+      // Llama 3.2 等模型首次使用需先提交 'agree' 接受许可（错误码 5016）。自动接受后重试一次。
+      if (/\b5016\b|submit the prompt 'agree'|must submit/i.test(e1.message || '')) {
+        try { await env.AI.run(model, { prompt: 'agree' }); } catch (_) {}
+        out = await env.AI.run(model, { image: [...bytes], prompt: PROMPT, max_tokens: 2048 });
+      } else {
+        throw e1;
+      }
+    }
     text = String((out && (out.response || out.text || out.description)) || '').trim();
   } catch (e) {
     return json({ error: 'Workers AI 调用失败：' + e.message, used, limit }, 502);
