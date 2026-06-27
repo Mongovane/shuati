@@ -19,13 +19,29 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const action = url.searchParams.get('action');
   const isAgent = (action || '').startsWith('agent');
+  const noToken = isAgent || action === 'upload';
 
-  // 精准解析 API 需要 Token；Agent 轻量 API 免 Token
-  if (!isAgent && !tokenOf(env)) {
+  // 精准解析 API 需要 Token；Agent 轻量 API 与 上传代理 免 Token
+  if (!noToken && !tokenOf(env)) {
     return json({ error: '服务端未配置 MinerU 密钥。精准模式需在 Cloudflare Pages → 环境变量 添加 MINERU_API_KEY（控制台「API 管理 → 创建 Token」生成），然后重新部署。或改用「免 Token 轻量」模式。' }, 500);
   }
 
   try {
+    // 上传代理：浏览器把文件 PUT 到本接口，由服务器转 PUT 到 MinerU 预签名地址（绕过 OSS 跨域 403）
+    if (action === 'upload' && (request.method === 'PUT' || request.method === 'POST')) {
+      const up = url.searchParams.get('upload_url');
+      if (!up) return json({ error: '缺少 upload_url' }, 400);
+      let uphost = '';
+      try { uphost = new URL(up).host; } catch { return json({ error: 'upload_url 非法' }, 400); }
+      if (!/(?:^|\.)(?:mineru\.net|openxlab\.org\.cn|aliyuncs\.com)$/i.test(uphost)) return json({ error: '不允许的上传域名：' + uphost }, 400);
+      const bytes = await request.arrayBuffer();
+      if (!bytes || bytes.byteLength === 0) return json({ error: '上传内容为空' }, 400);
+      // 不设置 Content-Type（MinerU 预签名要求不带该头），ArrayBuffer body 不会自动添加
+      const put = await fetch(up, { method: 'PUT', body: bytes });
+      if (!put.ok) { const t = await put.text().catch(() => ''); return json({ error: '转发上传到 MinerU 失败 HTTP ' + put.status, detail: t.slice(0, 300) }, 502); }
+      return json({ ok: true });
+    }
+
     // 1) 申请上传地址（批量），返回 batch_id 与预签名上传 URL
     if (request.method === 'POST' && action === 'get_upload_url') {
       const body = await request.json().catch(() => ({}));
