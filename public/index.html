@@ -166,6 +166,10 @@ a{color:var(--accent)}
 .bk-reader.toc-collapsed{grid-template-columns:1fr}
 .bk-reader.toc-collapsed .bk-toc{display:none}
 .bk-toctoggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;white-space:nowrap}
+.subj-edit{padding:10px 0;border-bottom:1px solid var(--line)}
+.subj-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.subj-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--ink-soft);background:var(--surface-2);padding:3px 8px;border-radius:6px;min-width:78px;text-align:center}
+.subj-add{margin-top:14px;padding-top:12px}
 .bank-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 2px 14px;font-size:13px}
 .bank-check{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
 .bank-row{display:flex;align-items:flex-start;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;transition:.12s}
@@ -436,6 +440,7 @@ const App={
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
+    subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', busy:false },
     pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'' },
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
@@ -477,13 +482,17 @@ const App={
   },
   methods:{
     bookKeyOf(m){ const s=String(m.source||'').replace(/[-_\s]*P\d+\s*$/i,'').trim(); if(s)return s; const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t||'未命名教材'; },
-    classifySubject(t){ const s=String(t||'');
-      if(/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|算法|数据结构|时间复杂度|空间复杂度|链表|二叉树|操作系统|数据库|编译原理|指针|数组|哈希|递归|进制转换|源(程序|代码)|伪代码|for\s*\([^;]*;|while\s*\(/.test(s))return'computer';
-      if(/马克思|马克思主义|毛泽东|邓小平|习近平|社会主义|中国共产党|中国特色|辩证唯物|历史唯物|生产关系|生产力|无产阶级|资本主义|党的领导|思想政治|毛概|马原|史纲|思修|科学发展观|三个代表|实事求是|改革开放|新民主主义/.test(s))return'politics';
-      if(/\\int|\\lim|\\sum|\\frac|\\sqrt|\\partial|\\overrightarrow|导数|积分|极限|微分|矩阵|行列式|向量|特征值|求导|定积分|不定积分|级数|偏导|微分方程|连续函数|单调(递增|递减)|可导|渐近线/.test(s))return'math';
+    classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.v===c);
+      if(has('computer')&&/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|for\s*\([^;]*;|while\s*\(/.test(s))return'computer';
+      if(has('math')&&/\\int|\\lim|\\sum|\\frac|\\sqrt|\\partial|\\overrightarrow|\\mathrm\{d\}/.test(s))return'math';
       const letters=(s.match(/[A-Za-z]/g)||[]).length, cjk=(s.match(/[\u4e00-\u9fa5]/g)||[]).length, len=s.replace(/\s/g,'').length;
-      if(len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
+      if(has('english')&&len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
+      for(const sub of this.subjects){ const kws=String(sub.keywords||'').split(/[，,;；\s]+/).map(k=>k.trim()).filter(k=>k.length>=2); for(const k of kws){ if(s.includes(k))return sub.v; } }
       return ''; },
+    async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); } }catch(e){} },
+    async subjAdd(){ const m=this.subjMgr; const code=String(m.code||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,''); const name=String(m.name||'').trim(); if(!code){ this.flash('科目代码只能用小写字母/数字/下划线',true); return; } if(!name){ this.flash('请填写科目名称',true); return; } m.busy=true; try{ await this.api('/api/subjects',{method:'POST',body:JSON.stringify({code,name,sort:Number(m.sort)||(this.subjects.length+1),keywords:m.keywords||''})}); this.flash('已新增科目「'+name+'」'); this.subjMgr={ code:'', name:'', sort:'', keywords:'', busy:false }; await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('新增失败：'+e.message,true); } m.busy=false; },
+    async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:Number(s.sort)||0,keywords:s.keywords||''})}); this.flash('已保存「'+s.t+'」'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } },
+    async subjDelete(s){ const others=this.subjects.filter(x=>x.v!==s.v); let moveTo=''; if(confirm('删除科目「'+s.t+'」。\n\n点「确定」=同时把该科目下的题目转移到其他科目；点「取消」=只删科目、旧题保留原标记（下拉不再显示该科目）。')){ const names=others.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const pick=prompt('把「'+s.t+'」的题目转到哪个科目？输入序号：\n'+names); const idx=parseInt(pick,10)-1; if(others[idx])moveTo=others[idx].v; else { this.flash('序号无效，已取消',true); return; } } try{ await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,moveTo})}); this.flash('已删除科目「'+s.t+'」'+(moveTo?('，题目已转到「'+this.subjName(moveTo)+'」'):'')); await this.loadSubjects(); this.loadMeta&&this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
     guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
     async setBookSubject(subj){ const b=this.currentBook; if(!b)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.materials.loading=true; try{ for(const m of b.pages){ await this.saveOneMaterial({id:m.id,subject:subj,title:m.title,source:m.source||null,page:m.page||null,page_image:m.page_image||null,content_md:m.content_md,summary:m.summary||'',tags:Array.isArray(m.tags)?m.tags:[]}); } this.flash('已将《'+b.title+'》归到「'+this.subjName(subj)+'」'); await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('修改科目失败：'+e.message,true); } this.materials.loading=false; },
     rewriteMdImages(s){ return String(s||'').replace(/\]\(\s*\.?\/?public\//g,'](/').replace(/\]\(\s*textbooks-pages\//g,'](/textbooks-pages/').replace(/(<img[^>]*\bsrc=["'])\.?\/?public\//g,'$1/'); },
@@ -518,7 +527,7 @@ const App={
       return data;
     },
     saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问码',true); return; }
-      this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，可以开始使用'); this.loadMeta(); this.go('practice'); },
+      this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，可以开始使用'); this.loadSubjects(); this.loadMeta(); this.go('practice'); },
     logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('已退出登录'); },
     go(v){ this.view=v;
       if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); this.startSession(); }
@@ -792,7 +801,7 @@ const App={
     window.addEventListener('focus', this.onFocus);
     try{ const oc=JSON.parse(localStorage.getItem('zb_ocrcfg')||'null'); if(oc&&typeof oc==='object'){ this.ocrCfg.model=oc.model||''; this.ocrCfg.base=oc.base||''; this.ocrCfg.key=oc.key||''; } }catch(_){}
     try{ this.bookTocOpen = (typeof window!=='undefined') ? window.innerWidth>860 : true; }catch(_){}
-    if(this.token){ this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession(); } else { this.view='settings'; }
+    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession(); } else { this.view='settings'; }
   },
   beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); },
   template:`
@@ -1319,6 +1328,31 @@ const App={
         </div>
         <div class="hint" style="margin-top:16px">访问码是你在 Cloudflare Pages 控制台设置的 <code>APP_TOKEN</code> 环境变量。它用于保护数据并防止他人使用你的 AI 额度。仅存储在当前浏览器中。</div>
       </div>
+      <div class="card" style="max-width:680px;margin-top:14px">
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px">科目管理</div>
+        <div class="hint" style="margin-bottom:14px">在这里增删改科目;新增后,刷题、题库、导入等所有科目下拉会自动出现该科目。「关键词」用于导入与「智能归类」时自动判断科目(术语类,逗号分隔);代码 / 数学符号 / 英文等结构特征已内置在程序里,无需填写。</div>
+        <div v-for="s in subjects" :key="s.v" class="subj-edit">
+          <div class="subj-row">
+            <span class="subj-code">{{ s.v }}</span>
+            <input class="inp" style="width:140px" v-model="s.t" placeholder="科目名称" />
+            <input class="inp" type="number" style="width:72px" v-model="s.sort" title="排序(小在前)" />
+            <button class="btn subtle xs" @click="subjSave(s)">保存</button>
+            <button class="bk-del xs" @click="subjDelete(s)">删除</button>
+          </div>
+          <input class="inp" style="width:100%;margin-top:6px" v-model="s.keywords" placeholder="自动判断关键词，逗号分隔（可留空）" />
+        </div>
+        <div class="subj-add">
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px">＋ 新增科目</div>
+          <div class="subj-row">
+            <input class="inp" style="width:130px" v-model="subjMgr.code" placeholder="代码 如 major" title="小写字母/数字/下划线" />
+            <input class="inp" style="width:140px" v-model="subjMgr.name" placeholder="名称 如 专业课" />
+            <input class="inp" type="number" style="width:72px" v-model="subjMgr.sort" placeholder="排序" />
+            <button class="btn xs" :disabled="subjMgr.busy" @click="subjAdd"><span v-if="subjMgr.busy" class="spin"></span>新增</button>
+          </div>
+          <input class="inp" style="width:100%;margin-top:6px" v-model="subjMgr.keywords" placeholder="关键词，逗号分隔（可留空，之后也能改）" />
+        </div>
+      </div>
+
       <div class="card" style="max-width:520px;margin-top:14px">
         <div class="field" style="margin-bottom:14px"><label>显示名称（浏览器标签页 + 页头）</label>
           <input class="inp" style="width:100%" v-model="appName" placeholder="例如：刷题 / 资料库 / 仪表盘 / 笔记" />
