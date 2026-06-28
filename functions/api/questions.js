@@ -63,3 +63,42 @@ export async function onRequestGet({ request, env }) {
     return json({ error: '查询失败：' + e.message }, 500);
   }
 }
+
+// —— 删除题目（按 id 批量）——
+export async function onRequestDelete({ request, env }) {
+  const auth = checkAuth(request, env);
+  if (!auth.ok) return auth.resp;
+  let body;
+  try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
+  const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
+  if (!ids.length) return json({ error: '缺少要删除的题目 id' }, 400);
+  try {
+    const ph = ids.map(() => '?').join(',');
+    await env.DB.prepare(`DELETE FROM progress WHERE question_id IN (${ph})`).bind(...ids).run();
+    const r = await env.DB.prepare(`DELETE FROM questions WHERE id IN (${ph})`).bind(...ids).run();
+    const deleted = (r && r.meta && r.meta.changes != null) ? r.meta.changes : ids.length;
+    return json({ ok: true, deleted });
+  } catch (e) {
+    return json({ error: '删除失败：' + e.message }, 500);
+  }
+}
+
+// —— 更新题目科目（按 id 批量）——
+export async function onRequestPatch({ request, env }) {
+  const auth = checkAuth(request, env);
+  if (!auth.ok) return auth.resp;
+  let body;
+  try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
+  const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
+  const subject = body && typeof body.subject === 'string' ? body.subject.trim() : '';
+  if (!ids.length) return json({ error: '缺少题目 id' }, 400);
+  if (!subject) return json({ error: '缺少 subject' }, 400);
+  try {
+    const ph = ids.map(() => '?').join(',');
+    const r = await env.DB.prepare(`UPDATE questions SET subject = ? WHERE id IN (${ph})`).bind(subject, ...ids).run();
+    const updated = (r && r.meta && r.meta.changes != null) ? r.meta.changes : ids.length;
+    return json({ ok: true, updated });
+  } catch (e) {
+    return json({ error: '更新失败：' + e.message }, 500);
+  }
+}
