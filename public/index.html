@@ -193,8 +193,11 @@ a{color:var(--accent)}
 .bk-body .rich ol{padding-left:1.9em;margin:12px 0}
 .bk-body .rich ol>li{margin:10px 0;padding-left:2px}
 .bk-body .rich ol>li::marker{font-weight:700;color:var(--ink)}
-.bk-body .rich .katex-display{overflow-x:auto;overflow-y:hidden;max-width:100%;padding:4px 2px}
+.bk-body .rich .katex-display{overflow-x:auto;overflow-y:hidden;max-width:100%;text-align:left;padding:4px 0 8px}
 .bk-body .rich .katex-display>.katex{white-space:nowrap}
+.bk-body .rich .katex-display::-webkit-scrollbar{height:7px}
+.bk-body .rich .katex-display::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.bk-body .rich .katex-display::-webkit-scrollbar-thumb:hover{background:var(--ink-soft)}
 .rich .katex-display{overflow-x:auto;overflow-y:hidden;max-width:100%}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
