@@ -1,1383 +1,299 @@
-<!doctype html>
-<html lang="zh-CN" data-theme="light">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>刷题文档</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='3' width='16' height='18' rx='3' fill='%234b5563'/%3E%3Crect x='7' y='7' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='11' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='15' width='6' height='1.6' rx='.8' fill='%23ffffff'/%3E%3C/svg%3E" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" />
-<style>
-:root{
-  --bg:#F5F6F2; --surface:#FFFFFF; --surface-2:#EEF0EA;
-  --ink:#1A1F2B; --ink-soft:#616A7D; --line:#E3E6DF;
-  --accent:#2E45C4; --accent-soft:#E8EBFA;
-  --ok:#1B7A47; --ok-soft:#E4F2E9; --ok-line:#9FD3B4;
-  --bad:#C5362E; --bad-soft:#FAE7E5; --bad-line:#E8A9A4;
-  --warn:#9A6B12;
-  --shadow:0 1px 2px rgba(20,25,40,.05),0 6px 18px rgba(20,25,40,.06);
-  --radius:14px;
-  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans SC","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  --mono:"JetBrains Mono","SFMono-Regular","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  --c-kw:#9333C0; --c-str:#1B7A47; --c-num:#B5530F; --c-com:#8A93A3; --c-fn:#2E45C4; --c-ty:#0E7490;
+import { json, checkAuth } from './_utils.js';
+
+const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
+const VALID_TYPES = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer', 'code'];
+
+// —— 结构特征判科目（代码语法 / 数学 TeX 符号 / 英文占比）——
+function structuralSubject(s) {
+  if (/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|for\s*\([^;]*;|while\s*\(/.test(s)) return 'computer';
+  if (/\\int|\\lim|\\sum|\\frac|\\sqrt|\\partial|\\overrightarrow|\\mathrm\{d\}/.test(s)) return 'math';
+  const letters = (s.match(/[A-Za-z]/g) || []).length;
+  const cjk = (s.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const len = s.replace(/\s/g, '').length;
+  if (len >= 12 && letters >= len * 0.55 && cjk <= len * 0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s)) return 'english';
+  return '';
 }
-[data-theme="dark"]{
-  --bg:#10141B; --surface:#161B23; --surface-2:#1E2530;
-  --ink:#E6E9F0; --ink-soft:#98A1B2; --line:#28303C;
-  --accent:#8AA0FF; --accent-soft:#1E2742;
-  --ok:#54C088; --ok-soft:#15281E; --ok-line:#2E5C42;
-  --bad:#F0746B; --bad-soft:#2C1816; --bad-line:#5C322E;
-  --warn:#D6A24A;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 22px rgba(0,0,0,.4);
-  --c-kw:#C792EA; --c-str:#7FD89B; --c-num:#E0A06A; --c-com:#6B7686; --c-fn:#8AA0FF; --c-ty:#5CC9D8;
+
+// —— 综合判科目：先结构特征，再按 subjects 表里的术语关键词匹配（仅强特征命中才返回，否则 ''）——
+function guessSubjectFromText(text, subjList) {
+  const s = String(text || '');
+  const codes = new Set((subjList || []).map((x) => x.code));
+  const st = structuralSubject(s);
+  if (st && (codes.size === 0 || codes.has(st))) return st;
+  for (const sub of (subjList || [])) {
+    const kws = String(sub.keywords || '').split(/[，,;；\s]+/).map((k) => k.trim()).filter((k) => k.length >= 2);
+    for (const k of kws) { if (s.includes(k)) return sub.code; }
+  }
+  return '';
 }
-*{box-sizing:border-box}
-html,body{margin:0;padding:0}
-body{background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.6}
-button{font-family:inherit;cursor:pointer}
-input,select,textarea{font-family:inherit;font-size:15px}
-.topbar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.topbar-in{max-width:860px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:12px}
-.brand{display:flex;align-items:baseline;gap:9px;font-weight:700;letter-spacing:-.02em;font-size:18px}
-.brand .dot{width:9px;height:9px;border-radius:2px;background:var(--accent);transform:rotate(45deg);display:inline-block;position:relative;top:-1px}
-.brand small{font-weight:500;color:var(--ink-soft);font-size:12px;letter-spacing:0}
-.spacer{flex:1}
-.icon-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:grid;place-items:center;font-size:17px;transition:.15s}
-.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
-.tabs{max-width:860px;margin:0 auto;padding:10px 12px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tab{flex:0 0 auto;padding:8px 14px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--ink-soft);font-size:14px;font-weight:600;white-space:nowrap;transition:.15s}
-.tab:hover{color:var(--ink)}
-.tab.active{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
-.tab .badge{margin-left:6px;font-size:11px;background:var(--bad);color:#fff;border-radius:999px;padding:1px 6px;font-weight:700}
-.wrap{max-width:860px;margin:0 auto;padding:18px 18px 90px}
-.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px}
-.field{display:flex;flex-direction:column;gap:4px}
-.field label{font-size:11px;color:var(--ink-soft);font-weight:600;letter-spacing:.02em;text-transform:uppercase}
-select,.inp{height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:120px}
-select:focus,.inp:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:1px;border-color:var(--accent)}
-.btn{height:40px;padding:0 18px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:700;font-size:14px;transition:.15s;display:inline-flex;align-items:center;gap:7px}
-.btn:hover{filter:brightness(1.06)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.btn.ghost{background:transparent;color:var(--accent)}
-.btn.subtle{background:var(--surface);color:var(--ink);border-color:var(--line)}
-.btn.subtle:hover{border-color:var(--accent);color:var(--accent)}
-textarea{width:100%;min-height:160px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);resize:vertical;line-height:1.6}
-textarea.code{font-family:var(--mono);font-size:13.5px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 22px 20px}
-.q-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-.chip{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-soft)}
-.chip.accent{background:var(--accent-soft);color:var(--accent)}
-.diff{letter-spacing:1px;color:var(--warn);font-size:12px}
-.star{margin-left:auto;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--ink-soft);font-size:16px}
-.star.on{color:var(--warn);border-color:var(--warn)}
-.passage{background:var(--surface-2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:16px;font-size:14.5px;color:var(--ink-soft)}
-.stem{font-size:17px;font-weight:600;margin-bottom:16px;line-height:1.7}
-.opt{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:11px;margin-bottom:9px;background:var(--surface);transition:.12s;cursor:pointer;position:relative}
-.opt:hover{border-color:var(--accent)}
-.opt .key{flex:0 0 26px;height:26px;border-radius:7px;border:1px solid var(--line);display:grid;place-items:center;font-weight:700;font-size:13px;color:var(--ink-soft)}
-.opt.sel{border-color:var(--accent);background:var(--accent-soft)}
-.opt.sel .key{background:var(--accent);color:#fff;border-color:var(--accent)}
-.opt.correct{border-color:var(--ok-line);background:var(--ok-soft)}
-.opt.correct .key{background:var(--ok);color:#fff;border-color:var(--ok)}
-.opt.wrong{border-color:var(--bad-line);background:var(--bad-soft)}
-.opt.wrong .key{background:var(--bad);color:#fff;border-color:var(--bad)}
-.opt .mark{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:800;font-size:15px}
-.opt.correct .mark{color:var(--ok)}
-.opt.wrong .mark{color:var(--bad)}
-.opt.disabled{cursor:default}
-.opt-body{flex:1;padding-top:1px}
-.tf-row{display:flex;gap:12px;margin-bottom:6px}
-.tf{flex:1;padding:14px;text-align:center;border:1px solid var(--line);border-radius:11px;background:var(--surface);font-weight:700;transition:.12s;cursor:pointer}
-.tf.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
-.tf.correct{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
-.tf.wrong{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad)}
-.verdict{display:flex;align-items:center;gap:9px;font-weight:700;margin:16px 0 10px;flex-wrap:wrap}
-.verdict.ok{color:var(--ok)} .verdict.bad{color:var(--bad)}
-.verdict .tag{font-size:12px;padding:2px 10px;border-radius:999px}
-.verdict.ok .tag{background:var(--ok-soft)} .verdict.bad .tag{background:var(--bad-soft)}
-.ref{background:var(--surface-2);border-radius:11px;padding:14px 16px;margin-top:10px}
-.ref h5{margin:0 0 6px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
-.selfgrade{display:flex;gap:10px;margin:14px 0 4px;align-items:center;flex-wrap:wrap}
-.selfgrade .q{font-size:13px;color:var(--ink-soft);margin-right:2px}
-.note-toggle{margin-top:12px;font-size:13px;color:var(--accent);background:none;border:none;padding:0;font-weight:600}
-.q-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
-.rich :is(p){margin:.2em 0}
-.rich pre{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;margin:.5em 0}
-.rich code{font-family:var(--mono);font-size:13.5px}
-.rich :not(pre)>code{background:var(--surface-2);padding:1px 6px;border-radius:6px;font-size:.9em}
-.rich pre code{display:block;line-height:1.55;background:none;padding:0}
-.hljs-keyword,.hljs-built_in{color:var(--c-kw)} .hljs-string{color:var(--c-str)}
-.hljs-number,.hljs-literal{color:var(--c-num)} .hljs-comment{color:var(--c-com);font-style:italic}
-.hljs-title,.hljs-title.function_{color:var(--c-fn)} .hljs-type,.hljs-class .hljs-title{color:var(--c-ty)}
-.hljs-attr,.hljs-attribute{color:var(--c-ty)}
-.empty{text-align:center;color:var(--ink-soft);padding:60px 20px}
-.empty .big{font-size:40px;margin-bottom:10px;opacity:.5}
-.spin{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px}
-@keyframes sp{to{transform:rotate(360deg)}}
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
-.stat .n{font-size:26px;font-weight:800;letter-spacing:-.02em}
-.stat .l{font-size:12px;color:var(--ink-soft);margin-top:2px}
-.subj-row{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
-.subj-row .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:600;gap:10px;flex-wrap:wrap}
-.bar{height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden}
-.bar>span{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .5s}
-.bar.accent>span{background:var(--accent)}
-.ocr-panel{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
-.ocr-panel .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
-.ocr-panel .pct{font-family:var(--mono);font-weight:800;color:var(--accent)}
-.muted{color:var(--ink-soft);font-size:13px}
-.mock-bar{position:sticky;top:62px;z-index:20;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 16px;display:flex;align-items:center;gap:14px;margin-bottom:16px;box-shadow:var(--shadow);flex-wrap:wrap}
-.timer{font-family:var(--mono);font-weight:700;font-size:18px}
-.timer.warn{color:var(--bad)}
-.stamp{width:128px;height:128px;border-radius:50%;border:4px solid var(--accent);color:var(--accent);display:grid;place-items:center;transform:rotate(-9deg);margin:6px auto 14px;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
-.stamp.ok{border-color:var(--ok);color:var(--ok)} .stamp.bad{border-color:var(--bad);color:var(--bad)}
-.stamp .s{font-size:34px;font-weight:800;line-height:1} .stamp .u{font-size:11px;letter-spacing:.1em;margin-top:3px}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.seg button{padding:8px 16px;background:var(--surface);border:none;color:var(--ink-soft);font-weight:600;font-size:14px}
-.seg button.on{background:var(--accent);color:#fff}
-.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 20px;border-radius:999px;font-size:14px;font-weight:600;z-index:50;box-shadow:var(--shadow);max-width:90vw}
-.stealth{position:fixed;inset:0;z-index:9999;background:var(--bg);display:grid;place-items:center;cursor:default}
-.stealth-box{text-align:center;color:var(--ink-soft)}
-.stealth-box .spin{width:26px;height:26px;border-width:3px;margin-bottom:14px}
-.toast.err{background:var(--bad);color:#fff}
-.hint{font-size:13px;color:var(--ink-soft);background:var(--surface-2);border-radius:10px;padding:10px 14px;margin-top:10px;line-height:1.6}
-.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-a{color:var(--accent)}
-@media(max-width:560px){
-  .wrap{padding:14px 12px 90px}
-  .card{padding:18px 15px}
-  .stem{font-size:16px}
-  select,.inp{min-width:0;flex:1}
+
+async function loadSubjectList(env) {
+  try {
+    const r = await env.DB.prepare(`SELECT code, keywords FROM subjects ORDER BY sort ASC, code ASC`).all();
+    return (r.results || []).map((x) => ({ code: x.code, keywords: x.keywords || '' }));
+  } catch (_) { return []; }
 }
-/* —— 教材阅读 Books 美化 —— */
-.bk-shelf{margin-bottom:20px}
-.bk-shelf-label{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--ink-soft);margin:0 0 10px;display:flex;align-items:center;gap:10px}
-.bk-shelf-label::after{content:"";flex:1;height:1px;background:var(--line)}
-.bk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-.bk-card{position:relative;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px 14px 20px;cursor:pointer;transition:.16s;display:flex;flex-direction:column;gap:10px;min-height:88px}
-.bk-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
-.bk-card.on{border-color:var(--accent);background:var(--accent-soft)}
-.bk-card .spine{position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:0 4px 4px 0;background:var(--accent);opacity:.3}
-.bk-card.on .spine{opacity:1}
-.bk-card .t{font-weight:700;font-size:14.5px;line-height:1.4;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.bk-card .m{font-size:12px;color:var(--ink-soft);margin-top:auto}
-.bk-reader{display:grid;grid-template-columns:208px 1fr;gap:16px;align-items:start;margin-top:20px}
-.bk-reader.toc-collapsed{grid-template-columns:1fr}
-.bk-reader.toc-collapsed .bk-toc{display:none}
-.bk-toctoggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;white-space:nowrap}
-.subj-edit{padding:10px 0;border-bottom:1px solid var(--line)}
-.subj-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.subj-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--ink-soft);background:var(--surface-2);padding:3px 8px;border-radius:6px;min-width:78px;text-align:center}
-.subj-add{margin-top:14px;padding-top:12px}
-.bank-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 2px 14px;font-size:13px}
-.bank-check{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
-.bank-row{display:flex;align-items:flex-start;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;transition:.12s}
-.bank-row.sel{border-color:var(--accent);background:var(--accent-soft)}
-.bank-rowck{margin-top:3px;flex:none}
-.bank-main{flex:1;min-width:0}
-.bank-meta{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.bank-meta .tag{background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px}
-.bank-meta .tag2{background:var(--surface-2);color:var(--ink-soft);font-size:12px;padding:2px 8px;border-radius:6px}
-.bank-stem{font-size:14.5px;line-height:1.6;color:var(--ink);max-height:3.2em;overflow:hidden;position:relative}
-.bank-stem::after{content:'';position:absolute;right:0;bottom:0;width:40px;height:1.6em;background:linear-gradient(90deg,transparent,var(--surface))}
-.bank-row.sel .bank-stem::after{background:linear-gradient(90deg,transparent,var(--accent-soft))}
-.bank-side{display:flex;flex-direction:column;gap:6px;flex:none}
-.btn.xs,.bk-del.xs{font-size:12px;padding:4px 10px}
-.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:80;display:flex;align-items:center;justify-content:center;padding:20px}
-.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(640px,100%);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)}
-.modal-h{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);font-size:15px}
-.modal-b{padding:16px 18px;overflow:auto}
-.modal-b .lbl{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:5px}
-.modal-b textarea.inp{width:100%;font-family:var(--font);font-size:14px;line-height:1.6;resize:vertical}
-.modal-b .prev-box{margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:10px;background:var(--surface-2)}
-.modal-f{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px;border-top:1px solid var(--line)}
-.bank-row{background:var(--surface);border:1px solid var(--line)}
-.bk-toctoggle:hover{background:var(--surface-2);color:var(--ink)}
-.bk-toc{position:sticky;top:74px;max-height:calc(100vh - 92px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
-.bk-toc h4{margin:0;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
-.bk-toc .tip{font-size:11.5px;color:var(--ink-soft);margin:5px 0 12px}
-.bk-toc .toc-close{display:none;border:none;background:transparent;color:var(--ink-soft);font-size:20px;line-height:1;cursor:pointer;padding:0 4px}
-.bk-toc-item{padding:8px 10px;border-radius:8px;margin-bottom:2px;font-size:13px;line-height:1.45;color:var(--ink);cursor:pointer;transition:.12s;border-left:2px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bk-toc-item:hover{background:var(--surface-2)}
-.bk-toc-item.on{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
-.bk-toc-backdrop{display:none}
-@media(max-width:860px){
-  .bk-reader,.bk-reader.toc-collapsed{grid-template-columns:1fr}
-  .bk-reader .bk-toc{display:block;position:fixed;left:0;top:0;bottom:0;height:100%;max-height:100%;width:84%;max-width:330px;z-index:60;border-radius:0 14px 14px 0;transform:translateX(-100%);transition:transform .26s ease;margin:0;box-shadow:0 10px 40px rgba(0,0,0,.35)}
-  .bk-reader.toc-open .bk-toc{transform:translateX(0)}
-  .bk-toc .toc-close{display:block}
-  .bk-reader.toc-open .bk-toc-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}
-  .bk-toc-item{font-size:14px;padding:11px 12px}
+// kind: auto = AI 自动分辨；questions = 强制当题库；material = 强制当教材
+const VALID_KINDS = ['auto', 'questions', 'material'];
+
+export async function onRequestPost({ request, env }) {
+  const auth = checkAuth(request, env);
+  if (!auth.ok) return auth.resp;
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: '请求体不是合法 JSON' }, 400); }
+
+  const subject = VALID_SUBJECTS.includes(body.subject) ? body.subject : 'computer';
+  const defChapter = (body.chapter || '').trim();
+  const defSource = (body.source || '').trim();
+  const kind = VALID_KINDS.includes(body.kind) ? body.kind : 'auto';
+
+  let questions = [];
+  let materials = [];
+
+  // 路径 A：直接导入已结构化的 JSON 数组（不调用 AI，零成本），始终视为题库
+  if (Array.isArray(body.questions) && body.questions.length) {
+    questions = body.questions;
+  } else if (Array.isArray(body.images) && body.images.length) {
+    // 路径 C：图片/扫描页 → 视觉模型识别（含自动分辨）
+    if (!env.AI_BASE_URL || !env.AI_API_KEY) {
+      return json({ error: '服务端未配置 AI_BASE_URL / AI_API_KEY，无法调用 AI 中转站' }, 500);
+    }
+    const aiOut = await callAI(env, { images: body.images.slice(0, 4) }, subject, defChapter, defSource, kind, true);
+    if (aiOut.error) return json(aiOut, aiOut.status || 502);
+    questions = aiOut.questions || [];
+    materials = aiOut.materials || [];
+  } else {
+    // 路径 B：原文文本 → AI 中转站（含自动分辨）
+    const rawText = (body.raw_text || '').trim();
+    if (!rawText) return json({ error: '请提供 raw_text（原文）/ questions（JSON 数组）/ images（图片）' }, 400);
+    if (!env.AI_BASE_URL || !env.AI_API_KEY) {
+      return json({ error: '服务端未配置 AI_BASE_URL / AI_API_KEY，无法调用 AI 中转站' }, 500);
+    }
+    const aiOut = await callAI(env, { rawText }, subject, defChapter, defSource, kind, false);
+    if (aiOut.error) return json(aiOut, aiOut.status || 502);
+    questions = aiOut.questions || [];
+    materials = aiOut.materials || [];
+  }
+
+  // —— 校验 + 入库：题目 ——
+  const subjList = await loadSubjectList(env);
+  const cleanedQ = [];
+  for (const q of questions) {
+    if (!q || !q.stem) continue;
+    const type = VALID_TYPES.includes(q.type) ? q.type : 'single_choice';
+    const guessed = guessSubjectFromText([q.stem, q.chapter, Array.isArray(q.options) ? q.options.map(o => o && o.text).join(' ') : ''].join('  '), subjList);
+    const subj = guessed || (VALID_SUBJECTS.includes(q.subject) ? q.subject : subject);
+    const id = (q.id && String(q.id).trim()) || `${subj}-${crypto.randomUUID().slice(0, 8)}`;
+    cleanedQ.push({
+      id,
+      subject: subj,
+      chapter: (q.chapter || defChapter || '').trim() || null,
+      type,
+      difficulty: Number.isInteger(q.difficulty) ? Math.min(5, Math.max(1, q.difficulty)) : 3,
+      source: (q.source || defSource || '').trim() || null,
+      passage: (q.passage || '').trim() || null,
+      stem: String(q.stem),
+      options: JSON.stringify(Array.isArray(q.options) ? q.options : []),
+      answer: JSON.stringify(Array.isArray(q.answer) ? q.answer : (q.answer != null ? [q.answer] : [])),
+      analysis: (q.analysis || '').trim() || null,
+      tags: JSON.stringify(Array.isArray(q.tags) ? q.tags : []),
+    });
+  }
+
+  // —— 校验 + 入库：教材 ——
+  const cleanedM = [];
+  for (const m of materials) {
+    const content = String(m?.content_md || m?.content || '').trim();
+    if (!content) continue;
+    const subj = VALID_SUBJECTS.includes(m.subject) ? m.subject : subject;
+    const id = (m.id && String(m.id).trim()) || `mat-${subj}-${crypto.randomUUID().slice(0, 12)}`;
+    cleanedM.push({
+      id,
+      subject: subj,
+      title: String(m.title || m.chapter || defChapter || '教材整理').trim().slice(0, 200),
+      source: (m.source || defSource || '').trim() || null,
+      page: Number.isInteger(m.page) ? m.page : null,
+      page_image: (m.page_image || '').trim() || null,
+      content_md: content,
+      summary: (m.summary || '').trim() || null,
+      tags: JSON.stringify(Array.isArray(m.tags) ? m.tags : []),
+    });
+  }
+
+  if (!cleanedQ.length && !cleanedM.length) {
+    return json({ error: '没有解析出有效内容（既无题目也无可整理的教材）' }, 422);
+  }
+
+  try {
+    if (cleanedQ.length) {
+      const sql = `INSERT OR REPLACE INTO questions
+        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`;
+      await env.DB.batch(cleanedQ.map((q) =>
+        env.DB.prepare(sql).bind(
+          q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
+          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags
+        )
+      ));
+    }
+    if (cleanedM.length) {
+      await ensureMaterialsTable(env);
+      const sqlM = `INSERT OR REPLACE INTO materials
+        (id, subject, title, source, page, page_image, content_md, summary, tags)
+        VALUES (?,?,?,?,?,?,?,?,?)`;
+      await env.DB.batch(cleanedM.map((m) =>
+        env.DB.prepare(sqlM).bind(
+          m.id, m.subject, m.title, m.source, m.page,
+          m.page_image, m.content_md, m.summary, m.tags
+        )
+      ));
+    }
+  } catch (e) {
+    return json({ error: '写入数据库失败：' + e.message }, 500);
+  }
+
+  // detected：本次 AI 实际判定的类型，前端可据此提示用户
+  const detected = cleanedQ.length && cleanedM.length ? 'mixed'
+    : cleanedQ.length ? 'questions'
+    : 'material';
+
+  return json({
+    ok: true,
+    kind: detected,
+    inserted: cleanedQ.length,            // 兼容旧前端：仍表示题目数
+    inserted_questions: cleanedQ.length,
+    inserted_materials: cleanedM.length,
+    sample: cleanedQ.slice(0, 3).map((q) => ({ subject: q.subject, type: q.type, stem: q.stem.slice(0, 60) })),
+    material_sample: cleanedM.slice(0, 3).map((m) => ({ subject: m.subject, title: m.title })),
+  });
 }
-.bk-page{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
-.bk-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
-.bk-bar .ttl{font-weight:700;font-size:16.5px;line-height:1.35}
-.bk-bar .sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px}
-.bk-nav{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
-.bk-nav button{height:34px;padding:0 14px;background:transparent;border:none;color:var(--ink);font-weight:600;font-size:13.5px;transition:.12s}
-.bk-nav button:disabled{color:var(--ink-soft);opacity:.45;cursor:default}
-.bk-nav button:not(:disabled):hover{background:var(--accent-soft);color:var(--accent)}
-.bk-nav button+button{border-left:1px solid var(--line)}
-.bk-jump{height:34px;width:74px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:0}
-.bk-mini{height:34px;padding:0 10px;border-radius:8px;min-width:0}
-.bk-del{height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:#c0392b;font-weight:600;font-size:13px;transition:.12s}
-.bk-del:hover{border-color:#c0392b;background:color-mix(in srgb,#c0392b 8%,var(--surface))}
-.bk-body{padding:30px 40px 36px;max-width:1040px;margin:0 auto}
-.bk-body .summary{font-size:13px;color:var(--accent);font-weight:600;margin:0 0 16px;padding-left:12px;border-left:3px solid var(--accent)}
-.bk-body .rich{font-size:16px;line-height:1.95;color:var(--ink)}
-.bk-body .rich img{max-width:min(100%,560px);height:auto;display:block;margin:16px auto 4px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px}
-.bk-body .rich figure.fig{margin:16px 0;text-align:center}
-.bk-body .rich figure.fig img{margin:0 auto 4px}
-.bk-body .rich figure.fig figcaption,.bk-body .rich .figcap{text-align:center;font-size:13px;color:var(--ink-soft);margin:2px 0 4px}
-.bk-body .rich ol{padding-left:1.9em;margin:12px 0}
-.bk-body .rich ol>li{margin:10px 0;padding-left:2px}
-.bk-body .rich ol>li::marker{font-weight:700;color:var(--ink)}
-.bk-body .rich .mathwrap{display:block;max-width:100%;overflow:hidden;margin:6px 0}
-.bk-body .rich .mathwrap .katex{white-space:nowrap}
-.bk-body .rich .katex-display{overflow:hidden;max-width:100%;text-align:left;padding:4px 0 8px}
-.bk-body .rich .katex-display>.katex{white-space:nowrap}
-.rich .katex-display{overflow:hidden;max-width:100%}
-.bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
-@media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
-/* —— PDF 原书阅读器 —— */
-.pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
-.pdfv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
-.pdfv-bar .ttl{font-weight:700;font-size:15px;flex:1;min-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pdfv-zoom{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:0 4px;height:34px;background:var(--surface)}
-.pdfv-zoom button{width:28px;height:30px;border:none;background:transparent;color:var(--ink);font-size:17px;line-height:1}
-.pdfv-zoom span{font-size:12.5px;color:var(--ink-soft);min-width:42px;text-align:center}
-.pdfv-body{display:grid;grid-template-columns:144px 1fr;height:min(78vh,880px)}
-@media(max-width:700px){.pdfv-body{grid-template-columns:80px 1fr}}
-.pdfv-rail{overflow:auto;border-right:1px solid var(--line);padding:10px;background:var(--surface-2)}
-.pdfv-thumb{cursor:pointer;border:2px solid transparent;border-radius:8px;padding:4px;margin-bottom:8px;text-align:center;background:var(--surface);transition:.12s}
-.pdfv-thumb:hover{border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
-.pdfv-thumb.on{border-color:var(--accent)}
-.pdfv-thumb canvas{width:100%;height:auto;display:block;border-radius:4px;border:1px solid var(--line);background:#fff;min-height:60px}
-.pdfv-thumb span{font-size:11px;color:var(--ink-soft);display:block;margin-top:3px}
-.pdfv-main{overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px;background:var(--surface-2)}
-.pdfv-main canvas{box-shadow:var(--shadow);background:#fff;border-radius:2px;max-width:100%;height:auto}
-</style>
-</head>
-<body>
-<div id="app"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
-<script>
-const { createApp } = Vue;
-const SUBJECTS=[{v:'politics',t:'政治理论'},{v:'english',t:'英语'},{v:'math',t:'高等数学'},{v:'computer',t:'计算机基础与程序设计'}];
-const CHAPTER_PRESETS={
-  politics:['马原-唯物论','马原-辩证法','马原-认识论','马原-唯物史观','毛中特','习近平新时代中国特色社会主义思想','近代史纲要','思修法基','时政'],
-  english:['英语-词汇语法','英语-阅读理解','英语-完形填空','英语-翻译','英语-写作','英语-固定搭配','英语-长难句'],
-  math:['高数-函数与极限','高数-连续','高数-导数与微分','高数-中值定理','高数-导数应用','高数-不定积分','高数-定积分','高数-微分方程','高数-多元函数','高数-级数'],
-  computer:['计算机基础-信息技术基础','计算机基础-操作系统','计算机基础-Office','计算机基础-网络基础','C语言-基础语法','C语言-选择结构','C语言-循环结构','C语言-数组','C语言-函数','C语言-指针','C语言-结构体','C语言-文件','数据结构-线性表','数据结构-栈和队列','数据结构-树','数据结构-图','数据结构-查找','数据结构-排序']
-};
-const SUBJ_MAP=Object.fromEntries(SUBJECTS.map(s=>[s.v,s.t]));
-const TYPES=[{v:'single_choice',t:'单选题'},{v:'multiple_choice',t:'多选题'},{v:'true_false',t:'判断题'},{v:'fill_blank',t:'填空题'},{v:'short_answer',t:'简答题'},{v:'code',t:'编程题'}];
-const TYPE_MAP=Object.fromEntries(TYPES.map(t=>[t.v,t.t]));
-// 教材阅读已改为「智能导入」产出的动态资料（D1 materials 表），不再依赖仓库里的静态 PDF。
-const OBJECTIVE=['single_choice','multiple_choice','true_false','fill_blank'];
-const AUTO=['single_choice','multiple_choice','true_false'];
 
-const RichText={
-  props:['content'],
-  template:`<div class="rich" v-html="html"></div>`,
-  computed:{ html(){ if(!this.content)return''; const raw=String(this.content);
-    try{
-      const math=[]; let src=raw;
-      // MinerU 有时把公式当普通文本输出（没有 $ 包裹）→ 把连续的“裸 LaTeX 行”自动包成 $$…$$
-      { const L=src.split('\n'); const o=[]; let run=[];
-        const isTex=(l)=>{ const t=l.trim(); if(!t)return false; if(/\$/.test(t))return false; const tc=t.replace(/\\text\s*\{[^}]*\}/g,''); if(/[\u4e00-\u9fa5]/.test(tc))return false; if(/^[#>|]/.test(t)||/^!\[/.test(t)||/^<\w/.test(t)||/^\uE000/.test(t))return false; return /\\[a-zA-Z]{2,}|[\^_]\s*\{|\\frac|\\sqrt|\\begin|\\mid|\\left|\\right|\\overrightarrow|\\boldsymbol|\\quad|\\times|\\cdot/.test(t); };
-        const flush=()=>{ if(run.length){ o.push('$$ '+run.join(' \\\\ ')+' $$'); run=[]; } };
-        for(const l of L){ if(isTex(l))run.push(l.trim()); else { flush(); o.push(l); } } flush(); src=o.join('\n'); }
-      // 先抽出公式（占用私有区字符占位），避免 marked 把多行 $$…$$ 拆散或转义反斜杠
-      src=src.replace(/\$\$([\s\S]+?)\$\$/g,(m,x)=>{ math.push({tex:x,display:true}); return '\uE000'+(math.length-1)+'\uE001'; });
-      src=src.replace(/\\\[([\s\S]+?)\\\]/g,(m,x)=>{ math.push({tex:x,display:true}); return '\uE000'+(math.length-1)+'\uE001'; });
-      src=src.replace(/\$([^\$\n]+?)\$/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
-      src=src.replace(/\\\(([^\n]+?)\\\)/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
-      // 去页码/页眉残留：整段只是页码、或常见页眉/页脚装饰的，删掉
-      src=src.split(/\n{2,}/).filter(b=>{ const t=b.trim(); if(!t)return false; if(/^[\s·•\.\-—–=*_>]*\d{1,4}[\s·•\.\-—–=*_>]*$/.test(t))return false; if(/^[-—–=_·•\s]{2,}$/.test(t))return false; return true; }).join('\n\n');
-      // 题号钉最左 + 悬挂缩进（保留原始编号，不交给 marked 重新编号）
-      src=src.replace(/^[ \t>]{0,4}(\d{1,3})[.．、][ \t]+(.+)$/gm,(m,n,rest)=>'<div class="prob"><span class="pn">'+n+'.</span>'+rest+'</div>');
-      // 形如「图8-1 / 表 8-2」的独立文本，渲成居中图注
-      src=src.replace(/^[ \t]*((?:图|表)\s?\d+(?:[-－.]\d+)*)\s*$/gm,(m,c)=>'<p class="figcap">'+c+'</p>');
-      let out=marked.parse(src);
-      out=out.replace(/\uE000(\d+)\uE001/g,(m,i)=>{ const it=math[+i]; if(!it)return ''; if(window.katex){ try{ return window.katex.renderToString(it.tex,{displayMode:it.display,throwOnError:false,strict:false}); }catch(e){ return '<code>'+it.tex.replace(/</g,'&lt;')+'</code>'; } } return (it.display?'$$':'$')+it.tex+(it.display?'$$':'$'); });
-      return out;
-    }catch(e){ try{return marked.parse(raw);}catch(_){return raw;} }
-  } },
-  mounted(){ this.enhance(); },
-  updated(){ this.enhance(); },
-  methods:{ enhance(){ const el=this.$el;
-    if(window.katex&&!window.katex.renderToString){} // 已在 html 内预渲染；此处仅兜底
-    if(!window.katex&&window.renderMathInElement){ try{ renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false,strict:false}); }catch(e){} }
-    if(window.hljs){ el.querySelectorAll('pre code').forEach(b=>{ try{hljs.highlightElement(b);}catch(e){} }); }
-    this.fitMath();
-  },
-  fitMath(){ const el=this.$el; if(!el)return; const FLOOR=0.5; const fit=(k,avail)=>{ k.style.fontSize=''; const w=k.scrollWidth||k.offsetWidth; if(!w||avail<=0||w<=avail+1)return null; let s=avail/w, scroll=false; if(s<FLOOR){ s=FLOOR; scroll=true; } const cur=parseFloat(getComputedStyle(k).fontSize)||16; k.style.fontSize=(cur*s)+'px'; return {scroll}; };
-    const run=()=>{ el.querySelectorAll('.katex-display').forEach(d=>{ const k=d.querySelector('.katex'); if(!k)return; d.style.overflowX='hidden'; const r=fit(k, d.clientWidth||el.clientWidth); d.style.overflowX=(r&&r.scroll)?'auto':'hidden'; });
-      el.querySelectorAll('.katex').forEach(k=>{ if(k.closest('.katex-display'))return; let wrap=k.closest('.mathwrap'); if(!wrap){ const parent=k.parentElement; if(!parent)return; const avail=parent.clientWidth||el.clientWidth; k.style.fontSize=''; const w=k.scrollWidth||k.offsetWidth; if(!w||w<=avail+1)return; wrap=document.createElement('span'); wrap.className='mathwrap'; parent.insertBefore(wrap,k); wrap.appendChild(k); } const r=fit(k, wrap.clientWidth||el.clientWidth); wrap.style.overflowX=(r&&r.scroll)?'auto':'hidden'; }); };
-    run(); requestAnimationFrame(run); setTimeout(run,150); setTimeout(run,500); setTimeout(run,1200); if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(run).catch(()=>{}); } } }
-};
+async function ensureMaterialsTable(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS materials (
+    id TEXT PRIMARY KEY, subject TEXT NOT NULL, title TEXT NOT NULL, source TEXT,
+    page INTEGER, page_image TEXT, content_md TEXT, summary TEXT, tags TEXT,
+    created_at INTEGER DEFAULT (unixepoch())
+  )`).run();
+}
 
-const QuestionCard={
-  components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next'],
-  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteDraft:'' }; },
-  computed:{
-    subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
-    revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
-    isObjective(){ return OBJECTIVE.includes(this.q.type); },
-    isChoice(){ return this.q.type==='single_choice'||this.q.type==='multiple_choice'; },
-    isMulti(){ return this.q.type==='multiple_choice'; },
-    answerKeys(){ return (this.q.answer||[]).map(x=>String(x).toUpperCase()); },
-    refText(){ return (this.q.answer||[]).join('\n'); },
-    autoCorrect(){
-      if(this.isChoice){ const a=[...this.answerKeys].sort().join(','); const b=[...this.sel].sort().join(','); return a===b&&b!==''; }
-      if(this.q.type==='true_false'){ return this.sel[0]===this.answerKeys[0]; }
-      if(this.q.type==='fill_blank'){ const n=s=>String(s).trim().toLowerCase().replace(/\s+/g,''); const m=n(this.blanks); if(!m)return false; return (this.q.answer||[]).some(a=>n(a)===m); }
-      return false;
-    },
-    finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
-    graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
-  },
-  watch:{ q(){ this.reset(); } },
-  mounted(){ this.reset(); },
-  methods:{
-    reset(){ this.sel=[]; this.blanks=''; this.text=''; this.localRevealed=false; this.self=null; this.showNote=false; this.noteDraft=this.q.note||''; },
-    pick(k){ if(this.revealed)return; if(this.isMulti){ const i=this.sel.indexOf(k); i>=0?this.sel.splice(i,1):this.sel.push(k); } else this.sel=[k]; },
-    pickTF(v){ if(this.revealed)return; this.sel=[v]; },
-    optClass(k){ if(!this.revealed)return{sel:this.sel.includes(k)}; const a=this.answerKeys.includes(k),c=this.sel.includes(k); return{disabled:true,correct:a,wrong:c&&!a,sel:c&&a}; },
-    tfClass(v){ if(!this.revealed)return{sel:this.sel.includes(v)}; const a=this.answerKeys[0]===v,c=this.sel.includes(v); return{correct:a,wrong:c&&!a}; },
-    submit(){ this.localRevealed=true; if(AUTO.includes(this.q.type)) this.$emit('answered',{id:this.q.id,correct:this.autoCorrect}); if(this.q.type==='fill_blank'&&this.autoCorrect){ this.self=true; this.$emit('answered',{id:this.q.id,correct:true}); } },
-    grade(ok){ this.self=ok; this.$emit('answered',{id:this.q.id,correct:ok}); },
-    toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
-    markMastered(){ this.$emit('master',{id:this.q.id,value:!this.q.mastered}); },
-    saveNote(){ this.$emit('note',{id:this.q.id,note:this.noteDraft}); this.showNote=false; },
-    canSubmit(){ if(this.isChoice||this.q.type==='true_false')return this.sel.length>0; if(this.q.type==='fill_blank')return this.blanks.trim().length>0; return true; },
-  },
-  template:`
-  <div class="card">
-    <div class="q-head">
-      <span class="chip accent">{{ subjMap[q.subject]||q.subject }}</span>
-      <span class="chip">{{ typeMap[q.type]||q.type }}</span>
-      <span v-if="q.chapter" class="chip">{{ q.chapter }}</span>
-      <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
-      <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏">★</button>
-    </div>
-    <div v-if="q.passage" class="passage"><rich-text :content="q.passage" /></div>
-    <div class="stem"><rich-text :content="q.stem" /></div>
-    <template v-if="isChoice">
-      <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
-        <span class="key">{{ o.key }}</span>
-        <span class="opt-body"><rich-text :content="o.text" /></span>
-        <span class="mark" v-if="revealed && answerKeys.includes(o.key)">✓</span>
-        <span class="mark" v-else-if="revealed && sel.includes(o.key)">✗</span>
-      </div>
-      <p class="muted" v-if="isMulti && !revealed">多选题：请选择所有正确选项</p>
-    </template>
-    <template v-else-if="q.type==='true_false'">
-      <div class="tf-row">
-        <div class="tf" :class="tfClass('T')" @click="pickTF('T')">正确</div>
-        <div class="tf" :class="tfClass('F')" @click="pickTF('F')">错误</div>
-      </div>
-    </template>
-    <template v-else-if="q.type==='fill_blank'">
-      <input class="inp" style="width:100%" v-model="blanks" :disabled="revealed" placeholder="输入答案（多个空用空格分隔）" @keyup.enter="!revealed && canSubmit() && submit()" />
-    </template>
-    <template v-else>
-      <textarea :class="{code:q.type==='code'}" v-model="text" :disabled="revealed" :placeholder="q.type==='code' ? '在这里写代码（对照参考答案自查）' : '写下答题要点（对照参考答案自查）'"></textarea>
-    </template>
-    <template v-if="revealed">
-      <div v-if="AUTO.includes(q.type)" class="verdict" :class="autoCorrect?'ok':'bad'">
-        <span>{{ autoCorrect ? '正确' : '错误' }}</span>
-        <span class="tag">正确答案： {{ answerKeys.join(', ') }}</span>
-      </div>
-      <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="refText" /></div>
-      <div v-if="!AUTO.includes(q.type)" class="selfgrade">
-        <span class="q">{{ q.type==='fill_blank' ? '答对了吗？' : '你做对了吗？' }}</span>
-        <button class="btn subtle" :style="self===true?'border-color:var(--ok);color:var(--ok)':''" @click="grade(true)">✓ 正确</button>
-        <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ 错误</button>
-      </div>
-      <div v-if="q.analysis" class="ref" style="margin-top:10px"><h5>解析</h5><rich-text :content="q.analysis" /></div>
-      <button class="note-toggle" @click="showNote=!showNote">{{ showNote?'隐藏笔记':(q.note?'查看 / 编辑笔记':'+ 添加笔记') }}</button>
-      <div v-if="showNote" style="margin-top:8px">
-        <textarea v-model="noteDraft" style="min-height:80px" placeholder="记下易错点或记忆口诀…"></textarea>
-        <button class="btn subtle" style="margin-top:8px" @click="saveNote">保存笔记</button>
-      </div>
-    </template>
-    <div class="q-actions" v-if="mode!=='exam'">
-      <button v-if="!revealed" class="btn" :disabled="!canSubmit()" @click="submit">提交 / 显示答案</button>
-      <template v-else>
-        <button class="btn" @click="$emit('next')">下一题 →</button>
-        <button class="btn subtle" :style="q.mastered?'border-color:var(--ok);color:var(--ok)':''" @click="markMastered">{{ q.mastered?'已掌握 ✓':'标记为已掌握' }}</button>
-      </template>
-    </div>
-  </div>`
-};
+// —— 统一的 AI 调用：根据 kind 让模型分辨并返回 {kind, questions, materials} ——
+async function callAI(env, input, subject, chapter, source, kind, vision) {
+  const base = env.AI_BASE_URL.replace(/\/+$/, '');
+  const model = vision ? (env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (env.AI_MODEL || 'gpt-4o');
+  const sys = buildSystemPrompt(kind);
+  const hint = buildHint(subject, chapter, source, kind);
 
-const App={
-  components:{ QuestionCard, RichText },
-  data(){ return {
-    token: localStorage.getItem('zb_token')||'',
-    theme: localStorage.getItem('zb_theme')||'light',
-    appName: localStorage.getItem('zb_appname')||'刷题文档',
-    stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
-    tokenInput:'', view:'practice',
-    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:true,
-    f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
-    meta:{ subjects:[], chapters:[] },
-    queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
-    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    stats:null, statsLoading:false,
-    ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
-    cfocr:{ used:0, limit:70, budget:10000, npp:115 },
-    ocrCfg:{ model:'', base:'', key:'' },
-    materials:{ subject:'all', items:[], loading:false },
-    booksMode:'notes',
-    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
-    subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
-    bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', busy:false },
-    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'' },
-    pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
-    genq:{ busy:false, result:null },
-    mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
-    toast:null, toastTimer:null,
-  }; },
-  computed:{
-    materialBooks(){ const map=new Map(); for(const m of (this.materials.items||[])){ const key=this.bookKeyOf(m); if(!map.has(key))map.set(key,{key,subject:m.subject,title:this.bookTitleOf(m),pages:[]}); map.get(key).pages.push(m); } const out=[]; for(const b of map.values()){ const byPage=new Map(); const noPage=[]; for(const m of b.pages){ const pg=Number(m.page)||0; if(pg>0){ const ex=byPage.get(pg); if(!ex||(m.created_at||0)>=(ex.created_at||0))byPage.set(pg,m); } else noPage.push(m); } let pages=[...byPage.values()].sort((a,b)=>(a.page||0)-(b.page||0)); pages=pages.concat(noPage.sort((a,b)=>(a.created_at||0)-(b.created_at||0))); b.pages=pages; b.subject=pages[0]?.subject||b.subject; out.push(b); } return out; },
-    booksBySubject(){ const groups={math:[],computer:[],politics:[],english:[],other:[]}; for(const b of this.materialBooks){ (groups[b.subject]||groups.other).push(b); } return groups; },
-    currentBook(){ return this.materialBooks.find(b=>b.key===this.currentBookId)||this.materialBooks[0]||null; },
-    currentPageMat(){ const b=this.currentBook; if(!b||!b.pages.length)return null; const i=Math.min(Math.max(0,this.bookIdx),b.pages.length-1); return b.pages[i]; },
-    ocrModelName(){ return this.ai.visionModel || this.ai.model || '未读取模型'; },
-    sessionMode(){ if(this.view==='wrong')return'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
-    chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
-    ingestChapterOptions(){ const preset=(CHAPTER_PRESETS[this.ingest.subject]||[]).map(ch=>({chapter:ch,n:'预设'})); const existing=(this.meta.chapters||[]).filter(c=>c.subject===this.ingest.subject&&!preset.some(p=>p.chapter===c.chapter)); return [...preset,...existing]; },
-    sourcePreview(){ return this.makeSource(); },
-    wrongTotal(){ if(!this.stats)return 0; return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); },
-    cur(){ return this.queue[this.qi]||null; },
-    statTotals(){ const z={totalQ:0,seen:0,wrongOpen:0,mastered:0,fav:0,right:0,wrong:0}; if(!this.stats)return z;
-      for(const r of this.stats.bySubject){ z.totalQ+=r.total_q||0; z.seen+=r.seen||0; z.wrongOpen+=r.wrong_open||0; z.mastered+=r.mastered||0; z.fav+=r.favorited||0; z.right+=r.right_sum||0; z.wrong+=r.wrong_sum||0; } return z; },
-    mockResult(){ const v=Object.values(this.mock.answers); return { graded:v.filter(x=>x!==null).length, correct:v.filter(x=>x===true).length, total:this.mock.questions.length }; },
-    mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.correct/t*100); },
-  },
-  watch:{
-    theme(v){ document.documentElement.dataset.theme=v; localStorage.setItem('zb_theme',v); },
-    appName(v){ const n=(v||'').trim()||'刷题文档'; document.title=n; localStorage.setItem('zb_appname',n); },
-    'stealth.autoHide'(v){ localStorage.setItem('zb_autohide', v?'1':'0'); },
-    'f.subject'(){ this.f.chapter=''; },
-    'ingest.subject'(){ this.ingest.chapter=''; if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
-    'ingest.chapter'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
-    'ingest.bookName'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
-    'ingest.pageNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
-    'ingest.questionNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
-    'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
-    currentBookId(){ this.bookIdx=0; this.bookTocOpen=false; this.genq.result=null; },
-    bookIdx(){ this.genq.result=null; },
-    booksMode(v){ if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ this.pdfvRenderMain(); this.pdfvSetupThumbs(); }); },
-  },
-  methods:{
-    bookKeyOf(m){ const s=String(m.source||'').replace(/[-_\s]*P\d+\s*$/i,'').trim(); if(s)return s; const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t||'未命名教材'; },
-    classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.v===c);
-      if(has('computer')&&/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|for\s*\([^;]*;|while\s*\(/.test(s))return'computer';
-      if(has('math')&&/\\int|\\lim|\\sum|\\frac|\\sqrt|\\partial|\\overrightarrow|\\mathrm\{d\}/.test(s))return'math';
-      const letters=(s.match(/[A-Za-z]/g)||[]).length, cjk=(s.match(/[\u4e00-\u9fa5]/g)||[]).length, len=s.replace(/\s/g,'').length;
-      if(has('english')&&len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
-      for(const sub of this.subjects){ const kws=String(sub.keywords||'').split(/[，,;；\s]+/).map(k=>k.trim()).filter(k=>k.length>=2); for(const k of kws){ if(s.includes(k))return sub.v; } }
-      return ''; },
-    async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); } }catch(e){} },
-    async subjAdd(){ const m=this.subjMgr; const code=String(m.code||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,''); const name=String(m.name||'').trim(); if(!code){ this.flash('科目代码只能用小写字母/数字/下划线',true); return; } if(!name){ this.flash('请填写科目名称',true); return; } m.busy=true; try{ await this.api('/api/subjects',{method:'POST',body:JSON.stringify({code,name,sort:Number(m.sort)||(this.subjects.length+1),keywords:m.keywords||''})}); this.flash('已新增科目「'+name+'」'); this.subjMgr={ code:'', name:'', sort:'', keywords:'', busy:false }; await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('新增失败：'+e.message,true); } m.busy=false; },
-    async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:Number(s.sort)||0,keywords:s.keywords||''})}); this.flash('已保存「'+s.t+'」'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } },
-    async subjDelete(s){ const others=this.subjects.filter(x=>x.v!==s.v); let moveTo=''; if(confirm('删除科目「'+s.t+'」。\n\n点「确定」=同时把该科目下的题目转移到其他科目；点「取消」=只删科目、旧题保留原标记（下拉不再显示该科目）。')){ const names=others.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const pick=prompt('把「'+s.t+'」的题目转到哪个科目？输入序号：\n'+names); const idx=parseInt(pick,10)-1; if(others[idx])moveTo=others[idx].v; else { this.flash('序号无效，已取消',true); return; } } try{ await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,moveTo})}); this.flash('已删除科目「'+s.t+'」'+(moveTo?('，题目已转到「'+this.subjName(moveTo)+'」'):'')); await this.loadSubjects(); this.loadMeta&&this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-    guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
-    async setBookSubject(subj){ const b=this.currentBook; if(!b)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.materials.loading=true; try{ for(const m of b.pages){ await this.saveOneMaterial({id:m.id,subject:subj,title:m.title,source:m.source||null,page:m.page||null,page_image:m.page_image||null,content_md:m.content_md,summary:m.summary||'',tags:Array.isArray(m.tags)?m.tags:[]}); } this.flash('已将《'+b.title+'》归到「'+this.subjName(subj)+'」'); await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('修改科目失败：'+e.message,true); } this.materials.loading=false; },
-    rewriteMdImages(s){ return String(s||'').replace(/\]\(\s*\.?\/?public\//g,'](/').replace(/\]\(\s*textbooks-pages\//g,'](/textbooks-pages/').replace(/(<img[^>]*\bsrc=["'])\.?\/?public\//g,'$1/'); },
-    parseChapterMd(text){ const t=String(text||''); const ch=t.match(/^#\s+(.+)$/m); const chapterTitle=ch?ch[1].trim():''; const src=t.match(/来源[:：]\s*(.+)/); const source=src?src[1].trim().replace(/[`*]/g,''):''; const parts=t.split(/^##\s*第\s*(\d+)\s*页\s*$/m); const pages=[]; for(let i=1;i<parts.length;i+=2){ const pageNo=parseInt(parts[i],10); const body=(parts[i+1]||'').trim(); if(Number.isFinite(pageNo))pages.push({page:pageNo,body}); } return {chapterTitle,source,pages,whole:t}; },
-    async onMdFiles(e){ const files=[...(e.target.files||[])]; if(!files.length)return; const out=[]; for(const f of files){ try{ out.push({name:f.name,text:await f.text()}); }catch(_){} } this.ingest.mdFiles=out; if(!this.ingest.bookTitle.trim()&&out[0]){ const m=out[0].text.match(/来源[:：]\s*(.+)/); this.ingest.bookTitle=(m?m[1].trim().replace(/[`*]/g,''):out[0].name.replace(/\.md$/i,'')); const gs=this.guessSubject(this.ingest.bookTitle); if(gs)this.ingest.subject=gs; } this.flash('已读取 '+out.length+' 个 Markdown 文件'); },
-    async importMarkdown(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ingest.mdFiles.length){ this.flash('请先选择 .md 文件',true); return; } const parsed=this.ingest.mdFiles.map(f=>({name:f.name,...this.parseChapterMd(f.text)})); let book=(this.ingest.bookTitle||'').trim(); if(!book){ const ps=parsed.find(p=>p.source); book=ps?ps.source:this.ingest.mdFiles[0].name.replace(/\.md$/i,''); } const subj=this.guessSubject(book)||this.ingest.subject; const items=[]; let seq=0; for(const p of parsed){ if(p.pages.length){ p.pages.forEach((pg,idx)=>{ let body=this.rewriteMdImages(pg.body); if(idx===0&&p.chapterTitle)body='**'+p.chapterTitle+'**\n\n'+body; items.push({page:pg.page,content:body,chapter:p.chapterTitle}); }); } else { seq++; items.push({page:seq,content:this.rewriteMdImages(p.whole),chapter:p.chapterTitle}); } } items.sort((a,b)=>(a.page||0)-(b.page||0)); this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.total=items.length; this.ingest.local.inserted=0; this.ingest.result=null; try{ let n=0; for(const it of items){ this.ingest.local.prog='正在导入第 '+(n+1)+'/'+items.length+' 页'; await this.saveOneMaterial({id:'mat-'+subj+'-'+this.bookHashId(book+'#p'+it.page),subject:subj,title:book+' · 第 '+it.page+' 页',source:book,page:it.page,content_md:it.content,summary:'',tags:it.chapter?[it.chapter,'Markdown导入']:['Markdown导入']}); n++; this.ingest.local.done=n; this.ingest.local.inserted=n; } this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('已导入《'+book+'》'+n+' 页到 Books（去 Books 查看）'); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('Markdown 导入中断：已存 '+this.ingest.local.inserted+' 页，'+e.message,true); this.loadMaterials(); } this.ingest.local.busy=false; this.ingest.local.prog=''; },
-    bookTitleOf(m){ const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t || this.bookKeyOf(m); },
-    pageLabel(m){ if(!m)return ''; const lines=String(m.content_md||'').split('\n'); let head=''; for(let ln of lines){ ln=ln.trim(); if(!ln)continue; if(/^!\[/.test(ln))continue; if(/^\$\$/.test(ln)||ln==='$$')continue; if(/^<(table|img|div|p|br)/i.test(ln))continue; if(/^[>|`]/.test(ln))continue; { const lc=ln.replace(/\\text\s*\{[^}]*\}/g,''); if(!/[\u4e00-\u9fa5]/.test(lc)&&/\\[a-zA-Z]{2,}|[\^_]\s*\{|\\frac|\\sqrt|\\begin|\\mid|\\left|\\overrightarrow|\\boldsymbol/.test(lc))continue; } if(this._mineruJunk&&this._mineruJunk(ln))continue; let clean=ln.replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/[#*`>]/g,'').trim(); if(!clean)continue; const mt=clean.match(/^(第[一二三四五六七八九十百零\d]+[章节][^。.]{0,24}|\d+(?:\.\d+){0,3}[\s、.][^。.]{0,24})/); head=(mt?mt[0]:clean).slice(0,24); break; } const pg=m.page?('第'+m.page+'页'):''; if(head&&pg)return head+' · '+pg; return head||pg||(m.title||'未命名'); },
-    async deleteCurrentBook(){ const b=this.currentBook; if(!b){ this.flash('请先选择书籍',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除《'+b.title+'》及其全部 '+b.pages.length+' 页？此操作不可恢复（题库不受影响）。')) return; const ids=b.pages.map(m=>m.id).filter(Boolean); try{ const d=await this.api('/api/materials',{method:'DELETE',body:JSON.stringify({ids})}); this.flash('已删除《'+b.title+'》，共 '+(d.deleted||ids.length)+' 页'); this.currentBookId=''; this.bookIdx=0; await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-    flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
-    importMsg(d){ const q=d.inserted_questions??d.inserted??0; const m=d.inserted_materials??0; if(q&&m)return '识别为「题目+教材」，已导入 '+q+' 题、整理 '+m+' 段教材'; if(m)return '识别为教材，已整理 '+m+' 段（去「教材阅读」查看）'; return '识别为题库，已导入 '+q+' 题'; },
-    subjName(v){ return SUBJ_MAP[v]||v; },
-    makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
-    currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
-    sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.materials.loading=false; },
-    bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
-    bookGoto(i){ const b=this.currentBook; if(!b)return; this.bookIdx=Math.min(Math.max(0,i),b.pages.length-1); this.bookTocOpen=false; },
-    bookPrev(){ this.bookGoto(this.bookIdx-1); },
-    bookNext(){ this.bookGoto(this.bookIdx+1); },
-    bookJumpPage(p){ const b=this.currentBook; if(!b)return; const n=parseInt(p,10); if(!Number.isFinite(n))return; const idx=b.pages.findIndex(m=>Number(m.page)===n); if(idx>=0)this.bookGoto(idx); else this.flash('没有第 '+n+' 页',true); },
-    async loadConfig(){ if(!this.token)return; try{ const c=await this.api('/api/config'); this.ai.model=c.ai_model||''; this.ai.visionModel=c.ai_vision_model||''; this.ai.hasAI=!!c.has_ai; this.ai.hasCfAI=!!c.has_cf_ai; }catch(e){} },
-    async loadCfUsage(){ if(!this.token)return; try{ const res=await fetch('/api/cfocr',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(ct.includes('json')){ const d=await res.json(); if(res.ok){ this.cfocr.used=d.used||0; this.cfocr.limit=d.limit||150; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; this.ai.hasCfAI=!!d.has_cf_ai; } } }catch(e){} },
-    async cfocrOcrCanvas(cv){ const b64=cv.toDataURL('image/png').split(',')[1]; const body={image_b64:b64}; if((this.ingest.local.cfModel||'').trim().startsWith('@cf/'))body.model=this.ingest.local.cfModel.trim(); const res=await fetch('/api/cfocr',{method:'POST',headers:{'authorization':'Bearer '+this.token,'content-type':'application/json'},body:JSON.stringify(body)}); const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } if(res.status===404 || !ct.includes('json')){ const e=new Error('Workers AI 接口不可用：请确认已部署 functions/api/cfocr.js 并绑定 Workers AI（变量名 AI），然后重新部署。'); e.fatal=true; throw e; } if(d){ if(typeof d.used==='number')this.cfocr.used=d.used; if(typeof d.limit==='number')this.cfocr.limit=d.limit; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; } if(res.status===429){ const e=new Error((d&&d.error)||'今日免费额度已用完'); e.quota=true; throw e; } if(!res.ok){ const e=new Error((d&&d.error)||('Workers AI 失败 HTTP '+res.status)); if(/未绑定|绑定/.test(e.message))e.fatal=true; throw e; } return String((d&&d.text)||'').trim(); },
-    async api(path,opts={}){
-      const headers=Object.assign({'authorization':'Bearer '+this.token}, opts.headers||{});
-      if(opts.body) headers['content-type']='application/json';
-      const res=await fetch(path,{ ...opts, headers });
-      let data=null; try{ data=await res.json(); }catch(e){}
-      if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('访问码无效，请重新输入',true); throw new Error('unauth'); }
-      if(!res.ok) throw new Error((data&&data.error)||('请求失败 '+res.status));
-      return data;
-    },
-    saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问码',true); return; }
-      this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，可以开始使用'); this.loadSubjects(); this.loadMeta(); this.go('practice'); },
-    logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('已退出登录'); },
-    go(v){ this.view=v;
-      if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); this.startSession(); }
-      if(v==='wrong'||v==='stats') this.loadStats();
-      if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta(); this.loadBank(true); }
-    },
-    async loadBank(reset){ if(!this.token)return; if(reset){ this.bank.offset=0; this.bank.items=[]; this.bank.sel=[]; } this.bank.loading=true; try{ const p=new URLSearchParams(); if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject); if(this.bank.type)p.set('type',this.bank.type); if(this.bank.kw&&this.bank.kw.trim())p.set('q',this.bank.kw.trim()); p.set('order','seq'); p.set('mode','all'); p.set('limit',this.bank.limit); p.set('offset',this.bank.offset); const d=await this.api('/api/questions?'+p.toString()); this.bank.items = reset ? (d.items||[]) : this.bank.items.concat(d.items||[]); this.bank.total=d.total||this.bank.items.length; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.bank.loading=false; },
-    bankMore(){ this.bank.offset+=this.bank.limit; this.loadBank(false); },
-    bankToggle(id){ const i=this.bank.sel.indexOf(id); i>=0?this.bank.sel.splice(i,1):this.bank.sel.push(id); },
-    bankAllOnPage(){ const ids=this.bank.items.map(q=>q.id); const allSel=ids.every(id=>this.bank.sel.includes(id)); this.bank.sel = allSel ? this.bank.sel.filter(id=>!ids.includes(id)) : Array.from(new Set(this.bank.sel.concat(ids))); },
-    async bankSetSubject(q,subj){ if(!q||!subj||subj===q.subject)return; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
-    async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); const si=this.bank.sel.indexOf(q.id); if(si>=0)this.bank.sel.splice(si,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-    async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
-    async bankBatchSubject(){ const ids=[...this.bank.sel]; const subj=this.bank.batchSubject; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!subj){ this.flash('请选择目标科目',true); return; } try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.subject=subj; }); this.flash('已将 '+(d.updated||ids.length)+' 题改为「'+this.subjName(subj)+'」'); this.bank.sel=[]; this.bank.batchSubject=''; this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('批量改科目失败：'+e.message,true); } },
-    async bankAutoClassify(){ const changes={}; let n=0; for(const q of this.bank.items){ const opt=Array.isArray(q.options)?q.options.map(o=>o&&o.text).join(' '):''; const g=this.classifySubject([q.stem,q.chapter,opt].join('  ')); if(g&&g!==q.subject){ (changes[g]=changes[g]||[]).push(q); n++; } } if(!n){ this.flash('本页没有可自动纠正的题（特征不明确的不动）'); return; } if(!confirm('将按题干内容自动纠正本页 '+n+' 道题的科目（仅强特征命中的）。继续？'))return; try{ for(const subj of Object.keys(changes)){ const arr=changes[subj]; const ids=arr.map(q=>q.id); await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); arr.forEach(q=>q.subject=subj); } this.flash('已自动归类 '+n+' 题'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('智能归类失败：'+e.message,true); } },
-    bankOpenEdit(q){ this.bankEdit={ open:true, q, stem:q.stem||'', analysis:q.analysis||'', subject:q.subject||'', type:q.type||'', busy:false }; },
-    bankCloseEdit(){ this.bankEdit.open=false; this.bankEdit.q=null; },
-    async bankSaveEdit(){ const e=this.bankEdit; if(!e.q)return; if(!String(e.stem).trim()){ this.flash('题干不能为空',true); return; } e.busy=true; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[e.q.id],stem:e.stem,analysis:e.analysis,subject:e.subject,type:e.type})}); e.q.stem=e.stem; e.q.analysis=e.analysis; e.q.subject=e.subject; e.q.type=e.type; this.flash('已保存'); this.loadMeta(); this.bankCloseEdit(); }catch(err){ if(err.message!=='unauth')this.flash('保存失败：'+err.message,true); } e.busy=false; },
-    async loadMeta(){ if(!this.token)return; try{ this.meta=await this.api('/api/questions?meta=1'); }catch(e){} },
-    qs(extra={}){ const p=new URLSearchParams();
-      if(this.f.subject&&this.f.subject!=='all') p.set('subject',this.f.subject);
-      if(this.f.chapter) p.set('chapter',this.f.chapter);
-      if(this.f.type) p.set('type',this.f.type);
-      p.set('order',this.f.order); p.set('mode',this.sessionMode);
-      Object.entries(extra).forEach(([k,v])=>p.set(k,v)); return p.toString();
-    },
-    async startSession(){ if(!this.token)return;
-      this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0;
-      try{ const d=await this.api('/api/questions?'+this.qs({limit:30})); this.queue=d.items; this.loadedOnce=true; if(!this.queue.length)this.batchDone=true; }
-      catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
-      this.loading=false;
-    },
-    next(){ if(this.qi<this.queue.length-1)this.qi++; else this.batchDone=true; },
-    async deleteCurrentQuestion(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true; this.flash('已删除本题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-    async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
-    findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
-    async onAnswered(p){ try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
-    async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
-    async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
-    async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){} },
-    buildManualQuestion(){ const m=this.ingest.manual;
-      const type=m.type;
-      const opts=(type==='single_choice'||type==='multiple_choice') ? m.options.map(o=>({key:String(o.key||'').trim().toUpperCase(),text:String(o.text||'').trim()})).filter(o=>o.key&&o.text) : [];
-      const ansRaw=String(m.answer||'').trim();
-      let answer=[];
-      if(type==='multiple_choice') answer=ansRaw.split(/[，,\s]+/).map(x=>x.trim().toUpperCase()).filter(Boolean);
-      else if(type==='single_choice') answer=ansRaw ? [ansRaw[0].toUpperCase()] : [];
-      else if(type==='true_false') answer=[/^t|true|对|正确|是|1$/i.test(ansRaw)?'T':'F'];
-      else if(type==='fill_blank') answer=ansRaw.split(/\n+/).map(x=>x.trim()).filter(Boolean);
-      else answer=ansRaw ? [ansRaw] : [];
-      return { subject:this.ingest.subject, chapter:this.ingest.chapter, type, difficulty:Number(m.difficulty)||3, source:this.currentSource()||'手动录入', passage:m.passage||'', stem:m.stem||'', options:opts, answer, analysis:m.analysis||'', tags:String(m.tags||'').split(/[，,]/).map(x=>x.trim()).filter(Boolean) };
-    },
-    resetManual(){ this.ingest.manual={ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }; this.ingest.photoUrl=''; },
-    async saveManual(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      const q=this.buildManualQuestion();
-      if(!String(q.stem||'').trim()){ this.flash('请输入题干',true); return; }
-      if((q.type==='single_choice'||q.type==='multiple_choice') && q.options.length<2){ this.flash('选择题至少需要 2 个选项',true); return; }
-      if(!q.answer.length){ this.flash('请输入答案',true); return; }
-      this.ingest.busy=true; this.ingest.result=null;
-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('已免费保存 1 题'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(); this.loadStats(); }
-      catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
-      this.ingest.busy=false;
-    },
-    onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ this.ingest.photoDataUrl=String(rd.result||''); this.ingest.photoUrl=this.ingest.photoDataUrl; this.ingest.tab='photo'; this.flash('图片已加载，可手动录入或调用 AI OCR'); }; rd.onerror=()=>this.flash('图片读取失败',true); rd.readAsDataURL(file); },
-    async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(); this.loadStats(); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
-    async doIngest(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.currentSource() };
-      if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON parse failed: '+e.message,true); return; }
-        if(!Array.isArray(arr)||!arr.length){ this.flash('请粘贴非空 JSON 数组',true); return; } body.questions=arr;
-      } else { if(!this.ingest.raw.trim()){ this.flash('请先粘贴原始文本',true); return; } body.raw_text=this.ingest.raw; body.kind=this.ingest.kind; }
-      this.ingest.busy=true; this.ingest.result=null;
-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(); this.loadStats(); this.loadMaterials();
-        if(this.ingest.tab==='ai')this.ingest.raw=''; else this.ingest.json=''; }
-      catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
-      this.ingest.busy=false;
-    },
-    async loadSample(){ try{ const r=await fetch('/sample-questions.json'); const j=await r.json(); this.ingest.json=JSON.stringify(j,null,2); this.ingest.tab='json'; this.flash('Sample loaded — click Import'); }
-      catch(e){ this.flash('sample-questions.json not found',true); } },
-    loadScript(src){ return new Promise((res,rej)=>{ this._scripts=this._scripts||{}; if(this._scripts[src])return res(); const s=document.createElement('script'); s.src=src; s.onload=()=>{ this._scripts[src]=1; res(); }; s.onerror=()=>rej(new Error('加载失败：'+src)); document.head.appendChild(s); }); },
-    async ensurePdfjs(){ if(window.pdfjsLib)return; await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; },
-    async onPdfFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; this.ingest.result=null; this.ingest.pdf.prog='正在加载 PDF…'; this.ingest.pdf.pages=0; const nm=(file.name||'').replace(/\.[Pp][Dd][Ff]$/,'').trim(); if(nm)this.ingest.bookTitle=nm; const gs=this.guessSubject(nm); if(gs)this.ingest.subject=gs;
-      try{ await this.ensurePdfjs(); const buf=await file.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfDoc=doc; this.ingest.pdf.pages=doc.numPages; this.ingest.pdf.start=1; this.ingest.pdf.end=Math.min(3,doc.numPages); this.ingest.pdf.prog=''; this.flash('已加载 PDF，共 '+doc.numPages+' 页'); }
-      catch(err){ this.ingest.pdf.prog=''; this.flash('PDF 加载失败：'+err.message,true); } },
-    chunkText(text,size=6000,overlap=200){ text=String(text).replace(/\n{3,}/g,'\n\n').trim(); const out=[]; let i=0,n=text.length; while(i<n){ let end=Math.min(i+size,n); if(end<n){ const br=text.lastIndexOf('\n',end); if(br>i && br>end-overlap*4) end=br; } const p=text.slice(i,end).trim(); if(p)out.push(p); i=end; } return out; },
-    // —— 无 AI 本地转化教材：纯文字 PDF 用 pdf.js 抽文字，扫描件可选 tesseract.js 本地 OCR，结果直接存进 Books（materials 表）——
-    mdFromText(text){ return String(text||'').replace(/\r/g,'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim(); },
-    chunkForMaterial(text){ return this.chunkText(text,4000,0); },
-    materialBaseTitle(){ return (this.ingest.bookTitle||'').trim() || (this.ingest.chapter||'').trim() || '教材'; },
-    async ensureTesseract(){ await this.loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'); if(!window.Tesseract) throw new Error('本地 OCR 引擎加载失败（网络受限时可改用文字 PDF 或自托管）'); return await window.Tesseract.createWorker(['chi_sim','eng']); },
-    async ensureScribe(){ if(this._scribe) return this._scribe; const urls=['https://esm.sh/scribe.js-ocr','https://cdn.jsdelivr.net/npm/scribe.js-ocr/+esm']; let mod=null,err=null; for(const u of urls){ try{ mod=await import(u); break; }catch(e){ err=e; } } if(!mod) throw new Error('Scribe.js 加载失败（CDN/网络）：'+((err&&err.message)||'未知')); this._scribe=mod.default||mod; return this._scribe; },
-    async scribeOcrCanvas(cv){ const scribe=await this.ensureScribe(); const blob=await new Promise(res=>cv.toBlob(res,'image/png')); if(!blob) throw new Error('页面转图片失败'); const out=await scribe.extractText([blob],['chi_sim','eng']); return String(Array.isArray(out)?out.join('\n'):(out||'')).trim(); },
-    async saveOneMaterial(m){ return this.api('/api/materials',{method:'POST',body:JSON.stringify(m)}); },
-    async saveMaterialsLocal(text,baseTitle){ const clean=this.mdFromText(text); if(!clean){ this.flash('没有可保存的文本',true); return 0; } const parts=this.chunkForMaterial(clean); let n=0; this.ingest.local.total=parts.length; for(let i=0;i<parts.length;i++){ this.ingest.local.prog='正在保存第 '+(i+1)+'/'+parts.length+' 段教材'; const title=parts.length>1 ? (baseTitle+' ('+(i+1)+'/'+parts.length+')') : baseTitle; const d=await this.saveOneMaterial({id:'mat-'+this.ingest.subject+'-'+this.bookHashId(baseTitle+'#'+i),subject:this.ingest.subject,title,source:baseTitle,content_md:parts[i],summary:'',tags:this.ingest.chapter?[this.ingest.chapter,'本地导入']:['本地导入']}); n+=d.inserted||1; this.ingest.local.done=i+1; this.ingest.local.inserted=n; } return n; },
-    async saveTextAsMaterial(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const text=(this.ingest.raw||'').trim(); if(!text){ this.flash('请先粘贴或提取文本',true); return; } this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.inserted=0; this.ingest.result=null; try{ const n=await this.saveMaterialsLocal(text,this.materialBaseTitle()); this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('已保存 '+n+' 段教材到 Books（未调用 AI）'); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } this.ingest.local.busy=false; this.ingest.local.prog=''; },
-    sleep(ms){ return new Promise(r=>setTimeout(r,ms)); },
-    pdfAllToMaterialLocal(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } this.ingest.pdf.start=1; this.ingest.pdf.end=this._pdfDoc.numPages; this.pdfToMaterialLocal(); },
-    async pdfToMaterialLocal(){
-      if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; }
-      if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      const doc=this._pdfDoc;
-      const st=Math.max(1,parseInt(this.ingest.pdf.start||1,10)||1);
-      const ed=Math.min(doc.numPages,parseInt(this.ingest.pdf.end||st,10)||st);
-      if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
-      // 预检：首页能否提取到文字；扫描版且未开 OCR 会一无所获，提前提示
-      try{ const pg0=await doc.getPage(st); const tc0=await pg0.getTextContent(); const t0=tc0.items.map(it=>it.str).join('').replace(/\s/g,''); if(t0.length<10 && !this.ingest.local.ocr){ if(confirm('第 '+st+' 页提取不到文字，这本很可能是扫描版 PDF。\n开启「本地 OCR」用浏览器识别图片文字后继续？\n\n确定 = 开启本地 OCR 并继续（较慢，质量一般）\n取消 = 不继续（可改用文字版 PDF，或用「AI OCR…只当教材」）')) this.ingest.local.ocr=true; else return; } }catch(_){}
-      const n=ed-st+1;
-      if(n>30 && !confirm('将处理 '+n+' 页（第 '+st+'–'+ed+' 页）。\n会自动分批进行；扫描页本地 OCR 较慢，请保持本标签页在前台、勿让电脑休眠。\n确定开始？')) return;
-      const BATCH=25;
-      this.ingest.local.busy=true; this.ingest.local.stop=false; this.ingest.local.done=0; this.ingest.local.total=n; this.ingest.local.inserted=0; this.ingest.local.lastPage=0; this.ingest.local.endPage=ed; this.ingest.local.log=[]; this.ingest.result=null;
-      let tess=null, saved=0, scanned=0;
-      try{
-        for(let p=st;p<=ed;p++){
-          if(this.ingest.local.stop){ const nxt=Math.min(ed,(this.ingest.local.lastPage||(st-1))+1); this.ingest.pdf.start=nxt; this.flash('已停止，已保存 '+saved+' 段。开始页已设为 '+nxt+'，可再点继续'); break; }
-          // 分批：每处理 BATCH 页就重建 OCR 引擎释放内存并短暂喘息，降低长任务下标签页卡死概率
-          if(p>st && (p-st)%BATCH===0){
-            if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} tess=null; }
-            this.ingest.local.prog='已完成 '+(p-st)+'/'+n+' 页，正在释放内存…';
-            await this.sleep(800);
-          }
-          this.ingest.local.prog='正在处理第 '+p+'/'+ed+' 页';
-          const page=await doc.getPage(p);
-          const tc=await page.getTextContent();
-          let text=tc.items.map(it=>it.str).join(' ').replace(/\s+\n/g,'\n').trim();
-          let usedOcr=false;
-          if(text.replace(/\s/g,'').length<10 && this.ingest.local.ocr){
-            const scale=Math.max(2.4, Number(this.ingest.pdf.scale)||1.7); const vp=page.getViewport({scale});
-            const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height);
-            await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-            const eng=this.ingest.local.engine==='scribe'?'Scribe.js':(this.ingest.local.engine==='cfai'?'Workers AI':'tesseract');
-            this.ingest.local.prog='本地 OCR 第 '+p+'/'+ed+' 页（'+eng+'，首次较慢）';
-            if(this.ingest.local.engine==='scribe'){
-              try{ text=await this.scribeOcrCanvas(cv); }
-              catch(e){ this.flash('Scribe.js 不可用，已回退 tesseract：'+e.message,true); this.ingest.local.engine='tesseract'; if(!tess)tess=await this.ensureTesseract(); const r=await tess.recognize(cv); text=String(r?.data?.text||'').trim(); }
-            } else if(this.ingest.local.engine==='cfai'){
-              const effLimit=Math.min(Number(this.ingest.local.cfPageLimit)||50, this.cfocr.limit||70);
-              if(this.cfocr.used>=effLimit){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.flash('已达今日设定上限（'+effLimit+' 页，约 '+(effLimit*this.cfocr.npp)+' 神经元）。停在第 '+p+' 页，明天或调高上限再继续。',true); cv.width=cv.height=0; break; }
-              this.ingest.local.prog='Workers AI 第 '+p+'/'+ed+' 页（今日 '+this.cfocr.used+'/'+effLimit+'）';
-              try{ text=await this.cfocrOcrCanvas(cv); }
-              catch(e){ cv.width=cv.height=0; if(e.message==='unauth')throw e; if(e.quota||e.fatal){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.logPage(p,'err',e.message); this.flash(e.message+(e.quota?('（已停在第 '+p+' 页，明天或换引擎从这继续）'):''),true); break; } this.logPage(p,'err','Workers AI 出错：'+e.message); this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p; continue; }
-            } else if(this.ingest.local.engine==='relay'){
-              this.ingest.local.prog='中转站视觉 OCR 第 '+p+'/'+ed+' 页…';
-              try{ text=await this.relayOcrCanvas(cv); }
-              catch(e){ cv.width=cv.height=0; if(e.message==='unauth')throw e; if(e.fatal){ const nxt=Math.min(ed,p); this.ingest.pdf.start=nxt; this.ingest.local.stop=true; this.logPage(p,'err',e.message); this.flash(e.message,true); break; } this.logPage(p,'err','中转站出错：'+e.message); this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p; continue; }
-            } else {
-              if(!tess)tess=await this.ensureTesseract(); const r=await tess.recognize(cv); text=String(r?.data?.text||'').trim();
-            }
-            usedOcr=true; scanned++;
-            cv.width=cv.height=0;
-          }
-          this.ingest.local.done=(p-st+1); this.ingest.local.lastPage=p;
-          if(!text){ this.logPage(p,'skip', usedOcr?'OCR 没识别出文字（模型可能不支持图片/空白页）':'无文字层（扫描页？可勾选 OCR）'); continue; }
-          const title=this.materialBaseTitle()+' · 第 '+p+' 页';
-          const md=this.mdFromText(text)+(usedOcr?('\n\n> 本页由'+(this.ingest.local.engine==='relay'?'中转站视觉模型':this.ingest.local.engine==='cfai'?'Workers AI':'本地 OCR')+'识别，可能有误差。'):'');
-          const d=await this.saveOneMaterial({id:'mat-'+this.ingest.subject+'-'+this.bookHashId(this.materialBaseTitle()+'#p'+p),subject:this.ingest.subject,title,source:this.materialBaseTitle(),page:p,content_md:md,summary:'',tags:this.ingest.chapter?[this.ingest.chapter,'本地导入']:['本地导入']});
-          saved+=d.inserted||1; this.ingest.local.inserted=saved; this.logPage(p,'ok','已存 '+md.length+' 字'+(usedOcr?'（'+(this.ingest.local.engine==='relay'?'中转站':this.ingest.local.engine==='cfai'?'Workers AI':this.ingest.local.engine)+'）':'（文字层）'));
-        }
-        if(!this.ingest.local.stop){ this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:saved,material_sample:[]}; if(saved===0){ this.flash(this.ingest.local.ocr?'未保存任何内容：本地 OCR 没识别出文字，可能是空白页或图像太糊，可调高清晰度后重试。':'未保存任何内容：这些页提取不到文字（多为扫描版）。请勾选「扫描页用本地 OCR」后重试，或用「AI OCR…只当教材」。',true); } else { this.flash('已保存 '+saved+' 段教材到 Books（未调用 AI）'+(scanned?('，其中 '+scanned+' 页用本地 OCR'):'')); } }
-        this.loadMaterials();
-      }catch(e){ if(e.message!=='unauth'){ const nxt=Math.min(ed,(this.ingest.local.lastPage||(st-1))+1); this.ingest.pdf.start=nxt; this.flash('本地转化中断：已保存 '+saved+' 段，开始页已设为 '+nxt+'。'+e.message,true); } this.loadMaterials(); }
-      if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} }
-      this.ingest.local.busy=false; this.ingest.local.prog='';
-    },
-    async photoToMaterialLocal(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.inserted=0; this.ingest.result=null; let tess=null; try{ let text=''; if(this.ingest.local.engine==='relay'){ try{ this.ingest.local.prog='中转站视觉 OCR 识别中…'; const img=new Image(); img.src=this.ingest.photoDataUrl; await img.decode(); const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight; cv.getContext('2d').drawImage(img,0,0); text=await this.relayOcrCanvas(cv); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); if(e.fatal){ this.ingest.local.busy=false; this.ingest.local.prog=''; return; } } } else if(this.ingest.local.engine==='cfai'){ try{ this.ingest.local.prog='Workers AI 识别中（今日 '+this.cfocr.used+'/'+this.cfocr.limit+'）…'; const img=new Image(); img.src=this.ingest.photoDataUrl; await img.decode(); const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight; cv.getContext('2d').drawImage(img,0,0); text=await this.cfocrOcrCanvas(cv); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); if(e.quota||e.fatal){ this.ingest.local.busy=false; this.ingest.local.prog=''; return; } } } else if(this.ingest.local.engine==='scribe'){ try{ this.ingest.local.prog='Scribe.js 识别中（首次较慢）…'; const img=new Image(); img.src=this.ingest.photoDataUrl; await img.decode(); const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight; cv.getContext('2d').drawImage(img,0,0); text=await this.scribeOcrCanvas(cv); }catch(e){ this.flash('Scribe.js 不可用，已回退 tesseract：'+e.message,true); this.ingest.local.engine='tesseract'; } } if(!text){ this.ingest.local.prog='tesseract 识别中（首次较慢）…'; tess=await this.ensureTesseract(); const r=await tess.recognize(this.ingest.photoDataUrl); text=String(r?.data?.text||'').trim(); } if(!text){ this.flash('未识别出文字',true); } else { const n=await this.saveMaterialsLocal(text,this.materialBaseTitle()); this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('本地 OCR 完成，已保存 '+n+' 段教材（未调用 AI）'); this.loadMaterials(); } }catch(e){ if(e.message!=='unauth')this.flash('本地 OCR 失败：'+e.message,true); } if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} } this.ingest.local.busy=false; this.ingest.local.prog=''; },
-    async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI){ this.flash('未配置 AI 中转站，无法生成题目',true); return; } this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; },
-    // —— 浏览器内 PDF 原书阅读（PDF.js 直接渲染原页，不做 OCR/转换）——
-    async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
-    async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; try{ await this.ensurePdfjs(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.cur=1; this.pdfv.title=title||'PDF'; this.pdfv.open=true; this.$nextTick(()=>{ this.pdfvRenderMain(); this.pdfvSetupThumbs(); }); }catch(e){ this.flash('PDF 解析失败：'+e.message,true); } this.pdfv.loading=false; },
-    async pdfvRenderMain(){ const doc=this._pdfvDoc; if(!doc)return; this.pdfv.rendering=true; try{ const page=await doc.getPage(this.pdfv.cur); const dpr=Math.min(window.devicePixelRatio||1,2); const vp=page.getViewport({scale:(Number(this.pdfv.scale)||1.2)*dpr}); const cv=this.$refs.pdfvCanvas; if(cv){ cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.floor(vp.width/dpr)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; } }catch(e){} this.pdfv.rendering=false; },
-    pdfvGoto(n){ const t=Math.min(Math.max(1,parseInt(n,10)||1),this.pdfv.pages); this.pdfv.cur=t; this.pdfvRenderMain(); const el=this.$refs.pdfvRail&&this.$refs.pdfvRail.querySelector('.pdfv-thumb[data-page="'+t+'"]'); if(el)el.scrollIntoView({block:'nearest'}); },
-    pdfvPrev(){ this.pdfvGoto(this.pdfv.cur-1); },
-    pdfvNext(){ this.pdfvGoto(this.pdfv.cur+1); },
-    pdfvZoom(d){ this.pdfv.scale=Math.min(3,Math.max(0.5,Math.round((this.pdfv.scale+d)*10)/10)); this.pdfvRenderMain(); },
-    pdfvSetupThumbs(){ if(this._pdfvObs){ this._pdfvObs.disconnect(); this._pdfvObs=null; } const root=this.$refs.pdfvRail; if(!root||!window.IntersectionObserver)return; this._pdfvObs=new IntersectionObserver((ents)=>{ for(const en of ents){ if(en.isIntersecting){ const p=parseInt(en.target.getAttribute('data-page'),10); this.pdfvRenderThumb(p,en.target); this._pdfvObs.unobserve(en.target); } } },{root,rootMargin:'300px'}); this.$nextTick(()=>{ root.querySelectorAll('.pdfv-thumb').forEach(el=>this._pdfvObs.observe(el)); }); },
-    async pdfvRenderThumb(n,el){ const doc=this._pdfvDoc; if(!doc||!el)return; try{ const page=await doc.getPage(n); const vp=page.getViewport({scale:0.28}); const cv=el.querySelector('canvas'); if(!cv)return; cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; }catch(e){} },
-    pdfvClose(){ this.pdfv.open=false; this._pdfvDoc=null; if(this._pdfvObs){ this._pdfvObs.disconnect(); this._pdfvObs=null; } },
-    saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },
-    logPage(p,t,msg){ const arr=this.ingest.local.log; arr.push({p,t,msg}); if(arr.length>500)arr.splice(0,arr.length-500); },
-    async importMarkdownAsBook(md, book, subj, tag, off){ off=off||0; const parts=this.chunkMarkdownByStructure(md); if(!parts.length){ return 0; } let n=0; for(let i=0;i<parts.length;i++){ this.ingest.mineru.prog='导入第 '+(off+i+1)+' 段…'; const h=this.firstHeadingOf(parts[i]); const gp=off+i+1; const title=book+' · '+(h||('第 '+gp+' 段')); const d=await this.saveOneMaterial({id:'mat-'+subj+'-'+this.bookHashId(book+'#p'+gp),subject:subj,title,source:book,page:gp,content_md:parts[i],summary:'',tags:tag?[tag]:[]}); n+=d.inserted||1; } return n; },
-    stripFurniturePages(pages){ if(!pages||pages.length<4)return (pages||[]).map(p=>({page:p.page, md:p.md.split('\n').filter(l=>!/^\s*\d{1,4}\s*$/.test(l.trim())).join('\n').replace(/\n{3,}/g,'\n\n').trim()})).filter(p=>p.md); const freq={}; const N=pages.length; pages.forEach(p=>{ const seen=new Set(); p.md.split('\n').forEach(l=>{ const t=l.trim(); if(t&&t.length<=24&&!/^#{1,6}\s/.test(t)&&!/^(figure|<)/i.test(t)){ if(!seen.has(t)){ seen.add(t); freq[t]=(freq[t]||0)+1; } } }); }); const thr=Math.max(3, Math.ceil(N*0.3)); const furniture=new Set(Object.keys(freq).filter(k=>freq[k]>=thr)); return pages.map(p=>{ const lines=p.md.split('\n').filter(l=>{ const t=l.trim(); if(!t)return true; if(/^\s*\d{1,4}\s*$/.test(t))return false; if(furniture.has(t))return false; return true; }); return {page:p.page, md:lines.join('\n').replace(/\n{3,}/g,'\n\n').trim()}; }).filter(p=>p.md); },
-    async importPagesAsBook(pages, book, subj, tag, off){ off=off||0; pages=this.stripFurniturePages(pages); let n=0; for(let i=0;i<pages.length;i++){ const p=pages[i]; const gp=off+(p.page||i+1); this.ingest.mineru.prog='导入第 '+gp+' 页…'; const h=this.firstHeadingOf(p.md); const title=book+' · '+(h||('第 '+gp+' 页')); const d=await this.saveOneMaterial({id:'mat-'+subj+'-'+this.bookHashId(book+'#p'+gp),subject:subj,title,source:book,page:gp,content_md:p.md,summary:'',tags:tag?[tag]:[]}); n+=d.inserted||1; } return n; },
-    _zipImgFinder(zip){ const names=Object.keys(zip.files); return (p)=>{ if(!p)return null; if(zip.files[p]&&!zip.files[p].dir)return zip.files[p]; const base=p.split('/').pop(); const k=names.find(n=>n.split('/').pop()===base && !zip.files[n].dir); return k?zip.files[k]:null; }; },
-    _imgMime(p){ const e=(String(p).split('.').pop()||'').toLowerCase(); return e==='png'?'image/png':e==='webp'?'image/webp':e==='gif'?'image/gif':e==='bmp'?'image/bmp':'image/jpeg'; },
-    _esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
-    async _zipImgDataUrl(zip, find, p){ const f=find(p); if(!f)return null; const b64=await f.async('base64'); if(b64.length>1.6*1048576)return null; return 'data:'+this._imgMime(p)+';base64,'+b64; },
-    async mineruBuildPagesFromZip(zip){ const names=Object.keys(zip.files); const clName=names.find(n=>/_content_list\.json$/i.test(n))||names.find(n=>/content_list\.json$/i.test(n)); if(!clName)return null; let list; try{ list=JSON.parse(await zip.files[clName].async('string')); }catch(_){ return null; } if(!Array.isArray(list)||!list.length)return null; const find=this._zipImgFinder(zip); const pages={}; const order=[]; for(const it of list){ const pi=(it.page_idx!=null?it.page_idx:(it.page!=null?it.page:0)); if(!(pi in pages)){ pages[pi]=[]; order.push(pi); } const arr=pages[pi]; const type=it.type||'text'; if(type==='text'||type==='title'){ let t=String(it.text||'').trim(); if(!t)continue; if(this._mineruJunk(t))continue; const lv=it.text_level||(type==='title'?1:0); if(lv&&lv>=1&&lv<=6)t='#'.repeat(lv)+' '+t; arr.push(t); } else if(type==='equation'){ let t=String(it.text||it.latex||'').trim(); if(!t)continue; if(!/\$/.test(t))t='$$\n'+t+'\n$$'; arr.push(t); } else if(type==='image'||type==='figure'){ const capR=it.img_caption!=null?it.img_caption:(it.image_caption!=null?it.image_caption:it.caption); const cap=Array.isArray(capR)?capR.join(' '):(capR||''); const ip=it.img_path||it.image_path; const fo=ip?find(ip):null; if(fo){ const b64=await fo.async('base64'); if(b64.length<1500){ /* 极小装饰图标，跳过 */ } else if(b64.length>1.6*1048576){ arr.push(cap?('*（图：'+cap+'）*'):'*（图略·过大）*'); } else { let h='<figure class="fig"><img src="data:'+this._imgMime(ip)+';base64,'+b64+'">'; if(cap)h+='<figcaption>'+this._esc(cap)+'</figcaption>'; h+='</figure>'; arr.push(h); } } else if(cap){ arr.push('*（图：'+cap+'）*'); } } else if(type==='table'){ if(it.table_body){ arr.push(String(it.table_body)); } else { const du=await this._zipImgDataUrl(zip,find,it.img_path); if(du)arr.push('![]('+du+')'); else arr.push('*（表格图略）*'); } const cap=Array.isArray(it.table_caption)?it.table_caption.join(' '):(it.table_caption||''); if(cap)arr.push('<p class="figcap">'+this._esc(cap)+'</p>'); } else { const t=String(it.text||'').trim(); if(t)arr.push(t); } } order.sort((a,b)=>a-b); return order.map(pi=>({page:pi+1, md:pages[pi].join('\n\n').trim()})).filter(p=>p.md); },
-    async embedZipImages(md, zip){ const find=this._zipImgFinder(zip); const refs=[]; const re=/!\[([^\]]*)\]\(([^)]+)\)/g; let m; while((m=re.exec(md)))refs.push({full:m[0],alt:m[1],path:m[2]}); for(const r of refs){ if(/^(https?:|data:)/.test(r.path))continue; const du=await this._zipImgDataUrl(zip,find,r.path); md = du ? md.replace(r.full,'!['+r.alt+']('+du+')') : md.replace(r.full, r.alt?('*（图：'+r.alt+'）*'):'*（图略）*'); } return md; },
-    mlog(s){ const a=this.ingest.mineru.log; a.push(s); if(a.length>300)a.splice(0,a.length-300); },
-    chunkMarkdownByStructure(md, target){ target=target||4000; const lines=String(md||'').replace(/\r/g,'').split('\n'); const blocks=[]; let cur=[]; let inDisplay=false,inFence=false,envDepth=0; const flush=()=>{ if(cur.join('\n').trim())blocks.push(cur.join('\n')); cur=[]; }; for(const ln of lines){ const t=ln.trim(); if(/^```/.test(t))inFence=!inFence; const dd=(ln.match(/\$\$/g)||[]).length; const bg=(ln.match(/\\begin\{/g)||[]).length; const en=(ln.match(/\\end\{/g)||[]).length; cur.push(ln); if(!inFence){ if(dd%2===1)inDisplay=!inDisplay; envDepth+=bg-en; if(envDepth<0)envDepth=0; } if(t===''&&!inDisplay&&!inFence&&envDepth===0)flush(); } flush(); const isH=(b)=>/^#{1,3}\s/.test(b.trim()); const chunks=[]; let buf=''; for(const b of blocks){ if(buf && ((isH(b)&&buf.length>500) || (buf.length+b.length>target))){ chunks.push(buf.trim()); buf=''; } buf+=(buf?'\n\n':'')+b; } if(buf.trim())chunks.push(buf.trim()); return chunks.filter(c=>c.trim()); },
-    firstHeadingOf(md){ const lines=String(md||'').split('\n'); for(const ln of lines){ const m=ln.match(/^#{1,6}\s+(.+)/); if(m){ const t=m[1].replace(/[*_`$\\]/g,'').trim(); if(t)return t.slice(0,40); } } for(const ln of lines){ let t=ln.trim(); if(!t)continue; if(/^!\[/.test(t))continue; if(/^\$\$/.test(t)||t==='$$')continue; if(/^<(table|img|div|p)/i.test(t))continue; if(/^[`>|]/.test(t))continue; if(this._mineruJunk(t))continue; t=t.replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/[#*_`$\\]/g,'').trim(); if(t)return t.slice(0,40); } return ''; },
-    _mineruJunk(t){ return /(OCR result|Ground[\s-]?Truth|placeholder character|according to Rule|should be (empty|ignored|output|no)|stylistic horizontal line|the image contains only|no text (should|to|or)|must be ignored|output\b.*placeholder)/i.test(String(t||'')); },
-    stripMineruJunk(md){ return String(md||'').split(/\n{2,}/).filter(b=>!this._mineruJunk(b)).join('\n\n').replace(/\n{3,}/g,'\n\n').trim(); },
-    async ensureJSZip(){ if(window.JSZip)return; await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'); if(!window.JSZip)throw new Error('JSZip 加载失败（网络受限？）'); },
-    async mineruUpload(uploadUrl, buf){ const res=await fetch('/api/mineru?action=upload&upload_url='+encodeURIComponent(uploadUrl),{method:'PUT',body:buf,headers:{authorization:'Bearer '+this.token}}); if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(!res.ok||!(d&&d.ok))throw new Error((d&&d.error)||('上传失败 HTTP '+res.status)); return true; },
-    onMineruFile(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; this._mineruFile=f; this.ingest.mineru.name=f.name+'（'+(f.size/1048576).toFixed(1)+'MB）'; const nm=f.name.replace(/\.[Pp][Dd][Ff]$/,'').trim(); if(nm)this.ingest.bookTitle=nm; const gs=this.guessSubject(nm); if(gs)this.ingest.subject=gs; },
-    async mineruConvert(){ if(this.ingest.mineru.mode==='agent')return this.mineruConvertAgent(); return this.mineruConvertPrecise(); },
-    async mineruConvertAgent(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const f=this._mineruFile; if(!f){ this.flash('请先选择 PDF',true); return; } const book=(this.ingest.bookTitle||'').trim()||f.name.replace(/\.[Pp][Dd][Ff]$/,''); const M=this.ingest.mineru; let pr=(M.pageRange||'').trim(); if(pr.includes(',')){ this.flash('轻量模式页码不支持逗号，改用单段如 1-20',true); return; } if(f.size>10*1048576){ this.flash('轻量模式单文件上限 10MB，当前 '+(f.size/1048576).toFixed(1)+'MB。请用更小的 PDF，或创建 Token 用精准模式。',true); return; } M.busy=true; M.log=[]; M.pct=5; M.prog='提交（免 Token 轻量）…'; this.mlog('① 提交解析任务（Agent 轻量，免 Token'+(pr?('，页码 '+pr):'')+'）…'); try{ const d1=await this.api('/api/mineru?action=agent_submit',{method:'POST',body:JSON.stringify({filename:f.name,language:'ch',is_ocr:true,page_range:pr||undefined})}); const task_id=d1.task_id, file_url=d1.file_url; if(!task_id||!file_url)throw new Error('未拿到 task_id/上传地址'); this.mlog('已创建 task_id='+task_id); M.prog='上传 PDF…'; M.pct=15; const buf=await f.arrayBuffer(); this.mlog('② 上传 PDF（经后端代理，绕过跨域）…'); await this.mineruUpload(file_url, buf); this.mlog('上传完成，等待解析…'); M.prog='解析中…'; M.pct=28; let mdUrl='',tries=0; while(tries<120){ await this.sleep(3000); tries++; let s; try{ s=await this.api('/api/mineru?action=agent_status&task_id='+encodeURIComponent(task_id)); }catch(e){ this.mlog('查询出错（重试）：'+e.message); continue; } const st=String(s.state||'unknown'); M.prog='解析中：'+st; if(M.pct<86)M.pct+=2; if(st==='done'){ mdUrl=s.markdown_url; this.mlog('③ 解析完成'); break; } if(st==='failed'){ throw new Error('解析失败：'+(s.err||'未知')); } if(tries%4===0)this.mlog('仍在解析…（'+st+'，已等 '+(tries*3)+'s）'); } if(!mdUrl)throw new Error('解析超时'); M.prog='取回 Markdown…'; M.pct=90; this.mlog('④ 取回 Markdown…'); const md0=await this.api('/api/mineru?action=agent_md&md_url='+encodeURIComponent(mdUrl)); let md=String(md0.text||''); md=md.replace(/!\[([^\]]*)\]\((?!https?:|data:)[^)]*\)/g,(m,a)=>a?('*（图：'+a+'）*'):'*（图略）*'); md=this.stripMineruJunk(md); if(!md)throw new Error('Markdown 内容为空'); this.mlog('⑤ 得到 '+md.length+' 字，整理并导入…'); const subj=this.guessSubject(book)||this.ingest.subject; this.ingest.subject=subj; M.prog='导入 Books…'; M.pct=95; const n=await this.importMarkdownAsBook(md, book, subj, 'MinerU'); M.pct=100; M.prog='完成'; this.mlog('✓ 已导入 '+n+' 段到《'+book+'》（科目：'+this.subjName(subj)+'）'); this.flash('MinerU（轻量）完成，已导入 '+n+' 段到 Books'); this.loadMaterials(); }catch(e){ if(e.message!=='unauth'){ this.mlog('✗ 失败：'+e.message); this.flash('MinerU 失败：'+e.message,true); } } M.busy=false; },
-    async mineruRunPreciseRange(f, book, subj, rangeStr, pageOffset, M){ this.mlog('① 申请上传地址（vlm'+(rangeStr?('，页码 '+rangeStr):'，整本')+'）…'); const d1=await this.api('/api/mineru?action=get_upload_url',{method:'POST',body:JSON.stringify({filename:f.name,language:'ch',is_ocr:true,model_version:'vlm',page_ranges:rangeStr||undefined})}); const batch_id=d1.batch_id, upload_url=d1.upload_url; if(!upload_url||!batch_id)throw new Error('未拿到上传地址'); this.mlog('已获取，batch_id='+batch_id); const buf=await f.arrayBuffer(); this.mlog('② 上传（经后端代理，绕过跨域）…'); await this.mineruUpload(upload_url, buf); this.mlog('上传完成，开始解析（云端处理，通常数分钟）'); let zipUrl='',tries=0; while(tries<180){ await this.sleep(4000); tries++; let s; try{ s=await this.api('/api/mineru?action=status&batch_id='+encodeURIComponent(batch_id)); }catch(e){ this.mlog('查询出错（重试）：'+e.message); continue; } const st=String(s.state||'unknown'); const ep=s.progress||{}; const ptxt=ep.extracted_pages!=null?('，'+ep.extracted_pages+'/'+(ep.total_pages||'?')+' 页'):''; M.prog='解析中：'+st+ptxt; if(st==='done'||st==='success'){ zipUrl=s.zip_url; this.mlog('③ 解析完成'); break; } if(st==='failed'||st==='error')throw new Error('MinerU 解析失败：'+(s.err||'未知')); if(tries%5===0)this.mlog('仍在解析…（'+st+ptxt+'，已等 '+(tries*4)+'s）'); } if(!zipUrl)throw new Error('解析超时（12 分钟）。可稍后重试'); this.mlog('④ 下载结果 ZIP…'); const zres=await fetch('/api/mineru?action=download&zip_url='+encodeURIComponent(zipUrl),{headers:{authorization:'Bearer '+this.token}}); if(!zres.ok)throw new Error('下载结果失败 HTTP '+zres.status); const zbuf=await zres.arrayBuffer(); await this.ensureJSZip(); const zip=await window.JSZip.loadAsync(zbuf); let pages=null; try{ pages=await this.mineruBuildPagesFromZip(zip); }catch(e){ this.mlog('content_list 解析失败，回退 full.md：'+e.message); } if(pages&&pages.length){ this.mlog('⑤ 按真实页还原 '+pages.length+' 页（含图片），导入…'); return await this.importPagesAsBook(pages, book, subj, 'MinerU', pageOffset); } const names=Object.keys(zip.files); let mdName=names.find(n=>/full\.md$/i.test(n))||names.find(n=>/\.md$/i.test(n)); if(!mdName)throw new Error('结果 ZIP 里没有 Markdown 文件'); let md=await zip.files[mdName].async('string'); md=await this.embedZipImages(md, zip); md=this.stripMineruJunk(md); if(!md)throw new Error('Markdown 内容为空'); this.mlog('⑤ full.md '+md.length+' 字（已嵌图），导入…'); return await this.importMarkdownAsBook(md, book, subj, 'MinerU', pageOffset); },
-    async mineruConvertPrecise(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const f=this._mineruFile; if(!f){ this.flash('请先选择 PDF',true); return; } const book=(this.ingest.bookTitle||'').trim()||f.name.replace(/\.[Pp][Dd][Ff]$/,''); const M=this.ingest.mineru; const pr=(M.pageRange||'').trim(); M.busy=true; M.log=[]; M.pct=3; M.prog='准备…'; try{ const subj=this.guessSubject(book)||this.ingest.subject; this.ingest.subject=subj; let ranges=[]; if(pr){ const mm=pr.match(/^\s*(\d+)\s*-\s*(\d+)\s*$/); ranges=[{range:pr, offset:mm?(parseInt(mm[1])-1):0}]; } else { let total=0; try{ await this.ensurePdfjs(); const b=await f.arrayBuffer(); const doc=await window.pdfjsLib.getDocument({data:b}).promise; total=doc.numPages; if(doc.destroy)doc.destroy(); }catch(_){} if(total>200){ this.mlog('共 '+total+' 页 > 单次 200 页上限，自动分段：'); for(let s=1;s<=total;s+=200){ const e=Math.min(total,s+199); ranges.push({range:s+'-'+e, offset:s-1}); this.mlog('  · '+s+'-'+e); } } else { ranges=[{range:'', offset:0}]; } } let totalN=0; for(let r=0;r<ranges.length;r++){ const rg=ranges[r]; if(ranges.length>1)this.mlog('—— 第 '+(r+1)+'/'+ranges.length+' 段（'+rg.range+'）——'); M.prog='处理第 '+(r+1)+'/'+ranges.length+' 段…'; M.pct=4+Math.round(r/ranges.length*90); const n=await this.mineruRunPreciseRange(f, book, subj, rg.range, rg.offset, M); totalN+=n; this.mlog('本段导入 '+n+' 页，累计 '+totalN+' 页'); } M.pct=100; M.prog='完成'; this.mlog('✓ 全部完成，共导入 '+totalN+' 页到《'+book+'》（科目：'+this.subjName(subj)+'）'); this.flash('MinerU 完成，共导入 '+totalN+' 页到 Books'); this.loadMaterials(); }catch(e){ if(e.message!=='unauth'){ this.mlog('✗ 失败：'+e.message); this.flash('MinerU 失败：'+e.message,true); } } M.busy=false; },
-    async relayOcrCanvas(cv){ const dataUrl=cv.toDataURL('image/jpeg',0.9); const body={image_b64:dataUrl}; if((this.ocrCfg.model||'').trim())body.model=this.ocrCfg.model.trim(); if((this.ocrCfg.base||'').trim())body.base_url=this.ocrCfg.base.trim(); if((this.ocrCfg.key||'').trim())body.api_key=this.ocrCfg.key.trim(); const res=await fetch('/api/visionocr',{method:'POST',headers:{'authorization':'Bearer '+this.token,'content-type':'application/json'},body:JSON.stringify(body)}); const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } if(res.status===404 || !ct.includes('json')){ const e=new Error('中转站 OCR 接口不可用：请确认已部署 functions/api/visionocr.js 并重新部署。'); e.fatal=true; throw e; } if(!res.ok){ const e=new Error((d&&d.error)||('中转站失败 HTTP '+res.status)); if(/未配置/.test(e.message))e.fatal=true; throw e; } const text=String((d&&d.text)||'').trim(); if(!text){ throw new Error('模型返回空内容'+((d&&d.finish)?'（finish: '+d.finish+'）':'')+'：该模型可能不支持图片输入或被内容过滤，换个真正支持看图的模型再试'); } return text; },
-    pdfShelfBySubject(){ const g={math:[],computer:[],politics:[],english:[],other:[]}; for(const it of (this.pdfShelf.items||[])){ (g[it.subject]||g.other).push(it); } return g; },
-    async loadPdfShelf(){ if(!this.token)return; this.pdfShelf.loading=true; this.pdfShelf.note=''; try{ const res=await fetch('/api/pdfs',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(res.status===404 || !ct.includes('json')){ this.pdfShelf.cloudReady=false; this.pdfShelf.note='云端未就绪：检测不到 /api/pdfs 接口。请确认已把 functions/api/pdfs.js 提交并重新部署。'; } else { const d=await res.json().catch(()=>null); if(!res.ok){ this.pdfShelf.cloudReady=false; this.pdfShelf.note=(d&&d.error)||('云端不可用（HTTP '+res.status+'）'); } else { this.pdfShelf.items=d.items||[]; this.pdfShelf.cloudReady=true; } } }catch(e){ this.pdfShelf.cloudReady=false; this.pdfShelf.note='云端连接失败：'+e.message; } this.pdfShelf.loading=false; },
-    async uploadPdf(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; e.target.value=''; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const mb=f.size/1048576; if(mb>95 && !confirm('文件 '+mb.toFixed(1)+'MB，可能超出上传上限（约 100MB）。仍要上传？\n超大书建议改用「本地打开」或先拆分。')) return; const title=(this.ingest.bookTitle||'').trim()||f.name.replace(/\.pdf$/i,''); const subject=this.guessSubject(f.name)||this.ingest.subject||'computer'; this.pdfShelf.uploading=true; this.pdfShelf.pct=0; this.pdfShelf.note=''; this.pdfShelf.prog='读取文件 '+f.name+'（'+mb.toFixed(1)+'MB）…'; try{ const buf=await f.arrayBuffer(); await new Promise((resolve,reject)=>{ const xhr=new XMLHttpRequest(); xhr.open('PUT','/api/pdfs?title='+encodeURIComponent(title)+'&subject='+encodeURIComponent(subject)); xhr.setRequestHeader('authorization','Bearer '+this.token); xhr.setRequestHeader('content-type','application/pdf'); xhr.upload.onprogress=(ev)=>{ if(ev.lengthComputable){ this.pdfShelf.pct=Math.round(ev.loaded/ev.total*100); this.pdfShelf.prog='上传中 '+(ev.loaded/1048576).toFixed(1)+' / '+mb.toFixed(1)+' MB'; } }; xhr.onload=()=>{ const ct=xhr.getResponseHeader('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=JSON.parse(xhr.responseText); }catch(_){} } if(xhr.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; reject(new Error('访问码无效')); return; } if(xhr.status===404 || !ct.includes('json')){ reject(new Error('上传接口不可用：请确认已部署 functions/api/pdfs.js，并在绑定 R2（PDF_BUCKET）后【重新部署一次】。')); return; } if(xhr.status<200||xhr.status>=300){ reject(new Error((d&&d.error)||('上传失败 HTTP '+xhr.status))); return; } this.pdfShelf.pct=100; resolve(d); }; xhr.onerror=()=>reject(new Error('网络错误，上传中断')); xhr.send(buf); }); this.flash('已上传《'+title+'》到云端'); await this.loadPdfShelf(); }catch(err){ this.pdfShelf.note=err.message; this.flash(err.message,true); } this.pdfShelf.uploading=false; this.pdfShelf.prog=''; this.pdfShelf.pct=0; },
-    async openShelfPdf(it){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.pdfv.loading=true; try{ const res=await fetch('/api/pdfs?id='+encodeURIComponent(it.id),{headers:{'authorization':'Bearer '+this.token}}); if(!res.ok)throw new Error('下载失败 '+res.status); const buf=await res.arrayBuffer(); await this.pdfvOpenSrc(buf, it.title); }catch(e){ this.pdfv.loading=false; this.flash('打开失败：'+e.message,true); } },
-    async deleteShelfPdf(it){ if(!confirm('确定删除云端 PDF《'+it.title+'》？此操作不可恢复。')) return; try{ await this.api('/api/pdfs?id='+encodeURIComponent(it.id),{method:'DELETE'}); this.flash('已删除《'+it.title+'》'); if(this.pdfv.title===it.title)this.pdfvClose(); await this.loadPdfShelf(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-    async pdfExtractText(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      const doc=this._pdfDoc; this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.result=null;
-      try{ let text='';
-        for(let p=1;p<=doc.numPages;p++){ this.ingest.pdf.prog='正在提取文本，第 '+p+'/'+doc.numPages+' 页'; const page=await doc.getPage(p); const tc=await page.getTextContent(); text+=tc.items.map(it=>it.str).join(' ')+'\n'; }
-        const chunks=this.chunkText(text);
-        if(!chunks.length){ this.flash('未找到文本——可能是扫描版 PDF。请改用拍照辅助或手动录入',true); this.ingest.pdf.busy=false; this.ingest.pdf.prog=''; return; }
-        this.ingest.pdf.extracted=text.trim(); this.ingest.raw=text.trim(); this.ingest.pdf.prog=''; this.flash('已在本地提取文本——请复制有用内容到手动录入或 JSON'); this.ingest.pdf.busy=false; return;
-        let total=0;
-        for(let i=0;i<chunks.length;i++){ this.ingest.pdf.prog='正在结构化第 '+(i+1)+'/'+chunks.length+' 段（已导入 '+total+'）';
-          try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),raw_text:chunks[i]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
-          catch(e){ if(e.message==='unauth'){ this.ingest.pdf.busy=false; return; } } }
-        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('PDF 文本处理完成，已导入 '+total+' 题'); this.loadMeta(); this.loadStats();
-      }catch(e){ this.flash('Failed: '+e.message,true); }
-      this.ingest.pdf.busy=false; },
-    async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      const doc=this._pdfDoc; const st=Math.max(1, parseInt(this.ingest.pdf.start||1,10)||1); const ed=Math.min(doc.numPages, parseInt(this.ingest.pdf.end||st,10)||st);
-      if(ed<st){ this.flash('结束页不能小于开始页',true); return; }
-      if(ed-st+1>20 && !confirm('一次将识别 '+(ed-st+1)+' 页，可能消耗较多 AI 额度。确定继续？')) return;
-      this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.pdf.total=ed-st+1; this.ingest.pdf.inserted=0; this.ingest.result=null;
-      try{ await this.loadConfig(); let total=0; let mats=0; const samples=[];
-        for(let p=st;p<=ed;p++){ this.ingest.pdf.prog='模型：'+this.ocrModelName+' · 第 '+(p-st+1)+'/'+(ed-st+1)+' 页 · 已导入 '+total+' 题';
-          const page=await doc.getPage(p); const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',Number(this.ingest.pdf.quality)||0.72);
-          const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),kind:this.ingest.kind,images:[dataUrl]})}); total+=(d.inserted_questions??d.inserted)||0; mats+=d.inserted_materials||0; this.ingest.pdf.inserted=total; this.ingest.pdf.done=(p-st+1); if(d.sample) samples.push(...d.sample);
-        }
-        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(); this.loadStats(); this.loadMaterials();
-      }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
-      this.ingest.pdf.busy=false; },
-    async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
-    rate(r){ const t=(r.right_sum||0)+(r.wrong_sum||0); return t?Math.round((r.right_sum||0)/t*100):0; },
-    async startMock(){ if(!this.token)return; this.mock.finished=false; this.mock.answers={}; this.loading=true;
-      const limit=this.mock.objectiveOnly?Math.min(200,(this.mock.count||20)*3):(this.mock.count||20);
-      const p=new URLSearchParams({ order:'random', limit:String(limit), mode:'all' });
-      if(this.mock.subject!=='all') p.set('subject',this.mock.subject);
-      try{ const d=await this.api('/api/questions?'+p.toString()); let qs=d.items;
-        if(this.mock.objectiveOnly) qs=qs.filter(q=>AUTO.includes(q.type));
-        qs=qs.slice(0,this.mock.count||20);
-        if(!qs.length){ this.flash('该科目题目不足，请先导入一些题目',true); this.loading=false; return; }
-        this.mock.questions=qs; this.mock.started=true; this.mock.elapsed=0; this.mock.remaining=(this.mock.minutes||60)*60;
-        clearInterval(this.mock.timer);
-        this.mock.timer=setInterval(()=>{ this.mock.remaining--; this.mock.elapsed++; if(this.mock.remaining<=0)this.submitMock(); },1000);
-        window.scrollTo({top:0});
-      }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
-      this.loading=false;
-    },
-    async submitMock(){ clearInterval(this.mock.timer); this.mock.finished=true; this.mock.started=false; await this.$nextTick();
-      const cards=this.$refs.mockCards||[]; const ans={};
-      for(const c of cards){ ans[c.q.id]= c.graded?c.finalCorrect:null; } this.mock.answers=ans;
-      let correct=0;
-      for(const c of cards){ if(c.graded){ if(c.finalCorrect)correct++; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:c.q.id,is_correct:c.finalCorrect})}); }catch(e){} } }
-      try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'mock',subject:this.mock.subject,total:this.mock.questions.length,correct,duration_seconds:this.mock.elapsed})}); }catch(e){}
-      window.scrollTo({top:0,behavior:'smooth'});
-    },
-    async onMockAnswer(p){ this.mock.answers[p.id]=p.correct; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
-    quitMock(){ clearInterval(this.mock.timer); this.mock.started=false; this.mock.finished=false; this.mock.questions=[]; this.mock.answers={}; },
-    fmtTime(s){ s=Math.max(0,s); const m=Math.floor(s/60),x=s%60; return String(m).padStart(2,'0')+':'+String(x).padStart(2,'0'); },
-    stealthHide(){ this.stealth.hidden=true; },
-    stealthShow(){ this.stealth.hidden=false; },
-    onKey(e){ const tag=(e.target&&e.target.tagName)||'';
-      if(this.stealth.hidden){ e.preventDefault(); this.stealth.hidden=false; return; }
-      if(e.key==='`'||e.key==='~'){ if(tag==='INPUT'||tag==='TEXTAREA')return; e.preventDefault(); this.stealth.hidden=true; } },
-    onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
-    onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; },
-  },
-  mounted(){ document.documentElement.dataset.theme=this.theme; document.title=this.appName;
-    window.addEventListener('keydown', this.onKey);
-    window.addEventListener('blur', this.onBlur);
-    window.addEventListener('focus', this.onFocus);
-    try{ const oc=JSON.parse(localStorage.getItem('zb_ocrcfg')||'null'); if(oc&&typeof oc==='object'){ this.ocrCfg.model=oc.model||''; this.ocrCfg.base=oc.base||''; this.ocrCfg.key=oc.key||''; } }catch(_){}
-    try{ this.bookTocOpen = (typeof window!=='undefined') ? window.innerWidth>860 : true; }catch(_){}
-    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession(); } else { this.view='settings'; }
-  },
-  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); },
-  template:`
-  <div class="topbar"><div class="topbar-in">
-    <div class="brand"><span class="dot"></span>{{ appName }}</div>
-    <div class="spacer"></div>
-    <button class="icon-btn" @click="stealthHide" title="快速隐藏（按 &#96; 切换）"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.4 5.2A9 9 0 0 1 21 12a9.4 9.4 0 0 1-1.3 1.9"/><path d="M6.1 6.1A9.4 9.4 0 0 0 3 12a9 9 0 0 0 11 6.6"/></svg></button>
-    <button class="icon-btn" @click="theme=theme==='light'?'dark':'light'" :title="theme==='light'?'深色模式':'浅色模式'">{{ theme==='light'?'☾':'☀' }}</button>
-  </div>
-  <div class="tabs">
-    <button class="tab" :class="{active:view==='practice'}" @click="go('practice')">Home</button>
-    <button class="tab" :class="{active:view==='books'}" @click="view='books'">Books</button>
-    <button class="tab" :class="{active:view==='wrong'}" @click="go('wrong')">Review<span v-if="wrongTotal" class="badge">{{ wrongTotal }}</span></button>
-    <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">Saved</button>
-    <button class="tab" :class="{active:view==='mock'}" @click="view='mock'">Test</button>
-    <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
-    <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">题库</button>
-    <button class="tab" :class="{active:view==='ingest'}" @click="view='ingest'">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click="view='settings'">Settings</button>
-  </div></div>
+  let messages;
+  if (vision) {
+    const content = [{ type: 'text', text: hint + '\n\n下面是页面图片，请先准确识别图中文字（含数学公式、代码），再按上述要求处理。' }];
+    for (const img of input.images) content.push({ type: 'image_url', image_url: { url: img } });
+    messages = [{ role: 'system', content: sys }, { role: 'user', content }];
+  } else {
+    messages = [
+      { role: 'system', content: sys },
+      { role: 'user', content: `${hint}\n\n请处理下面的原文：\n\n"""\n${input.rawText}\n"""` },
+    ];
+  }
 
-  <div class="wrap">
+  let resp;
+  try {
+    resp = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
+      body: JSON.stringify({ model, temperature: 0.1, messages, response_format: { type: 'json_object' } }),
+    });
+  } catch (e) {
+    return { error: '调用 AI 中转站失败：' + e.message, status: 502 };
+  }
+  if (!resp.ok) {
+    const t = await resp.text().catch(() => '');
+    const extra = vision ? '（请确认所选模型支持图片输入）' : '';
+    return { error: `AI 中转站返回 ${resp.status}${extra}`, detail: t.slice(0, 400), status: 502 };
+  }
+  const data = await resp.json().catch(() => null);
+  const out = data?.choices?.[0]?.message?.content || '';
+  const parsed = safeParse(out);
+  if (!parsed.questions.length && !parsed.materials.length) {
+    return { error: 'AI 未解析出有效内容，可换更强的模型或缩短单次输入', raw: String(out).slice(0, 800), status: 422 };
+  }
+  return parsed;
+}
 
-    <div v-if="['practice','wrong','favorite'].includes(view)">
-      <div class="toolbar">
-        <div class="field"><label>科目</label>
-          <select v-model="f.subject" @change="startSession">
-            <option value="all">全部科目</option>
-            <option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option>
-          </select></div>
-        <div class="field"><label>章节</label>
-          <select v-model="f.chapter" @change="startSession">
-            <option value="">全部章节</option>
-            <option v-for="c in chaptersForSubject" :key="c.subject+'|'+c.chapter" :value="c.chapter">{{ c.chapter }} ({{ c.n }})</option>
-          </select></div>
-        <div class="field"><label>题型</label>
-          <select v-model="f.type" @change="startSession">
-            <option value="">全部题型</option>
-            <option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option>
-          </select></div>
-        <div class="field" v-if="view==='practice'"><label>范围</label>
-          <select v-model="f._mode" @change="startSession">
-            <option value="all">全部题目</option>
-            <option value="unseen">仅未做</option>
-            <option value="wrong">仅错题</option>
-            <option value="favorite">仅收藏</option>
-          </select></div>
-        <div class="field"><label>顺序</label>
-          <select v-model="f.order" @change="startSession">
-            <option value="random">随机</option>
-            <option value="seq">顺序</option>
-          </select></div>
-        <button class="btn subtle" @click="startSession" style="margin-left:auto">↻ 刷新</button>
-      </div>
+function safeParse(text) {
+  const empty = { kind: 'unknown', questions: [], materials: [] };
+  if (!text) return empty;
+  let t = String(text).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  let obj;
+  try { obj = JSON.parse(t); }
+  catch {
+    const m = t.match(/[\[{][\s\S]*[\]}]/);
+    if (!m) return empty;
+    try { obj = JSON.parse(m[0]); } catch { return empty; }
+  }
+  // 兼容：模型有时直接返回题目数组
+  if (Array.isArray(obj)) return { kind: 'questions', questions: obj.filter((q) => q && q.stem), materials: [] };
+  const questions = (obj.questions || obj.data || obj.items || []).filter((q) => q && q.stem);
+  let materials = obj.materials || [];
+  if (obj.material && typeof obj.material === 'object') materials = [obj.material, ...materials];
+  materials = materials.filter((m) => m && (m.content_md || m.content));
+  return { kind: obj.kind || 'unknown', questions, materials };
+}
 
-      <div v-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
-      <template v-else>
-        <div v-if="cur">
-          <div class="row" style="margin-bottom:12px;align-items:center;gap:10px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
-            <span class="muted" v-if="view==='wrong'">· 复习</span>
-            <span class="muted" v-if="view==='favorite'">· 收藏</span>
-            <select class="bk-mini" style="margin-left:auto" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="改本题科目（纠正分类）"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-            <button class="bk-del" @click="deleteCurrentQuestion" title="从题库删除本题">删除本题</button>
-          </div>
-          <question-card :q="cur" :key="cur.id" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" />
-        </div>
-        <div v-else class="empty">
-          <div class="big">{{ view==='wrong'?'✓':view==='favorite'?'☆':'∅' }}</div>
-          <p v-if="view==='wrong'">暂无错题，做得不错。</p>
-          <p v-else-if="view==='favorite'">暂无收藏题。点击题目上的 ★ 可收藏。</p>
-          <p v-else>没有匹配的题目。请调整筛选条件，或先导入题目。</p>
-          <div class="row" style="justify-content:center;margin-top:14px">
-            <button class="btn subtle" @click="startSession">重新加载</button>
-            <button class="btn" @click="view='ingest'">前往导入</button>
-          </div>
-        </div>
-      </template>
-    </div>
+function buildSystemPrompt(kind) {
+  const base = `你是「广东普通专升本（专插本）」备考资料的智能整理助手。用户会给你一段可能格式混乱的内容，可能是【试题/习题】，也可能是【教材正文/讲义】，也可能两者混在一起。
 
+【第一步：判断内容类型】
+- questions（题库）：存在明确的题目、例题、习题、选择项、答案或可训练的问题。
+- material（教材）：是讲解性正文、概念定义、定理推导、知识点叙述，没有可直接作答的题目。
+- mixed（混合）：同一段里既有讲解又有习题。
 
-    <div v-else-if="view==='books'">
-      <h2 style="margin:.2em 0 .5em">教材阅读</h2>
-      <div class="seg" style="margin-bottom:16px">
-        <button :class="{on:booksMode==='notes'}" @click="booksMode='notes'">整理笔记</button>
-        <button :class="{on:booksMode==='pdf'}" @click="booksMode='pdf'">PDF 原书</button>
-      </div>
-      <div v-show="booksMode==='pdf'">
-        <p class="muted" style="margin-bottom:14px">选一个 PDF 在浏览器里直接渲染原版页面（公式/图表/排版原样，不转换）。「本地打开」仅本次有效；「上传到云端」会存到 R2，之后任何设备都能打开。</p>
-        <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:14px">
-          <label class="btn subtle" style="cursor:pointer">本地打开（仅本次）<input type="file" accept="application/pdf,.pdf" @change="pdfvOpenLocal" style="display:none" /></label>
-          <label class="btn" style="cursor:pointer"><span v-if="pdfShelf.uploading" class="spin"></span>上传 PDF 到云端<input type="file" accept="application/pdf,.pdf" :disabled="pdfShelf.uploading" @change="uploadPdf" style="display:none" /></label>
-          <span v-if="pdfv.loading" class="muted"><span class="spin"></span> 正在解析 PDF…</span>
-        </div>
-        <div v-if="pdfShelf.uploading" style="margin:0 0 14px;max-width:520px">
-          <div class="muted" style="font-size:13px;margin-bottom:6px">{{ pdfShelf.prog }} <span v-if="pdfShelf.pct">· {{ pdfShelf.pct }}%</span></div>
-          <div style="height:9px;background:var(--surface-2);border-radius:99px;overflow:hidden;border:1px solid var(--line)"><div :style="{width:pdfShelf.pct+'%',height:'100%',background:'var(--accent)',transition:'width .2s'}"></div></div>
-        </div>
-        <div v-if="pdfShelf.note" class="hint" style="border:1px solid color-mix(in srgb,#c0392b 35%,var(--line));background:color-mix(in srgb,#c0392b 6%,var(--surface));margin-bottom:14px">{{ pdfShelf.note }}</div>
-        <template v-if="pdfShelf.items.length">
-          <template v-for="(list,sub) in pdfShelfBySubject()" :key="sub">
-            <div v-if="list.length" class="bk-shelf">
-              <div class="bk-shelf-label">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
-              <div class="bk-grid">
-                <div v-for="it in list" :key="it.id" class="bk-card" @click="openShelfPdf(it)">
-                  <span class="spine"></span>
-                  <span class="t">{{ it.title }}</span>
-                  <span class="m">{{ (it.size/1048576).toFixed(1) }} MB · 云端 · <a href="#" style="color:#c0392b" @click.stop.prevent="deleteShelfPdf(it)">删除</a></span>
-                </div>
-              </div>
-            </div>
-          </template>
-        </template>
-        <div v-if="pdfv.open" class="pdfv" style="margin-top:14px">
-          <div class="pdfv-bar">
-            <div class="ttl">{{ pdfv.title }}</div>
-            <div class="bk-nav">
-              <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
-              <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
-            </div>
-            <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
-            <input class="bk-jump inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value)" placeholder="跳页" />
-            <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
-            <button class="btn subtle" @click="pdfvClose">关闭</button>
-          </div>
-          <div class="pdfv-body">
-            <div class="pdfv-rail" ref="pdfvRail">
-              <div v-for="n in pdfv.pages" :key="n" class="pdfv-thumb" :class="{on:n===pdfv.cur}" :data-page="n" @click="pdfvGoto(n)"><canvas></canvas><span>{{ n }}</span></div>
-            </div>
-            <div class="pdfv-main"><canvas ref="pdfvCanvas"></canvas></div>
-          </div>
-        </div>
-        <div v-else-if="!pdfv.loading" class="empty"><p>选择一个 PDF 直接在线阅读。适合公式、图表多、不想被 OCR 弄花的教材。<br>提示：PDF 仅在本次打开期间保留；想长期保存请用「整理笔记」导入，或把 PDF 放进部署的 public/。</p></div>
-      </div>
-      <div v-show="booksMode==='notes'">
-      <template v-if="!materialBooks.length">
-        <div class="empty">
-          <p>还没有教材资料。去「导入」粘贴教材正文或上传教材 PDF，整理好的知识点会显示在这里。</p>
-          <button class="btn" @click="view='ingest'">去导入教材</button>
-        </div>
-      </template>
-      <template v-else>
-        <template v-for="(list,sub) in booksBySubject" :key="sub">
-          <div v-if="list.length" class="bk-shelf">
-            <div class="bk-shelf-label">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
-            <div class="bk-grid">
-              <button v-for="b in list" :key="b.key" class="bk-card" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">
-                <span class="spine"></span>
-                <span class="t">{{ b.title }}</span>
-                <span class="m">{{ b.pages.length }} 页</span>
-              </button>
-            </div>
-          </div>
-        </template>
-        <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen,'toc-open':bookTocOpen}">
-          <aside class="bk-toc">
-            <h4>目录 <span class="muted">{{ currentBook.pages.length }} 篇</span><button class="toc-close" @click="bookTocOpen=false" title="关闭">✕</button></h4>
-            <div class="tip">按每页正文标题/首行生成，点击跳转</div>
-            <div v-for="(m,i) in currentBook.pages" :key="m.id" class="bk-toc-item" :class="{on:i===bookIdx}" @click="bookGoto(i); bookTocOpen = (window.innerWidth>860)">{{ pageLabel(m) }}</div>
-          </aside>
-          <div class="bk-toc-backdrop" @click="bookTocOpen=false"></div>
-          <div class="bk-page">
-            <div class="bk-bar">
-              <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" :title="bookTocOpen?'收起目录':'展开目录'">{{ bookTocOpen ? '⟨ 收起目录' : '☰ 目录' }}</button>
-              <div style="flex:1;min-width:160px">
-                <div class="ttl">{{ currentPageMat.title }}</div>
-                <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
-              </div>
-              <div class="bk-nav">
-                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-              </div>
-              <input class="bk-jump inp" type="number" min="1" @keyup.enter="bookJumpPage($event.target.value)" placeholder="跳页" title="输入页码回车跳转" />
-            </div>
-            <div class="bk-body">
-              <div v-if="currentPageMat.summary" class="summary">{{ currentPageMat.summary }}</div>
-              <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:16px" />
-              <rich-text :content="currentPageMat.content_md" />
-              <div v-if="genq.result" class="ref" style="margin-top:20px">
-                <h5>已生成 {{ genq.result.inserted_questions ?? genq.result.inserted ?? 0 }} 道题（进题库 · {{ subjName(currentPageMat.subject) }}）</h5>
-                <div v-for="(s,i) in (genq.result.sample||[])" :key="i" class="muted">· [{{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
-              </div>
-            </div>
-            <div class="bk-foot">
-              <div class="bk-nav">
-                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-              </div>
-              <select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改本书科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-              <button class="btn" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial"><span v-if="genq.busy" class="spin"></span>根据本页生成练习题</button>
-              <span v-if="!ai.hasAI" class="muted">未配置 AI，无法出题</span>
-              <button class="bk-del" style="margin-left:auto" @click="deleteCurrentBook">删除本书</button>
-            </div>
-          </div>
-        </div>
-      </template>
-      </div>
-    </div>
+【第二步：按类型整理】只输出一个 JSON 对象，不要任何解释或 Markdown 围栏，结构如下：
+{
+  "kind": "questions" | "material" | "mixed",
+  "questions": [ 题目对象… ],   // 没有题目则空数组
+  "materials": [ 教材对象… ]    // 没有教材则空数组
+}
 
-    <div v-else-if="view==='mock'">
-      <div v-if="!mock.started && !mock.finished">
-        <h2 style="margin:.2em 0 .5em">模拟测试</h2>
-        <p class="muted" style="margin-bottom:16px">限时测试。提交后自动判分；错题会进入复习。</p>
-        <div class="toolbar">
-          <div class="field"><label>科目</label>
-            <select v-model="mock.subject">
-              <option value="all">全部科目</option>
-              <option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option>
-            </select></div>
-          <div class="field"><label>题数</label>
-            <select v-model.number="mock.count"><option :value="10">10</option><option :value="20">20</option><option :value="30">30</option><option :value="50">50</option><option :value="100">100</option></select></div>
-          <div class="field"><label>时间（分钟）</label>
-            <select v-model.number="mock.minutes"><option :value="15">15</option><option :value="30">30</option><option :value="60">60</option><option :value="90">90</option><option :value="120">120</option></select></div>
-        </div>
-        <label class="row" style="margin:6px 0 18px;cursor:pointer"><input type="checkbox" v-model="mock.objectiveOnly" /> <span class="muted">仅自动判分题（单选 / 多选 / 判断）</span></label>
-        <button class="btn" :disabled="loading" @click="startMock"><span v-if="loading" class="spin"></span>开始测试</button>
-      </div>
+题目对象字段：
+  - subject: "politics"(政治) | "english"(英语) | "math"(高等数学) | "computer"(计算机基础与程序设计)。用户指定时优先。
+  - chapter: 章节/知识点（如「数据结构-线性表」「C语言-指针」；不确定留空字符串）。
+  - type: "single_choice" | "multiple_choice" | "true_false" | "fill_blank" | "short_answer" | "code"。
+  - difficulty: 1~5 整数，默认 3。
+  - source: 来源（如「2023真题」），不确定留空。
+  - passage: 阅读理解/完形填空公共材料，无则空字符串；同篇多题各自重复。
+  - stem: 题干（必填）。数学公式用 LaTeX（$...$ 或 $$...$$），代码用 \`\`\`c ... \`\`\`。
+  - options: 选择题选项 [{"key":"A","text":"..."}]；非选择题为 []。
+  - answer: 答案数组。选择题用 key（["B"] / ["A","C"]）；判断用 ["T"]/["F"]；填空按顺序给各空标准答案；简答/代码把参考答案文本放进首元素。
+  - analysis: 解析；原文没有就你补一段简明解析。
+  - tags: 关键词标签字符串数组。
 
-      <template v-else>
-        <div v-if="mock.started" class="mock-bar">
-          <span class="timer" :class="{warn:mock.remaining<60}">{{ fmtTime(mock.remaining) }}</span>
-          <span class="muted">{{ mock.questions.length }} 题 · {{ subjName(mock.subject==='all'?'':mock.subject)||'全部科目' }}</span>
-          <div class="spacer" style="flex:1"></div>
-          <button class="btn" @click="submitMock">提交</button>
-        </div>
+教材对象字段（这是你要主动做的"整理分析"，不是照抄原文）：
+  - subject: 同上四选一。
+  - title: 这页/这段教材的小标题（如「极限的定义与性质」「指针与数组的关系」）。
+  - chapter: 所属章节。
+  - summary: 一两句话概括本段核心内容。
+  - content_md: 用 Markdown 把知识点整理成结构化笔记——提炼要点、列出关键定义/公式/定理、必要时配简短例子；公式用 LaTeX，代码用围栏。这是给学生复习用的精炼笔记，不是原文复制。
+  - tags: 关键概念标签字符串数组。
 
-        <div v-if="mock.finished" class="card" style="text-align:center">
-          <div class="stamp" :class="mockPct>=60?'ok':'bad'"><div><div class="s">{{ mockPct }}</div><div class="u">得分</div></div></div>
-          <div style="font-weight:700;font-size:18px">得分 {{ mockResult.correct }} / {{ mockResult.total }}</div>
-          <p class="muted" style="margin-top:6px">用时 {{ fmtTime(mock.elapsed) }}<span v-if="mockResult.graded<mockResult.total"> · 还有 {{ mockResult.total-mockResult.graded }} 道主观题需自评</span></p>
-          <div class="row" style="justify-content:center;margin-top:14px">
-            <button class="btn subtle" @click="quitMock">返回</button>
-            <button class="btn" @click="startMock">重新测试</button>
-          </div>
-        </div>
-        <h3 v-if="mock.finished" style="margin:22px 0 10px">复盘</h3>
+【规则】保持原意不臆造；把混在一起的答案、解析正确归位；目录、页码、广告等无关内容忽略；只有当原文确实是讲解性正文时才放进 materials，确实是题目时才放进 questions。`;
 
-        <div v-for="(q,i) in mock.questions" :key="q.id" style="margin-bottom:16px">
-          <div class="q-counter" style="margin-bottom:6px">第 {{ i+1 }} 题
-            <template v-if="mock.finished">·
-              <span v-if="mock.answers[q.id]===true" style="color:var(--ok)">正确</span>
-              <span v-else-if="mock.answers[q.id]===false" style="color:var(--bad)">错误</span>
-              <span v-else class="muted">自评</span>
-            </template>
-          </div>
-          <question-card ref="mockCards" :q="q" mode="exam" :exam-reveal="mock.finished" @answered="onMockAnswer" />
-        </div>
+  if (kind === 'questions') {
+    return base + `\n\n【本次强制】用户已指定只要题库：materials 一律返回空数组，把内容尽量结构化为题目。`;
+  }
+  if (kind === 'material') {
+    return base + `\n\n【本次强制】用户已指定只要教材整理：questions 一律返回空数组，把内容整理成结构化教材笔记。`;
+  }
+  return base + `\n\n【本次】自动分辨，按真实类型填充 questions 与 materials。`;
+}
 
-        <button v-if="mock.started" class="btn" style="width:100%" @click="submitMock">提交</button>
-      </template>
-    </div>
-
-    <div v-else-if="view==='bank'">
-      <div class="filters">
-        <div class="field"><label>科目</label>
-          <select v-model="bank.subject" @change="loadBank(true)"><option value="">全部科目</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-        <div class="field"><label>题型</label>
-          <select v-model="bank.type" @change="loadBank(true)"><option value="">全部题型</option><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
-        <div class="field" style="flex:1;min-width:180px"><label>关键词</label>
-          <input class="inp" v-model="bank.kw" @keyup.enter="loadBank(true)" placeholder="搜题干 / 章节，回车搜索" /></div>
-        <button class="btn subtle" @click="loadBank(true)" style="align-self:flex-end">↻ 搜索</button>
-      </div>
-
-      <div class="bank-toolbar">
-        <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
-        <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
-        <button class="btn subtle" v-if="bank.items.length" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）">🪄 智能归类(本页)</button>
-        <template v-if="bank.sel.length">
-          <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-          <button class="btn subtle" @click="bankBatchSubject">应用</button>
-          <button class="bk-del" @click="bankBatchDelete">删除选中 ({{ bank.sel.length }})</button>
-        </template>
-      </div>
-
-      <div v-if="bank.loading && !bank.items.length" class="empty"><span class="spin"></span> 加载中…</div>
-      <div v-else-if="!bank.items.length" class="empty"><div class="big">∅</div><p>题库为空或没有匹配的题目。</p></div>
-      <template v-else>
-        <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row" :class="{sel:bank.sel.includes(q.id)}">
-          <input type="checkbox" class="bank-rowck" :checked="bank.sel.includes(q.id)" @change="bankToggle(q.id)" />
-          <div class="bank-main">
-            <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
-            <div class="bank-stem"><rich-text :content="q.stem || '（空题干）'" /></div>
-          </div>
-          <div class="bank-side">
-            <button class="btn subtle xs" @click="bankOpenEdit(q)">编辑</button>
-            <button class="bk-del xs" @click="bankDelete(q)">删除</button>
-          </div>
-        </div>
-        <div class="row" style="justify-content:center;margin:16px 0" v-if="bank.items.length < bank.total">
-          <button class="btn subtle" :disabled="bank.loading" @click="bankMore"><span v-if="bank.loading" class="spin"></span>加载更多（还有 {{ bank.total - bank.items.length }} 题）</button>
-        </div>
-      </template>
-
-      <div v-if="bankEdit.open" class="modal-mask" @click.self="bankCloseEdit">
-        <div class="modal">
-          <div class="modal-h"><b>编辑题目</b><button class="toc-close" @click="bankCloseEdit">✕</button></div>
-          <div class="modal-b">
-            <div class="row" style="gap:10px;margin-bottom:10px">
-              <div class="field" style="flex:1"><label>科目</label><select v-model="bankEdit.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-              <div class="field" style="flex:1"><label>题型</label><select v-model="bankEdit.type"><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
-            </div>
-            <label class="lbl">题干（支持 Markdown / LaTeX，行内公式用 $…$ 需成对）</label>
-            <textarea class="inp" v-model="bankEdit.stem" rows="5"></textarea>
-            <label class="lbl" style="margin-top:10px">解析（可选）</label>
-            <textarea class="inp" v-model="bankEdit.analysis" rows="3"></textarea>
-            <div class="prev-box"><div class="lbl">预览</div><rich-text :content="bankEdit.stem || '（空）'" /></div>
-          </div>
-          <div class="modal-f">
-            <button class="btn subtle" @click="bankCloseEdit">取消</button>
-            <button class="btn" :disabled="bankEdit.busy" @click="bankSaveEdit"><span v-if="bankEdit.busy" class="spin"></span>保存</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-else-if="view==='stats'">
-      <div v-if="statsLoading" class="empty"><span class="spin"></span> 加载中…</div>
-      <template v-else-if="stats">
-        <div class="stat-grid">
-          <div class="stat"><div class="n">{{ statTotals.totalQ }}</div><div class="l">题目总数</div></div>
-          <div class="stat"><div class="n">{{ statTotals.seen }}</div><div class="l">已作答</div></div>
-          <div class="stat"><div class="n" style="color:var(--bad)">{{ statTotals.wrongOpen }}</div><div class="l">待复习</div></div>
-          <div class="stat"><div class="n" style="color:var(--ok)">{{ statTotals.mastered }}</div><div class="l">已掌握</div></div>
-        </div>
-        <div v-if="!statTotals.totalQ" class="empty"><p>暂无题目。请到导入页面添加题目。</p><button class="btn" @click="view='ingest'">前往导入</button></div>
-        <template v-else>
-          <h3 style="margin:6px 0 12px">按科目统计正确率</h3>
-          <div v-for="r in stats.bySubject" :key="r.subject" class="subj-row">
-            <div class="top"><span>{{ subjName(r.subject) }}</span><span class="muted">{{ rate(r) }}% · 正确 {{ r.right_sum||0 }} / 已答 {{ (r.right_sum||0)+(r.wrong_sum||0) }}</span></div>
-            <div class="bar"><span :style="{width:rate(r)+'%', background: rate(r)>=60?'var(--ok)':'var(--bad)'}"></span></div>
-            <div class="muted" style="margin-top:6px">总数 {{ r.total_q }} · 待复习 {{ r.wrong_open||0 }} · 收藏 {{ r.favorited||0 }}</div>
-          </div>
-          <template v-if="stats.mocks && stats.mocks.length">
-            <h3 style="margin:22px 0 12px">近期测试</h3>
-            <div v-for="(m,i) in stats.mocks" :key="i" class="subj-row">
-              <div class="top"><span>{{ subjName(m.subject) }} · {{ m.correct }}/{{ m.total }}</span><span class="muted">{{ fmtTime(m.duration_seconds) }}</span></div>
-              <div class="bar"><span :style="{width:(m.total?Math.round(m.correct/m.total*100):0)+'%', background:(m.total&&m.correct/m.total>=0.6)?'var(--ok)':'var(--bad)'}"></span></div>
-            </div>
-          </template>
-        </template>
-      </template>
-      <div v-else class="empty"><span class="spin"></span> 加载中…</div>
-    </div>
-
-    <div v-else-if="view==='ingest'">
-      <h2 style="margin:.2em 0 .5em">导入</h2>
-      <div class="seg" style="margin-bottom:14px">
-        <button :class="{on:ingest.tab==='manual'}" @click="ingest.tab='manual'">手动录入</button>
-        <button :class="{on:ingest.tab==='photo'}" @click="ingest.tab='photo'">拍照辅助</button>
-        <button :class="{on:ingest.tab==='json'}" @click="ingest.tab='json'">导入 JSON</button>
-        <button :class="{on:ingest.tab==='pdf'}" @click="ingest.tab='pdf'">PDF 文本</button>
-        <button :class="{on:ingest.tab==='md'}" @click="ingest.tab='md'">Markdown</button>
-        <button :class="{on:ingest.tab==='mineru'}" @click="ingest.tab='mineru'">MinerU</button>
-        <button :class="{on:ingest.tab==='ai'}" @click="ingest.tab='ai'">AI 整理</button>
-      </div>
-      <div class="toolbar">
-        <div class="field" v-if="!['manual','json','md','mineru'].includes(ingest.tab)"><label>导入类型</label>
-          <select v-model="ingest.kind"><option value="auto">自动分辨（题库 / 教材）</option><option value="questions">只当题库</option><option value="material">只当教材</option></select></div>
-        <div class="field"><label>默认科目</label>
-          <select v-model="ingest.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-        <div class="field" v-if="['photo','pdf','ai','md','mineru'].includes(ingest.tab)"><label>教材名称（转教材时用作书名，按科目归类）</label><input class="inp" v-model="ingest.bookTitle" placeholder="如 谭浩强C程序设计（选 PDF/MD 会自动填）" /></div>
-        <template v-if="!['json','md','mineru'].includes(ingest.tab)">
-          <div class="field"><label>章节预设</label>
-            <select v-model="ingest.chapter"><option value="">选择 / 下方自定义</option><option v-for="c in ingestChapterOptions" :key="c.chapter" :value="c.chapter">{{ c.chapter }} {{ c.n ? '('+c.n+')' : '' }}</option></select></div>
-          <div class="field"><label>自定义章节</label><input class="inp" v-model="ingest.chapter" placeholder="例如：C语言-指针" /></div>
-        </template>
-        <template v-if="ingest.tab==='manual'">
-          <div class="field"><label>书本 / 来源模式</label><label class="row" style="height:40px;cursor:pointer"><input type="checkbox" v-model="ingest.bookMode" /> <span class="muted">小红本自动来源</span></label></div>
-          <template v-if="ingest.bookMode">
-            <div class="field"><label>书名</label><input class="inp" v-model="ingest.bookName" placeholder="小红本" /></div>
-            <div class="field"><label>页码</label><input class="inp" v-model="ingest.pageNo" placeholder="12" /></div>
-            <div class="field"><label>题号</label><input class="inp" v-model="ingest.questionNo" placeholder="3" /></div>
-          </template>
-          <div class="field" v-else><label>来源</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
-        </template>
-        <div class="field" v-else-if="['photo','ai'].includes(ingest.tab)"><label>来源（可选，作题目出处）</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
-      </div>
-      <div class="hint" v-if="!['json','md','mineru'].includes(ingest.tab)">当前分类： <b>{{ subjName(ingest.subject) }}</b><span v-if="ingest.chapter"> · {{ ingest.chapter }}</span><span v-if="['photo','pdf','ai'].includes(ingest.tab) && ingest.bookTitle"> · 教材：{{ ingest.bookTitle }}</span><br>题目来源： <code>{{ currentSource() || '（无）' }}</code></div>
-      <template v-if="ingest.tab==='manual' || ingest.tab==='photo'">
-        <div v-if="ingest.tab==='photo'" class="card" style="margin-bottom:14px">
-          <label class="btn subtle" style="cursor:pointer">拍摄 / 选择照片
-            <input type="file" accept="image/*" capture="environment" @change="onPhotoFile" style="display:none" />
-          </label>
-          <div class="hint">照片先保留在浏览器本地。“AI OCR 识别并导入”会把图片发给你配置的 AI 视觉模型，识别出的题目写入题库。若模型不支持图片，可用“本地 OCR 存为教材”，全程在浏览器里识别、不花 AI 额度。</div>
-          <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><button class="btn" :disabled="ingest.busy || ingest.local.busy || !ingest.photoDataUrl" @click="aiPhotoImport"><span v-if="ingest.busy" class="spin"></span>AI OCR 识别并导入</button><button class="btn subtle" :disabled="ingest.busy || ingest.local.busy || !ingest.photoDataUrl" @click="photoToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>本地 OCR 存为教材（不调用 AI）</button></div>
-          <div class="hint" v-if="ingest.local.busy || ingest.local.prog">{{ ingest.local.prog || '处理中…' }}</div>
-          <img v-if="ingest.photoUrl" :src="ingest.photoUrl" style="max-width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line)" />
-        </div>
-        <div class="toolbar">
-          <div class="field"><label>题型</label><select v-model="ingest.manual.type"><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
-          <div class="field"><label>难度</label><select v-model.number="ingest.manual.difficulty"><option v-for="n in [1,2,3,4,5]" :key="n" :value="n">{{ n }}</option></select></div>
-        </div>
-        <textarea v-model="ingest.manual.passage" style="min-height:80px;margin-bottom:10px" placeholder="可选：材料 / 阅读文本"></textarea>
-        <textarea v-model="ingest.manual.stem" placeholder="题干。数学可用 $...$；代码可用 Markdown 代码块。"></textarea>
-        <div v-if="ingest.manual.type==='single_choice'||ingest.manual.type==='multiple_choice'" style="margin-top:10px">
-          <div v-for="o in ingest.manual.options" :key="o.key" class="row" style="margin-bottom:8px"><span class="chip">{{ o.key }}</span><input class="inp" style="flex:1" v-model="o.text" :placeholder="'选项 '+o.key" /></div>
-        </div>
-        <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.answer" placeholder="答案：单选填 A；多选填 A,C；判断填 T 或 F；填空每行一个；主观题填写参考答案" />
-        <textarea v-model="ingest.manual.analysis" style="min-height:90px;margin-top:10px" placeholder="解析 / 分析（可选）"></textarea>
-        <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.tags" placeholder="标签，用逗号分隔（可选）" />
-        <div class="hint">这会通过 /api/process 将结构化 JSON 直接保存到 D1。无需 AI、无需 OCR、无需付费服务。</div>
-        <div class="row" style="margin-top:12px"><button class="btn" :disabled="ingest.busy" @click="saveManual"><span v-if="ingest.busy" class="spin"></span>免费保存题目</button><button class="btn subtle" @click="resetManual">清空</button></div>
-      </template>
-      <template v-else-if="ingest.tab==='ai'">
-        <textarea v-model="ingest.raw" placeholder="粘贴任意原文：可以是杂乱的题目，也可以是教材正文。AI 会自动分辨——是题目就结构化进题库，是教材就整理成知识点笔记进「教材阅读」。此功能消耗 AI 中转额度。"></textarea>
-        <div class="hint">上方「导入类型」选<b>自动分辨</b>时，AI 会判断这段是题库还是教材并分别入库；也可强制只当题库 / 只当教材。纯免费零成本请用手动录入、JSON 或 PDF 本地提取文本。</div>
-        <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><button class="btn" :disabled="ingest.busy || ingest.local.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>用 AI 整理并导入</button><button class="btn subtle" :disabled="ingest.busy || ingest.local.busy" @click="saveTextAsMaterial"><span v-if="ingest.local.busy" class="spin"></span>不调用 AI，直接存为教材</button></div>
-        <div class="hint" v-if="ingest.local.busy || ingest.local.prog">{{ ingest.local.prog || '处理中…' }}</div>
-      </template>
-      <template v-else-if="ingest.tab==='json'">
-        <textarea class="code" v-model="ingest.json" placeholder='Paste a JSON array, e.g. [{"subject":"computer","type":"single_choice","stem":"...","options":[{"key":"A","text":"..."}],"answer":["B"]}]'></textarea>
-        <div class="hint">如果你已经有结构化题目，请用这里。<b>无 AI 成本</b>。数据格式见项目 README。</div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>导入</button>
-          <button class="btn subtle" @click="loadSample">加载示例题集</button>
-        </div>
-      </template>
-      <template v-else-if="ingest.tab==='pdf'">
-        <label class="btn subtle" style="cursor:pointer">选择 PDF
-          <input type="file" accept="application/pdf,.pdf" @change="onPdfFile" style="display:none" />
-        </label>
-        <span v-if="ingest.pdf.pages" class="muted" style="margin-left:10px">已加载，{{ ingest.pdf.pages }} 页</span>
-        <div class="hint">扫描版勾「扫描页用本地 OCR」后选引擎：<b>中转站·你的视觉模型</b>（最准，识别成带标题/公式的 Markdown，按你中转额度计费）；Scribe.js / tesseract（免费本地，公式弱）；Workers AI（Cloudflare 免费额度，每天 {{ cfocr.limit }} 页封顶）。公式会输出 LaTeX 并用 KaTeX 显示。建议每次先测 1–3 页。</div>
-        <div class="toolbar" style="margin-top:12px" v-if="ingest.pdf.pages">
-          <div class="field"><label>开始页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.start" /></div>
-          <div class="field"><label>结束页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.end" /></div>
-          <div class="field"><label>清晰度</label><input class="inp" type="number" step="0.1" min="1" max="2.5" v-model.number="ingest.pdf.scale" /></div>
-        </div>
-        <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px" v-if="ingest.pdf.pages">
-          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>本地提取文本</button>
-          <button class="btn" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfByImages"><span v-if="ingest.pdf.busy" class="spin"></span>AI OCR 当前页范围并导入（题库）</button>
-          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>当前页范围转教材存入 Books（不调用 AI）</button>
-          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfAllToMaterialLocal">全部页转教材（共 {{ ingest.pdf.pages }} 页）</button>
-          <button v-if="ingest.local.busy" class="btn subtle" @click="ingest.local.stop=true">停止</button>
-          <label class="row" style="height:40px;cursor:pointer;gap:6px"><input type="checkbox" v-model="ingest.local.ocr" /> <span class="muted">扫描页用本地 OCR</span></label>
-          <div class="field" v-if="ingest.local.ocr" style="margin:0"><label>OCR 引擎</label><select v-model="ingest.local.engine" @change="ingest.local.engine==='cfai' && loadCfUsage()"><option value="relay" :disabled="!ai.hasAI && !ocrCfg.key">中转站·你的视觉模型（最准）</option><option value="scribe">Scribe.js（免费·较慢）</option><option value="tesseract">tesseract（免费·一般）</option><option value="cfai" :disabled="!ai.hasCfAI">Workers AI（免费额度{{ ai.hasCfAI?'':'·未绑定' }}）</option></select></div>
-          <template v-if="ingest.local.ocr && ingest.local.engine==='relay'">
-            <div class="field" style="margin:0;min-width:260px"><label>视觉模型（须支持看图，如 gpt-4o / qwen-vl-max / gemini-1.5-pro）</label><input class="inp" v-model="ocrCfg.model" @change="saveOcrCfg" placeholder="留空用服务端 AI_VISION_MODEL" /></div>
-            <details style="flex-basis:100%;margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:13px">高级：自定义 Base URL / API Key（可选）</summary>
-              <div class="toolbar" style="margin-top:8px">
-                <div class="field" style="margin:0;min-width:280px"><label>Base URL（留空用服务端）</label><input class="inp" v-model="ocrCfg.base" @change="saveOcrCfg" placeholder="https://你的中转站/v1" /></div>
-                <div class="field" style="margin:0;min-width:280px"><label>API Key（留空用服务端）</label><input class="inp" type="password" v-model="ocrCfg.key" @change="saveOcrCfg" placeholder="sk-..." /></div>
-              </div>
-              <div class="hint" style="margin-top:6px">⚠ 这里填的 Key 仅保存在你本机浏览器（localStorage），请求时经本站后端转发给你的中转站；公用电脑勿填，建议用额度受限的子 Key。留空则用服务端环境变量里的配置。</div>
-            </details>
-          </template>
-          <template v-if="ingest.local.ocr && ingest.local.engine==='cfai'">
-            <div class="field" style="margin:0"><label>每日页数上限（防超额度）</label><select v-model.number="ingest.local.cfPageLimit"><option :value="30">30 页（约 {{ 30*cfocr.npp }} 神经元·很保守）</option><option :value="50">50 页（约 {{ 50*cfocr.npp }} 神经元·推荐）</option><option :value="70">70 页（约 {{ 70*cfocr.npp }} 神经元·接近上限）</option></select></div>
-            <div class="field" style="margin:0;min-width:320px"><label>Workers AI 模型（留空=默认 Llama 3.2 Vision；可粘贴 @cf/ 模型）</label><input class="inp" v-model="ingest.local.cfModel" list="cfModelList" placeholder="@cf/meta/llama-3.2-11b-vision-instruct" />
-              <datalist id="cfModelList">
-                <option value="@cf/meta/llama-3.2-11b-vision-instruct">Llama 3.2 11B Vision（默认·最稳妥）</option>
-                <option value="@cf/meta/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B（更新·多模态·可试）</option>
-                <option value="@cf/google/gemma-3-12b-it">Gemma 3 12B（多模态·可试）</option>
-                <option value="@cf/mistralai/mistral-small-3.1-24b-instruct">Mistral Small 3.1 24B（多模态·可试）</option>
-              </datalist>
-            </div>
-            <div class="hint" style="flex-basis:100%">今日 Workers AI：已用 <b>{{ cfocr.used }}</b> 页 · 约 <b>{{ cfocr.used*cfocr.npp }}</b> / {{ cfocr.budget }} 神经元，剩约 <b>{{ Math.max(0, cfocr.budget - cfocr.used*cfocr.npp) }}</b>（估算 {{ cfocr.npp }}/页，实际因模型与页面内容而异；精确值看 Cloudflare 后台「神经元」）。免费层每天 {{ cfocr.budget }} 神经元，UTC 0 点重置。默认 Llama 3.2 最稳；其它为多模态模型，<b>调用图片的格式不一定兼容，可能识别效果差或报错，不行就换回默认</b>。Workers AI 模型库里没有 Qwen-VL。</div>
-          </template>
-          <span v-if="ingest.pdf.inserted" class="muted">已导入 {{ ingest.pdf.inserted }} 题</span>
-        </div>
-        <div class="hint" v-if="ingest.pdf.pages">转教材将存入：<b>{{ materialBaseTitle() }}</b>（即上方「教材名称」；同名同页会覆盖，换书请改书名）</div>
-        <div v-if="ingest.local.busy || (ingest.local.prog && !ingest.pdf.busy)" class="ocr-panel">
-          <div class="top"><div><b>本地转教材进度</b><div class="muted">不调用 AI，全程在浏览器内完成</div></div><div class="row" style="gap:10px;align-items:center"><button v-if="ingest.local.busy" class="btn subtle" style="color:#c0392b;height:32px;padding:0 14px" @click="ingest.local.stop=true">■ 停止</button><div class="pct">{{ ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0 }}%</div></div></div>
-          <div class="bar accent"><span :style="{width:(ingest.local.total ? Math.round(ingest.local.done/ingest.local.total*100) : 0)+'%'}"></span></div>
-          <div class="hint" style="margin-top:10px"><span v-if="ingest.local.busy" class="spin"></span> {{ ingest.local.prog || '等待开始' }} · {{ ingest.local.done }}/{{ ingest.local.total || 0 }} · 已存 {{ ingest.local.inserted }} 段教材</div>
-          <div v-if="ingest.local.log.length" style="margin-top:10px">
-            <div class="muted" style="font-size:12px;margin-bottom:4px">逐页明细（共 {{ ingest.local.log.length }} 条，最新在下）：</div>
-            <div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px;font-size:12.5px;line-height:1.6;font-family:var(--mono,monospace)">
-              <div v-for="(l,i) in ingest.local.log" :key="i" :style="{color: l.t==='ok'?'var(--ink)': l.t==='skip'?'#b8860b':'#c0392b'}">{{ l.t==='ok'?'✓':l.t==='skip'?'⚠':'✗' }} 第 {{ l.p }} 页 · {{ l.msg }}</div>
-            </div>
-          </div>
-        </div>
-        <div v-if="!ingest.local.busy && ingest.local.lastPage && ingest.local.lastPage < ingest.local.endPage" class="hint" style="margin-top:10px;color:var(--accent)">已处理到第 {{ ingest.local.lastPage }} 页（共到第 {{ ingest.local.endPage }} 页未完）。「开始页」已自动设为 {{ ingest.pdf.start }}，直接再点「当前页范围转教材」即可从断点继续。</div>
-        <div v-if="ingest.pdf.busy || ingest.pdf.prog" class="ocr-panel">
-          <div class="top"><div><b>AI OCR 进度</b><div class="muted">模型：{{ ocrModelName }}</div></div><div class="pct">{{ ingest.pdf.total ? Math.round(ingest.pdf.done/ingest.pdf.total*100) : 0 }}%</div></div>
-          <div class="bar accent"><span :style="{width:(ingest.pdf.total ? Math.round(ingest.pdf.done/ingest.pdf.total*100) : 0)+'%'}"></span></div>
-          <div class="hint" style="margin-top:10px"><span v-if="ingest.pdf.busy" class="spin"></span> {{ ingest.pdf.prog || '等待开始' }} · {{ ingest.pdf.done }}/{{ ingest.pdf.total || 0 }} 页 · 已导入 {{ ingest.pdf.inserted }} 题</div>
-        </div>
-        <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">如果是文字 PDF，可复制文本到“AI 整理”；如果是扫描版，直接用“AI OCR 当前页范围并导入”。</div>
-      </template>
-      <template v-else-if="ingest.tab==='md'">
-        <label class="btn subtle" style="cursor:pointer">选择 Markdown 文件（可多选）
-          <input type="file" accept=".md,.markdown,text/markdown" multiple @change="onMdFiles" style="display:none" />
-        </label>
-        <span v-if="ingest.mdFiles.length" class="muted" style="margin-left:10px">已选 {{ ingest.mdFiles.length }} 个文件</span>
-        <div class="hint">把本地转好的章节 Markdown（如 chapter-01.md … 或 front-matter.md）选进来，按「## 第 N 页」自动拆成页存入 Books，复用翻页/目录/出题阅读器。<b>免费、无 OCR、文本干净。</b></div>
-        <div class="hint">书名取上方「教材名称」（首个文件的「来源」会自动填）；多文件会按页码合并成同一本书。页面原图若引用 <code>public/textbooks-pages/…</code>，需把对应图片文件夹放进部署的 <code>public/</code> 才能显示；折叠的检索文本始终可读。</div>
-        <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
-          <button class="btn" :disabled="ingest.local.busy || !ingest.mdFiles.length" @click="importMarkdown"><span v-if="ingest.local.busy" class="spin"></span>导入到 Books</button>
-        </div>
-        <div class="hint" v-if="ingest.local.busy || ingest.local.prog">{{ ingest.local.prog || '处理中…' }} · {{ ingest.local.done }}/{{ ingest.local.total || 0 }}</div>
-      </template>
-      <template v-else-if="ingest.tab==='mineru'">
-        <label class="btn subtle" style="cursor:pointer">选择 PDF<input type="file" accept="application/pdf,.pdf" @change="onMineruFile" style="display:none" /></label>
-        <span v-if="ingest.mineru.name" class="muted" style="margin-left:10px">{{ ingest.mineru.name }}</span>
-        <div class="hint">用 <b>MinerU 云端</b>把整本 PDF 转成高质量 Markdown（公式 LaTeX、版面规整），自动按段导入 Books——很适合高数这类公式书。需先在 Cloudflare 配 <code>MINERU_API_KEY</code>（控制台「API 管理 → 创建 Token」生成的 Token，不是 Access/Secret Key）。解析在 MinerU 服务器进行，按你的 MinerU 额度计费（每天 1000 页高优先级）。书名取上方「教材名称」，科目自动判断。</div>
-        <div class="field" style="margin-top:8px;max-width:420px"><label>模式</label><select v-model="ingest.mineru.mode"><option value="agent">免 Token 轻量（≤10MB·≤20页·公式较弱·现在就能用）</option><option value="precise">精准 vlm（需 Token·≤200MB·≤200页·公式最好）</option></select></div>
-        <div class="field" style="margin-top:8px;max-width:340px"><label>页码范围（轻量≤20页不支持逗号；精准留空=整本自动按200页分段连跑）</label><input class="inp" v-model="ingest.mineru.pageRange" placeholder="轻量如 1-20；精准留空=整本，或填 1-200" /></div>
-        <div class="row" style="margin-top:12px;gap:8px"><button class="btn" :disabled="ingest.mineru.busy || !ingest.mineru.name" @click="mineruConvert"><span v-if="ingest.mineru.busy" class="spin"></span>转换并导入 Books</button></div>
-        <div v-if="ingest.mineru.busy || ingest.mineru.log.length" class="ocr-panel" style="margin-top:12px">
-          <div class="top"><div><b>MinerU 转换进度</b><div class="muted">提交 → 解析 → 取回 Markdown → 导入</div></div><div class="pct">{{ ingest.mineru.pct }}%</div></div>
-          <div class="bar accent"><span :style="{width:ingest.mineru.pct+'%'}"></span></div>
-          <div class="hint" style="margin-top:8px"><span v-if="ingest.mineru.busy" class="spin"></span> {{ ingest.mineru.prog || '等待开始' }}</div>
-          <div v-if="ingest.mineru.log.length" style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px;font-size:12.5px;line-height:1.6;margin-top:8px;font-family:var(--mono,monospace)"><div v-for="(l,i) in ingest.mineru.log" :key="i">{{ l }}</div></div>
-        </div>
-      </template>
-      <div v-if="ingest.result" class="ref" style="margin-top:16px">
-        <h5>导入完成<span v-if="ingest.result.kind"> · 识别为{{ ingest.result.kind==='material'?'教材':ingest.result.kind==='mixed'?'题目+教材':'题库' }}</span></h5>
-        <div class="muted">题目 {{ ingest.result.inserted_questions ?? ingest.result.inserted ?? 0 }} 道<span v-if="ingest.result.inserted_materials"> · 教材 {{ ingest.result.inserted_materials }} 段（已进「教材阅读」）</span></div>
-        <div v-for="(s,i) in ingest.result.sample" :key="i" class="muted">· [{{ subjName(s.subject) }} / {{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
-        <div v-for="(s,i) in (ingest.result.material_sample||[])" :key="'m'+i" class="muted">· [{{ subjName(s.subject) }} / 教材] {{ s.title }}</div>
-      </div>
-    </div>
-
-    <div v-else-if="view==='settings'">
-      <h2 style="margin:.2em 0 .5em">设置</h2>
-      <div class="card" style="max-width:520px">
-        <div class="field" style="margin-bottom:14px"><label>访问码（APP_TOKEN）</label>
-          <input class="inp" style="width:100%" type="password" v-model="tokenInput" :placeholder="token?'已设置（重新输入可修改）':'输入你在 Cloudflare 设置的 APP_TOKEN'" @keyup.enter="saveToken" />
-        </div>
-        <div class="row">
-          <button class="btn" @click="saveToken">保存</button>
-          <button class="btn subtle" v-if="token" @click="logout">清空</button>
-          <span class="muted" v-if="token">状态：已连接 ✓</span>
-        </div>
-        <div class="hint" style="margin-top:16px">访问码是你在 Cloudflare Pages 控制台设置的 <code>APP_TOKEN</code> 环境变量。它用于保护数据并防止他人使用你的 AI 额度。仅存储在当前浏览器中。</div>
-      </div>
-      <div class="card" style="max-width:680px;margin-top:14px">
-        <div style="font-weight:700;font-size:15px;margin-bottom:4px">科目管理</div>
-        <div class="hint" style="margin-bottom:14px">在这里增删改科目;新增后,刷题、题库、导入等所有科目下拉会自动出现该科目。「关键词」用于导入与「智能归类」时自动判断科目(术语类,逗号分隔);代码 / 数学符号 / 英文等结构特征已内置在程序里,无需填写。</div>
-        <div v-for="s in subjects" :key="s.v" class="subj-edit">
-          <div class="subj-row">
-            <span class="subj-code">{{ s.v }}</span>
-            <input class="inp" style="width:140px" v-model="s.t" placeholder="科目名称" />
-            <input class="inp" type="number" style="width:72px" v-model="s.sort" title="排序(小在前)" />
-            <button class="btn subtle xs" @click="subjSave(s)">保存</button>
-            <button class="bk-del xs" @click="subjDelete(s)">删除</button>
-          </div>
-          <input class="inp" style="width:100%;margin-top:6px" v-model="s.keywords" placeholder="自动判断关键词，逗号分隔（可留空）" />
-        </div>
-        <div class="subj-add">
-          <div style="font-weight:600;font-size:13px;margin-bottom:8px">＋ 新增科目</div>
-          <div class="subj-row">
-            <input class="inp" style="width:130px" v-model="subjMgr.code" placeholder="代码 如 major" title="小写字母/数字/下划线" />
-            <input class="inp" style="width:140px" v-model="subjMgr.name" placeholder="名称 如 专业课" />
-            <input class="inp" type="number" style="width:72px" v-model="subjMgr.sort" placeholder="排序" />
-            <button class="btn xs" :disabled="subjMgr.busy" @click="subjAdd"><span v-if="subjMgr.busy" class="spin"></span>新增</button>
-          </div>
-          <input class="inp" style="width:100%;margin-top:6px" v-model="subjMgr.keywords" placeholder="关键词，逗号分隔（可留空，之后也能改）" />
-        </div>
-      </div>
-
-      <div class="card" style="max-width:520px;margin-top:14px">
-        <div class="field" style="margin-bottom:14px"><label>显示名称（浏览器标签页 + 页头）</label>
-          <input class="inp" style="width:100%" v-model="appName" placeholder="例如：刷题 / 资料库 / 仪表盘 / 笔记" />
-        </div>
-        <div class="row" style="justify-content:space-between;margin-bottom:12px"><span style="font-weight:600">外观</span>
-          <button class="btn subtle" @click="theme=theme==='light'?'dark':'light'">{{ theme==='light'?'深色模式 ☾':'浅色模式 ☀' }}</button>
-        </div>
-        <label class="row" style="cursor:pointer"><input type="checkbox" v-model="stealth.autoHide" /> <span class="muted">窗口失焦时自动隐藏（返回时恢复）</span></label>
-        <div class="hint" style="margin-top:14px">快速隐藏：点击眼睛图标，或按 <code>&#96;</code>（1 左侧的按键）。再次按下或点击即可恢复。隐藏时页面只显示“同步中…”。</div>
-      </div>
-    </div>
-
-  </div>
-
-  <div v-if="toast" class="toast" :class="{err:toast.err}">{{ toast.msg }}</div>
-  <div v-if="stealth.hidden" class="stealth" @click="stealthShow">
-    <div class="stealth-box"><span class="spin"></span><div>同步中…</div></div>
-  </div>
-  `
-};
-
-const app = createApp(App);
-app.config.globalProperties.AUTO = AUTO;
-app.config.globalProperties.OBJECTIVE = OBJECTIVE;
-app.mount('#app');
-</script>
-</body>
-</html>
+function buildHint(subject, chapter, source, kind) {
+  const map = { politics: '政治理论', english: '英语', math: '高等数学', computer: '计算机基础与程序设计' };
+  let hint = `本批内容科目默认为：${map[subject]}（subject="${subject}"）。`;
+  if (chapter) hint += `\n章节默认为：「${chapter}」。`;
+  if (source) hint += `\n来源默认为：「${source}」。`;
+  if (kind === 'questions') hint += `\n用户选择了"只导入题库"。`;
+  else if (kind === 'material') hint += `\n用户选择了"只导入教材"。`;
+  else hint += `\n用户选择了"自动分辨"，请你判断这是题目还是教材。`;
+  return hint;
+}
