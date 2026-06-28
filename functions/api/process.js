@@ -2,6 +2,23 @@ import { json, checkAuth } from './_utils.js';
 
 const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 const VALID_TYPES = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer', 'code'];
+
+// —— 按题干内容保守判断科目（仅强特征命中才返回，否则返回 ''）——
+function guessSubjectFromText(t) {
+  const s = String(t || '');
+  // 计算机：代码/程序/数据结构等强特征（优先，避免被其它误判）
+  if (/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|private\s+|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|算法|数据结构|时间复杂度|空间复杂度|链表|二叉树|操作系统|数据库|编译原理|指针|数组|哈希|递归|进制转换|源(程序|代码)|伪代码|for\s*\([^;]*;|while\s*\(/.test(s)) return 'computer';
+  // 政治理论
+  if (/马克思|马克思主义|毛泽东|邓小平|习近平|社会主义|中国共产党|中国特色|辩证唯物|历史唯物|生产关系|生产力|无产阶级|资本主义|党的领导|思想政治|毛概|马原|史纲|思修|科学发展观|三个代表|实事求是|改革开放|新民主主义|矛盾的(普遍|特殊)/.test(s)) return 'politics';
+  // 高等数学
+  if (/\\int|\\lim|\\sum|\\frac|\\sqrt|\\partial|\\overrightarrow|\\mathrm\{d\}|导数|积分|极限|微分|矩阵|行列式|向量|特征值|求导|定积分|不定积分|级数|偏导|微分方程|连续函数|单调(递增|递减)|可导|渐近线/.test(s)) return 'math';
+  // 英语：拉丁字母占比高、中文极少，且含常见英文虚词
+  const letters = (s.match(/[A-Za-z]/g) || []).length;
+  const cjk = (s.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const len = s.replace(/\s/g, '').length;
+  if (len >= 12 && letters >= len * 0.55 && cjk <= len * 0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s)) return 'english';
+  return '';
+}
 // kind: auto = AI 自动分辨；questions = 强制当题库；material = 强制当教材
 const VALID_KINDS = ['auto', 'questions', 'material'];
 
@@ -50,7 +67,8 @@ export async function onRequestPost({ request, env }) {
   for (const q of questions) {
     if (!q || !q.stem) continue;
     const type = VALID_TYPES.includes(q.type) ? q.type : 'single_choice';
-    const subj = VALID_SUBJECTS.includes(q.subject) ? q.subject : subject;
+    const guessed = guessSubjectFromText([q.stem, q.chapter, Array.isArray(q.options) ? q.options.map(o => o && o.text).join(' ') : ''].join('  '));
+    const subj = guessed || (VALID_SUBJECTS.includes(q.subject) ? q.subject : subject);
     const id = (q.id && String(q.id).trim()) || `${subj}-${crypto.randomUUID().slice(0, 8)}`;
     cleanedQ.push({
       id,
