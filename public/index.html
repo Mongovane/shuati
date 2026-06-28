@@ -163,7 +163,10 @@ a{color:var(--accent)}
 .bk-card .t{font-weight:700;font-size:14.5px;line-height:1.4;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .bk-card .m{font-size:12px;color:var(--ink-soft);margin-top:auto}
 .bk-reader{display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start;margin-top:20px}
+.bk-reader.toc-collapsed{grid-template-columns:1fr}
 @media(max-width:860px){.bk-reader{grid-template-columns:1fr}}
+.bk-toctoggle{border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.bk-toctoggle:hover{background:var(--surface-2);color:var(--ink)}
 .bk-toc{position:sticky;top:74px;max-height:calc(100vh - 92px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
 .bk-toc h4{margin:0;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
 .bk-toc .tip{font-size:11.5px;color:var(--ink-soft);margin:5px 0 12px}
@@ -388,7 +391,7 @@ const App={
     appName: localStorage.getItem('zb_appname')||'刷题文档',
     stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
     tokenInput:'', view:'practice',
-    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:false,
+    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:true,
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
@@ -882,15 +885,16 @@ const App={
             </div>
           </div>
         </template>
-        <div v-if="currentBook && currentPageMat" class="bk-reader">
-          <aside class="bk-toc">
+        <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen}">
+          <aside class="bk-toc" v-if="bookTocOpen">
             <h4>目录 <span class="muted">{{ currentBook.pages.length }} 篇</span></h4>
             <div class="tip">按每页正文标题/首行生成，点击跳转</div>
             <div v-for="(m,i) in currentBook.pages" :key="m.id" class="bk-toc-item" :class="{on:i===bookIdx}" @click="bookGoto(i)">{{ pageLabel(m) }}</div>
           </aside>
           <div class="bk-page">
             <div class="bk-bar">
-              <div style="flex:1;min-width:180px">
+              <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" :title="bookTocOpen?'收起目录':'展开目录'">{{ bookTocOpen ? '⟨ 目录' : '目录 ☰' }}</button>
+              <div style="flex:1;min-width:160px">
                 <div class="ttl">{{ currentPageMat.title }}</div>
                 <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
               </div>
@@ -899,8 +903,6 @@ const App={
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
               </div>
               <input class="bk-jump inp" type="number" min="1" @keyup.enter="bookJumpPage($event.target.value)" placeholder="跳页" title="输入页码回车跳转" />
-              <select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改本书科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-              <button class="bk-del" @click="deleteCurrentBook">删除本书</button>
             </div>
             <div class="bk-body">
               <div v-if="currentPageMat.summary" class="summary">{{ currentPageMat.summary }}</div>
@@ -916,8 +918,10 @@ const App={
                 <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
               </div>
-              <button class="btn" style="margin-left:auto" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial"><span v-if="genq.busy" class="spin"></span>根据本页生成练习题</button>
+              <select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改本书科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+              <button class="btn" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial"><span v-if="genq.busy" class="spin"></span>根据本页生成练习题</button>
               <span v-if="!ai.hasAI" class="muted">未配置 AI，无法出题</span>
+              <button class="bk-del" style="margin-left:auto" @click="deleteCurrentBook">删除本书</button>
             </div>
           </div>
         </div>
