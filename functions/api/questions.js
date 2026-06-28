@@ -83,19 +83,26 @@ export async function onRequestDelete({ request, env }) {
   }
 }
 
-// —— 更新题目科目（按 id 批量）——
+// —— 更新题目字段（按 id 批量；可改 科目/章节/题干/解析/题型/难度）——
 export async function onRequestPatch({ request, env }) {
   const auth = checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
   const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
-  const subject = body && typeof body.subject === 'string' ? body.subject.trim() : '';
   if (!ids.length) return json({ error: '缺少题目 id' }, 400);
-  if (!subject) return json({ error: '缺少 subject' }, 400);
+  const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis'];
+  const sets = [], vals = [];
+  for (const k of ALLOWED) {
+    if (body[k] !== undefined && body[k] !== null) {
+      sets.push(`${k} = ?`);
+      vals.push(k === 'difficulty' ? (Number(body[k]) || 3) : String(body[k]));
+    }
+  }
+  if (!sets.length) return json({ error: '没有可更新的字段' }, 400);
   try {
     const ph = ids.map(() => '?').join(',');
-    const r = await env.DB.prepare(`UPDATE questions SET subject = ? WHERE id IN (${ph})`).bind(subject, ...ids).run();
+    const r = await env.DB.prepare(`UPDATE questions SET ${sets.join(', ')} WHERE id IN (${ph})`).bind(...vals, ...ids).run();
     const updated = (r && r.meta && r.meta.changes != null) ? r.meta.changes : ids.length;
     return json({ ok: true, updated });
   } catch (e) {
