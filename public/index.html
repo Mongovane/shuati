@@ -193,12 +193,9 @@ a{color:var(--accent)}
 .bk-body .rich ol{padding-left:1.9em;margin:12px 0}
 .bk-body .rich ol>li{margin:10px 0;padding-left:2px}
 .bk-body .rich ol>li::marker{font-weight:700;color:var(--ink)}
-.bk-body .rich .katex-display{overflow-x:auto;overflow-y:hidden;max-width:100%;text-align:left;padding:4px 0 8px}
-.bk-body .rich .katex-display>.katex{white-space:nowrap}
-.bk-body .rich .katex-display::-webkit-scrollbar{height:7px}
-.bk-body .rich .katex-display::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
-.bk-body .rich .katex-display::-webkit-scrollbar-thumb:hover{background:var(--ink-soft)}
-.rich .katex-display{overflow-x:auto;overflow-y:hidden;max-width:100%}
+.bk-body .rich .katex-display{overflow:hidden;max-width:100%;text-align:left;padding:4px 0 8px}
+.bk-body .rich .katex-display>.katex{white-space:nowrap;transform-origin:left top;display:inline-block}
+.rich .katex-display{overflow:hidden;max-width:100%}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
 /* —— PDF 原书阅读器 —— */
@@ -276,7 +273,9 @@ const RichText={
     if(window.katex&&!window.katex.renderToString){} // 已在 html 内预渲染；此处仅兜底
     if(!window.katex&&window.renderMathInElement){ try{ renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false,strict:false}); }catch(e){} }
     if(window.hljs){ el.querySelectorAll('pre code').forEach(b=>{ try{hljs.highlightElement(b);}catch(e){} }); }
-  } }
+    this.fitMath();
+  },
+  fitMath(){ const el=this.$el; if(!el)return; const run=()=>{ el.querySelectorAll('.katex-display').forEach(d=>{ const k=d.querySelector('.katex'); if(!k)return; k.style.transform=''; d.style.height=''; const avail=d.clientWidth||el.clientWidth; const w=k.scrollWidth; if(avail>0 && w>avail+1){ const s=Math.max(0.4, avail/w); k.style.transform='scale('+s+')'; const h=k.getBoundingClientRect().height; if(h)d.style.height=Math.ceil(h)+'px'; } }); }; run(); requestAnimationFrame(run); } }
 };
 
 const QuestionCard={
