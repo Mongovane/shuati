@@ -162,17 +162,27 @@ a{color:var(--accent)}
 .bk-card.on .spine{opacity:1}
 .bk-card .t{font-weight:700;font-size:14.5px;line-height:1.4;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .bk-card .m{font-size:12px;color:var(--ink-soft);margin-top:auto}
-.bk-reader{display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start;margin-top:20px}
+.bk-reader{display:grid;grid-template-columns:208px 1fr;gap:16px;align-items:start;margin-top:20px}
 .bk-reader.toc-collapsed{grid-template-columns:1fr}
-@media(max-width:860px){.bk-reader{grid-template-columns:1fr}}
-.bk-toctoggle{border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.bk-reader.toc-collapsed .bk-toc{display:none}
+.bk-toctoggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;white-space:nowrap}
 .bk-toctoggle:hover{background:var(--surface-2);color:var(--ink)}
 .bk-toc{position:sticky;top:74px;max-height:calc(100vh - 92px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
 .bk-toc h4{margin:0;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
 .bk-toc .tip{font-size:11.5px;color:var(--ink-soft);margin:5px 0 12px}
-.bk-toc-item{padding:7px 9px;border-radius:8px;margin-bottom:2px;font-size:12.5px;line-height:1.4;color:var(--ink);cursor:pointer;transition:.12s;border-left:2px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-toc .toc-close{display:none;border:none;background:transparent;color:var(--ink-soft);font-size:20px;line-height:1;cursor:pointer;padding:0 4px}
+.bk-toc-item{padding:8px 10px;border-radius:8px;margin-bottom:2px;font-size:13px;line-height:1.45;color:var(--ink);cursor:pointer;transition:.12s;border-left:2px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bk-toc-item:hover{background:var(--surface-2)}
 .bk-toc-item.on{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+.bk-toc-backdrop{display:none}
+@media(max-width:860px){
+  .bk-reader,.bk-reader.toc-collapsed{grid-template-columns:1fr}
+  .bk-reader .bk-toc{display:block;position:fixed;left:0;top:0;bottom:0;height:100%;max-height:100%;width:84%;max-width:330px;z-index:60;border-radius:0 14px 14px 0;transform:translateX(-100%);transition:transform .26s ease;margin:0;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  .bk-reader.toc-open .bk-toc{transform:translateX(0)}
+  .bk-toc .toc-close{display:block}
+  .bk-reader.toc-open .bk-toc-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}
+  .bk-toc-item{font-size:14px;padding:11px 12px}
+}
 .bk-page{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
 .bk-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
 .bk-bar .ttl{font-weight:700;font-size:16.5px;line-height:1.35}
@@ -734,6 +744,7 @@ const App={
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('focus', this.onFocus);
     try{ const oc=JSON.parse(localStorage.getItem('zb_ocrcfg')||'null'); if(oc&&typeof oc==='object'){ this.ocrCfg.model=oc.model||''; this.ocrCfg.base=oc.base||''; this.ocrCfg.key=oc.key||''; } }catch(_){}
+    try{ this.bookTocOpen = (typeof window!=='undefined') ? window.innerWidth>860 : true; }catch(_){}
     if(this.token){ this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession(); } else { this.view='settings'; }
   },
   beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); },
@@ -885,15 +896,16 @@ const App={
             </div>
           </div>
         </template>
-        <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen}">
-          <aside class="bk-toc" v-if="bookTocOpen">
-            <h4>目录 <span class="muted">{{ currentBook.pages.length }} 篇</span></h4>
+        <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen,'toc-open':bookTocOpen}">
+          <aside class="bk-toc">
+            <h4>目录 <span class="muted">{{ currentBook.pages.length }} 篇</span><button class="toc-close" @click="bookTocOpen=false" title="关闭">✕</button></h4>
             <div class="tip">按每页正文标题/首行生成，点击跳转</div>
-            <div v-for="(m,i) in currentBook.pages" :key="m.id" class="bk-toc-item" :class="{on:i===bookIdx}" @click="bookGoto(i)">{{ pageLabel(m) }}</div>
+            <div v-for="(m,i) in currentBook.pages" :key="m.id" class="bk-toc-item" :class="{on:i===bookIdx}" @click="bookGoto(i); bookTocOpen = (window.innerWidth>860)">{{ pageLabel(m) }}</div>
           </aside>
+          <div class="bk-toc-backdrop" @click="bookTocOpen=false"></div>
           <div class="bk-page">
             <div class="bk-bar">
-              <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" :title="bookTocOpen?'收起目录':'展开目录'">{{ bookTocOpen ? '⟨ 目录' : '目录 ☰' }}</button>
+              <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" :title="bookTocOpen?'收起目录':'展开目录'">{{ bookTocOpen ? '⟨ 收起目录' : '☰ 目录' }}</button>
               <div style="flex:1;min-width:160px">
                 <div class="ttl">{{ currentPageMat.title }}</div>
                 <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
