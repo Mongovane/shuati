@@ -166,6 +166,12 @@ a{color:var(--accent)}
 .bk-reader.toc-collapsed{grid-template-columns:1fr}
 .bk-reader.toc-collapsed .bk-toc{display:none}
 .bk-toctoggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;white-space:nowrap}
+.bank-row{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.bank-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.bank-meta .tag{background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px}
+.bank-meta .tag2{background:var(--surface-2);color:var(--ink-soft);font-size:12px;padding:2px 8px;border-radius:6px}
+.bank-stem{font-size:15px;line-height:1.7;color:var(--ink);max-height:120px;overflow:auto}
+.bank-actions{display:flex;align-items:center;gap:10px;margin-top:10px}
 .bk-toctoggle:hover{background:var(--surface-2);color:var(--ink)}
 .bk-toc{position:sticky;top:74px;max-height:calc(100vh - 92px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
 .bk-toc h4{margin:0;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
@@ -412,6 +418,7 @@ const App={
     ocrCfg:{ model:'', base:'', key:'' },
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
+    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'' },
     pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'' },
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
@@ -491,7 +498,12 @@ const App={
     go(v){ this.view=v;
       if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); this.startSession(); }
       if(v==='wrong'||v==='stats') this.loadStats();
+      if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta(); this.loadBank(true); }
     },
+    async loadBank(reset){ if(!this.token)return; if(reset){ this.bank.offset=0; this.bank.items=[]; } this.bank.loading=true; try{ const p=new URLSearchParams(); if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject); if(this.bank.type)p.set('type',this.bank.type); p.set('order','newest'); p.set('mode','all'); p.set('limit',this.bank.limit); p.set('offset',this.bank.offset); const d=await this.api('/api/questions?'+p.toString()); this.bank.items = reset ? (d.items||[]) : this.bank.items.concat(d.items||[]); this.bank.total=d.total||this.bank.items.length; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.bank.loading=false; },
+    bankMore(){ this.bank.offset+=this.bank.limit; this.loadBank(false); },
+    async bankSetSubject(q,subj){ if(!q||!subj||subj===q.subject)return; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
+    async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
     async loadMeta(){ if(!this.token)return; try{ this.meta=await this.api('/api/questions?meta=1'); }catch(e){} },
     qs(extra={}){ const p=new URLSearchParams();
       if(this.f.subject&&this.f.subject!=='all') p.set('subject',this.f.subject);
@@ -764,6 +776,7 @@ const App={
     <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">Saved</button>
     <button class="tab" :class="{active:view==='mock'}" @click="view='mock'">Test</button>
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
+    <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">题库</button>
     <button class="tab" :class="{active:view==='ingest'}" @click="view='ingest'">Import</button>
     <button class="tab" :class="{active:view==='settings'}" @click="view='settings'">Settings</button>
   </div></div>
@@ -995,6 +1008,32 @@ const App={
         </div>
 
         <button v-if="mock.started" class="btn" style="width:100%" @click="submitMock">提交</button>
+      </template>
+    </div>
+
+    <div v-else-if="view==='bank'">
+      <div class="filters">
+        <div class="field"><label>科目</label>
+          <select v-model="bank.subject" @change="loadBank(true)"><option value="">全部科目</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
+        <div class="field"><label>题型</label>
+          <select v-model="bank.type" @change="loadBank(true)"><option value="">全部题型</option><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
+        <button class="btn subtle" @click="loadBank(true)" style="margin-left:auto">↻ 刷新</button>
+      </div>
+      <div class="muted" style="margin:6px 2px 12px">共 {{ bank.total }} 道题{{ bank.subject? ('（'+subjName(bank.subject)+'）'):'' }}，已加载 {{ bank.items.length }}</div>
+      <div v-if="bank.loading && !bank.items.length" class="empty"><span class="spin"></span> 加载中…</div>
+      <div v-else-if="!bank.items.length" class="empty"><div class="big">∅</div><p>题库为空或没有匹配的题目。</p></div>
+      <template v-else>
+        <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row">
+          <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
+          <div class="bank-stem"><rich-text :content="q.stem" /></div>
+          <div class="bank-actions">
+            <select class="bk-mini" :value="q.subject" @change="bankSetSubject(q,$event.target.value)" title="改科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+            <button class="bk-del" @click="bankDelete(q)">删除</button>
+          </div>
+        </div>
+        <div class="row" style="justify-content:center;margin:16px 0" v-if="bank.items.length < bank.total">
+          <button class="btn subtle" :disabled="bank.loading" @click="bankMore"><span v-if="bank.loading" class="spin"></span>加载更多（还有 {{ bank.total - bank.items.length }} 题）</button>
+        </div>
       </template>
     </div>
 
