@@ -194,8 +194,9 @@ a{color:var(--accent)}
 .bk-body .rich ol>li{margin:10px 0;padding-left:2px}
 .bk-body .rich ol>li::marker{font-weight:700;color:var(--ink)}
 .bk-body .rich .mathwrap{display:block;max-width:100%;overflow:hidden;margin:6px 0}
+.bk-body .rich .mathwrap .katex{white-space:nowrap}
 .bk-body .rich .katex-display{overflow:hidden;max-width:100%;text-align:left;padding:4px 0 8px}
-.bk-body .rich .katex-display>.katex{white-space:nowrap;transform-origin:left top;display:inline-block}
+.bk-body .rich .katex-display>.katex{white-space:nowrap}
 .rich .katex-display{overflow:hidden;max-width:100%}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
@@ -276,9 +277,9 @@ const RichText={
     if(window.hljs){ el.querySelectorAll('pre code').forEach(b=>{ try{hljs.highlightElement(b);}catch(e){} }); }
     this.fitMath();
   },
-  fitMath(){ const el=this.$el; if(!el)return; const FLOOR=0.5; const fit=(k,avail)=>{ k.style.transform=''; k.style.transformOrigin='left top'; const w=k.scrollWidth||k.offsetWidth; if(!w||avail<=0||w<=avail+1)return null; const s=avail/w; if(s>=FLOOR){ k.style.transform='scale('+s+')'; return {scroll:false,h:Math.ceil(k.getBoundingClientRect().height)}; } return {scroll:true,h:Math.ceil(k.getBoundingClientRect().height)}; };
-    const run=()=>{ el.querySelectorAll('.katex-display').forEach(d=>{ const k=d.querySelector('.katex'); if(!k)return; d.style.overflowX='hidden'; d.style.height=''; const r=fit(k, d.clientWidth||el.clientWidth); if(r){ if(r.scroll)d.style.overflowX='auto'; if(r.h)d.style.height=r.h+'px'; } });
-      el.querySelectorAll('.katex').forEach(k=>{ if(k.closest('.katex-display'))return; let wrap=k.closest('.mathwrap'); if(!wrap){ const parent=k.parentElement; if(!parent)return; const avail=parent.clientWidth||el.clientWidth; k.style.transform=''; const w=k.scrollWidth||k.offsetWidth; if(!w||w<=avail+1)return; wrap=document.createElement('span'); wrap.className='mathwrap'; parent.insertBefore(wrap,k); wrap.appendChild(k); } const r=fit(k, wrap.clientWidth||el.clientWidth); wrap.style.overflowX=(r&&r.scroll)?'auto':'hidden'; wrap.style.height=(r&&r.h)?(r.h+'px'):''; }); };
+  fitMath(){ const el=this.$el; if(!el)return; const FLOOR=0.5; const fit=(k,avail)=>{ k.style.fontSize=''; const w=k.scrollWidth||k.offsetWidth; if(!w||avail<=0||w<=avail+1)return null; let s=avail/w, scroll=false; if(s<FLOOR){ s=FLOOR; scroll=true; } const cur=parseFloat(getComputedStyle(k).fontSize)||16; k.style.fontSize=(cur*s)+'px'; return {scroll}; };
+    const run=()=>{ el.querySelectorAll('.katex-display').forEach(d=>{ const k=d.querySelector('.katex'); if(!k)return; d.style.overflowX='hidden'; const r=fit(k, d.clientWidth||el.clientWidth); d.style.overflowX=(r&&r.scroll)?'auto':'hidden'; });
+      el.querySelectorAll('.katex').forEach(k=>{ if(k.closest('.katex-display'))return; let wrap=k.closest('.mathwrap'); if(!wrap){ const parent=k.parentElement; if(!parent)return; const avail=parent.clientWidth||el.clientWidth; k.style.fontSize=''; const w=k.scrollWidth||k.offsetWidth; if(!w||w<=avail+1)return; wrap=document.createElement('span'); wrap.className='mathwrap'; parent.insertBefore(wrap,k); wrap.appendChild(k); } const r=fit(k, wrap.clientWidth||el.clientWidth); wrap.style.overflowX=(r&&r.scroll)?'auto':'hidden'; }); };
     run(); requestAnimationFrame(run); setTimeout(run,150); setTimeout(run,500); setTimeout(run,1200); if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(run).catch(()=>{}); } } }
 };
 
