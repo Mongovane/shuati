@@ -166,12 +166,29 @@ a{color:var(--accent)}
 .bk-reader.toc-collapsed{grid-template-columns:1fr}
 .bk-reader.toc-collapsed .bk-toc{display:none}
 .bk-toctoggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;white-space:nowrap}
-.bank-row{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
-.bank-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.bank-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 2px 14px;font-size:13px}
+.bank-check{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.bank-row{display:flex;align-items:flex-start;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;transition:.12s}
+.bank-row.sel{border-color:var(--accent);background:var(--accent-soft)}
+.bank-rowck{margin-top:3px;flex:none}
+.bank-main{flex:1;min-width:0}
+.bank-meta{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .bank-meta .tag{background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px}
 .bank-meta .tag2{background:var(--surface-2);color:var(--ink-soft);font-size:12px;padding:2px 8px;border-radius:6px}
-.bank-stem{font-size:15px;line-height:1.7;color:var(--ink);max-height:120px;overflow:auto}
-.bank-actions{display:flex;align-items:center;gap:10px;margin-top:10px}
+.bank-stem{font-size:14.5px;line-height:1.6;color:var(--ink);max-height:3.2em;overflow:hidden;position:relative}
+.bank-stem::after{content:'';position:absolute;right:0;bottom:0;width:40px;height:1.6em;background:linear-gradient(90deg,transparent,var(--surface))}
+.bank-row.sel .bank-stem::after{background:linear-gradient(90deg,transparent,var(--accent-soft))}
+.bank-side{display:flex;flex-direction:column;gap:6px;flex:none}
+.btn.xs,.bk-del.xs{font-size:12px;padding:4px 10px}
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:80;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(640px,100%);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.modal-h{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);font-size:15px}
+.modal-b{padding:16px 18px;overflow:auto}
+.modal-b .lbl{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:5px}
+.modal-b textarea.inp{width:100%;font-family:var(--font);font-size:14px;line-height:1.6;resize:vertical}
+.modal-b .prev-box{margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:10px;background:var(--surface-2)}
+.modal-f{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px;border-top:1px solid var(--line)}
+.bank-row{background:var(--surface);border:1px solid var(--line)}
 .bk-toctoggle:hover{background:var(--surface-2);color:var(--ink)}
 .bk-toc{position:sticky;top:74px;max-height:calc(100vh - 92px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
 .bk-toc h4{margin:0;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
@@ -418,7 +435,8 @@ const App={
     ocrCfg:{ model:'', base:'', key:'' },
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
-    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'' },
+    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
+    bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', busy:false },
     pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'' },
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
@@ -500,10 +518,17 @@ const App={
       if(v==='wrong'||v==='stats') this.loadStats();
       if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta(); this.loadBank(true); }
     },
-    async loadBank(reset){ if(!this.token)return; if(reset){ this.bank.offset=0; this.bank.items=[]; } this.bank.loading=true; try{ const p=new URLSearchParams(); if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject); if(this.bank.type)p.set('type',this.bank.type); p.set('order','newest'); p.set('mode','all'); p.set('limit',this.bank.limit); p.set('offset',this.bank.offset); const d=await this.api('/api/questions?'+p.toString()); this.bank.items = reset ? (d.items||[]) : this.bank.items.concat(d.items||[]); this.bank.total=d.total||this.bank.items.length; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.bank.loading=false; },
+    async loadBank(reset){ if(!this.token)return; if(reset){ this.bank.offset=0; this.bank.items=[]; this.bank.sel=[]; } this.bank.loading=true; try{ const p=new URLSearchParams(); if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject); if(this.bank.type)p.set('type',this.bank.type); if(this.bank.kw&&this.bank.kw.trim())p.set('q',this.bank.kw.trim()); p.set('order','seq'); p.set('mode','all'); p.set('limit',this.bank.limit); p.set('offset',this.bank.offset); const d=await this.api('/api/questions?'+p.toString()); this.bank.items = reset ? (d.items||[]) : this.bank.items.concat(d.items||[]); this.bank.total=d.total||this.bank.items.length; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.bank.loading=false; },
     bankMore(){ this.bank.offset+=this.bank.limit; this.loadBank(false); },
+    bankToggle(id){ const i=this.bank.sel.indexOf(id); i>=0?this.bank.sel.splice(i,1):this.bank.sel.push(id); },
+    bankAllOnPage(){ const ids=this.bank.items.map(q=>q.id); const allSel=ids.every(id=>this.bank.sel.includes(id)); this.bank.sel = allSel ? this.bank.sel.filter(id=>!ids.includes(id)) : Array.from(new Set(this.bank.sel.concat(ids))); },
     async bankSetSubject(q,subj){ if(!q||!subj||subj===q.subject)return; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
-    async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+    async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); const si=this.bank.sel.indexOf(q.id); if(si>=0)this.bank.sel.splice(si,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+    async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
+    async bankBatchSubject(){ const ids=[...this.bank.sel]; const subj=this.bank.batchSubject; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!subj){ this.flash('请选择目标科目',true); return; } try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.subject=subj; }); this.flash('已将 '+(d.updated||ids.length)+' 题改为「'+this.subjName(subj)+'」'); this.bank.sel=[]; this.bank.batchSubject=''; this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('批量改科目失败：'+e.message,true); } },
+    bankOpenEdit(q){ this.bankEdit={ open:true, q, stem:q.stem||'', analysis:q.analysis||'', subject:q.subject||'', type:q.type||'', busy:false }; },
+    bankCloseEdit(){ this.bankEdit.open=false; this.bankEdit.q=null; },
+    async bankSaveEdit(){ const e=this.bankEdit; if(!e.q)return; if(!String(e.stem).trim()){ this.flash('题干不能为空',true); return; } e.busy=true; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[e.q.id],stem:e.stem,analysis:e.analysis,subject:e.subject,type:e.type})}); e.q.stem=e.stem; e.q.analysis=e.analysis; e.q.subject=e.subject; e.q.type=e.type; this.flash('已保存'); this.loadMeta(); this.bankCloseEdit(); }catch(err){ if(err.message!=='unauth')this.flash('保存失败：'+err.message,true); } e.busy=false; },
     async loadMeta(){ if(!this.token)return; try{ this.meta=await this.api('/api/questions?meta=1'); }catch(e){} },
     qs(extra={}){ const p=new URLSearchParams();
       if(this.f.subject&&this.f.subject!=='all') p.set('subject',this.f.subject);
@@ -1017,24 +1042,60 @@ const App={
           <select v-model="bank.subject" @change="loadBank(true)"><option value="">全部科目</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
         <div class="field"><label>题型</label>
           <select v-model="bank.type" @change="loadBank(true)"><option value="">全部题型</option><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
-        <button class="btn subtle" @click="loadBank(true)" style="margin-left:auto">↻ 刷新</button>
+        <div class="field" style="flex:1;min-width:180px"><label>关键词</label>
+          <input class="inp" v-model="bank.kw" @keyup.enter="loadBank(true)" placeholder="搜题干 / 章节，回车搜索" /></div>
+        <button class="btn subtle" @click="loadBank(true)" style="align-self:flex-end">↻ 搜索</button>
       </div>
-      <div class="muted" style="margin:6px 2px 12px">共 {{ bank.total }} 道题{{ bank.subject? ('（'+subjName(bank.subject)+'）'):'' }}，已加载 {{ bank.items.length }}</div>
+
+      <div class="bank-toolbar">
+        <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
+        <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
+        <template v-if="bank.sel.length">
+          <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+          <button class="btn subtle" @click="bankBatchSubject">应用</button>
+          <button class="bk-del" @click="bankBatchDelete">删除选中 ({{ bank.sel.length }})</button>
+        </template>
+      </div>
+
       <div v-if="bank.loading && !bank.items.length" class="empty"><span class="spin"></span> 加载中…</div>
       <div v-else-if="!bank.items.length" class="empty"><div class="big">∅</div><p>题库为空或没有匹配的题目。</p></div>
       <template v-else>
-        <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row">
-          <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
-          <div class="bank-stem"><rich-text :content="q.stem" /></div>
-          <div class="bank-actions">
-            <select class="bk-mini" :value="q.subject" @change="bankSetSubject(q,$event.target.value)" title="改科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-            <button class="bk-del" @click="bankDelete(q)">删除</button>
+        <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row" :class="{sel:bank.sel.includes(q.id)}">
+          <input type="checkbox" class="bank-rowck" :checked="bank.sel.includes(q.id)" @change="bankToggle(q.id)" />
+          <div class="bank-main">
+            <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
+            <div class="bank-stem"><rich-text :content="q.stem || '（空题干）'" /></div>
+          </div>
+          <div class="bank-side">
+            <button class="btn subtle xs" @click="bankOpenEdit(q)">编辑</button>
+            <button class="bk-del xs" @click="bankDelete(q)">删除</button>
           </div>
         </div>
         <div class="row" style="justify-content:center;margin:16px 0" v-if="bank.items.length < bank.total">
           <button class="btn subtle" :disabled="bank.loading" @click="bankMore"><span v-if="bank.loading" class="spin"></span>加载更多（还有 {{ bank.total - bank.items.length }} 题）</button>
         </div>
       </template>
+
+      <div v-if="bankEdit.open" class="modal-mask" @click.self="bankCloseEdit">
+        <div class="modal">
+          <div class="modal-h"><b>编辑题目</b><button class="toc-close" @click="bankCloseEdit">✕</button></div>
+          <div class="modal-b">
+            <div class="row" style="gap:10px;margin-bottom:10px">
+              <div class="field" style="flex:1"><label>科目</label><select v-model="bankEdit.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
+              <div class="field" style="flex:1"><label>题型</label><select v-model="bankEdit.type"><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
+            </div>
+            <label class="lbl">题干（支持 Markdown / LaTeX，行内公式用 $…$ 需成对）</label>
+            <textarea class="inp" v-model="bankEdit.stem" rows="5"></textarea>
+            <label class="lbl" style="margin-top:10px">解析（可选）</label>
+            <textarea class="inp" v-model="bankEdit.analysis" rows="3"></textarea>
+            <div class="prev-box"><div class="lbl">预览</div><rich-text :content="bankEdit.stem || '（空）'" /></div>
+          </div>
+          <div class="modal-f">
+            <button class="btn subtle" @click="bankCloseEdit">取消</button>
+            <button class="btn" :disabled="bankEdit.busy" @click="bankSaveEdit"><span v-if="bankEdit.busy" class="spin"></span>保存</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-else-if="view==='stats'">
