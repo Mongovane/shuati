@@ -507,6 +507,8 @@ const App={
       this.loading=false;
     },
     next(){ if(this.qi<this.queue.length-1)this.qi++; else this.batchDone=true; },
+    async deleteCurrentQuestion(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true; this.flash('已删除本题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+    async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
     findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
     async onAnswered(p){ try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
     async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
@@ -803,9 +805,11 @@ const App={
       <div v-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
       <template v-else>
         <div v-if="cur">
-          <div class="row" style="margin-bottom:12px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
+          <div class="row" style="margin-bottom:12px;align-items:center;gap:10px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
             <span class="muted" v-if="view==='wrong'">· 复习</span>
             <span class="muted" v-if="view==='favorite'">· 收藏</span>
+            <select class="bk-mini" style="margin-left:auto" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="改本题科目（纠正分类）"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+            <button class="bk-del" @click="deleteCurrentQuestion" title="从题库删除本题">删除本题</button>
           </div>
           <question-card :q="cur" :key="cur.id" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" />
         </div>
