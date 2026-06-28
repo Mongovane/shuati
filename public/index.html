@@ -251,11 +251,14 @@ const RichText={
         const isTex=(l)=>{ const t=l.trim(); if(!t)return false; if(/\$/.test(t))return false; const tc=t.replace(/\\text\s*\{[^}]*\}/g,''); if(/[\u4e00-\u9fa5]/.test(tc))return false; if(/^[#>|]/.test(t)||/^!\[/.test(t)||/^<\w/.test(t)||/^\uE000/.test(t))return false; return /\\[a-zA-Z]{2,}|[\^_]\s*\{|\\frac|\\sqrt|\\begin|\\mid|\\left|\\right|\\overrightarrow|\\boldsymbol|\\quad|\\times|\\cdot/.test(t); };
         const flush=()=>{ if(run.length){ o.push('$$ '+run.join(' \\\\ ')+' $$'); run=[]; } };
         for(const l of L){ if(isTex(l))run.push(l.trim()); else { flush(); o.push(l); } } flush(); src=o.join('\n'); }
+      // 仅当“整行就是公式”或“行尾是较长公式”时，把行内 $…$ 提升为独立 display；句子中间的行内公式保持行内（不割裂句子）
+      src=src.replace(/^([^\n$]*\S)[ \t]*\$([^\n$]{55,})\$[ \t]*$/gm,(m,pre,x)=>pre+'\n\n$$'+x+'$$');
+      src=src.replace(/^[ \t]*\$([^\n$]{30,})\$[ \t]*$/gm,(m,x)=>'$$'+x+'$$');
       // 先抽出公式（占用私有区字符占位），避免 marked 把多行 $$…$$ 拆散或转义反斜杠
       src=src.replace(/\$\$([\s\S]+?)\$\$/g,(m,x)=>{ math.push({tex:x,display:true}); return '\uE000'+(math.length-1)+'\uE001'; });
       src=src.replace(/\\\[([\s\S]+?)\\\]/g,(m,x)=>{ math.push({tex:x,display:true}); return '\uE000'+(math.length-1)+'\uE001'; });
-      src=src.replace(/\$([^\$\n]+?)\$/g,(m,x)=>{ math.push({tex:x,display:x.length>55}); return '\uE000'+(math.length-1)+'\uE001'; });
-      src=src.replace(/\\\(([^\n]+?)\\\)/g,(m,x)=>{ math.push({tex:x,display:x.length>55}); return '\uE000'+(math.length-1)+'\uE001'; });
+      src=src.replace(/\$([^\$\n]+?)\$/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
+      src=src.replace(/\\\(([^\n]+?)\\\)/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
       // 去页码/页眉残留：整段只是页码、或常见页眉/页脚装饰的，删掉
       src=src.split(/\n{2,}/).filter(b=>{ const t=b.trim(); if(!t)return false; if(/^[\s·•\.\-—–=*_>]*\d{1,4}[\s·•\.\-—–=*_>]*$/.test(t))return false; if(/^[-—–=_·•\s]{2,}$/.test(t))return false; return true; }).join('\n\n');
       // 题号钉最左 + 悬挂缩进（保留原始编号，不交给 marked 重新编号）
