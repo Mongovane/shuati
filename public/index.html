@@ -278,8 +278,8 @@ const RichText={
   },
   fitMath(){ const el=this.$el; if(!el)return; const FLOOR=0.5; const fit=(k,avail)=>{ k.style.transform=''; k.style.transformOrigin='left top'; const w=k.scrollWidth||k.offsetWidth; if(!w||avail<=0||w<=avail+1)return null; const s=avail/w; if(s>=FLOOR){ k.style.transform='scale('+s+')'; return {scroll:false,h:Math.ceil(k.getBoundingClientRect().height)}; } return {scroll:true,h:Math.ceil(k.getBoundingClientRect().height)}; };
     const run=()=>{ el.querySelectorAll('.katex-display').forEach(d=>{ const k=d.querySelector('.katex'); if(!k)return; d.style.overflowX='hidden'; d.style.height=''; const r=fit(k, d.clientWidth||el.clientWidth); if(r){ if(r.scroll)d.style.overflowX='auto'; if(r.h)d.style.height=r.h+'px'; } });
-      el.querySelectorAll('.katex').forEach(k=>{ if(k.closest('.katex-display')||k.closest('.mathwrap'))return; const parent=k.parentElement; if(!parent)return; const avail=parent.clientWidth||el.clientWidth; const w=k.scrollWidth||k.offsetWidth; if(w>avail+1){ const wrap=document.createElement('span'); wrap.className='mathwrap'; parent.insertBefore(wrap,k); wrap.appendChild(k); const r=fit(k, wrap.clientWidth||avail); if(r){ if(r.scroll)wrap.style.overflowX='auto'; if(r.h)wrap.style.height=r.h+'px'; } } }); };
-    run(); requestAnimationFrame(run); } }
+      el.querySelectorAll('.katex').forEach(k=>{ if(k.closest('.katex-display'))return; let wrap=k.closest('.mathwrap'); if(!wrap){ const parent=k.parentElement; if(!parent)return; const avail=parent.clientWidth||el.clientWidth; k.style.transform=''; const w=k.scrollWidth||k.offsetWidth; if(!w||w<=avail+1)return; wrap=document.createElement('span'); wrap.className='mathwrap'; parent.insertBefore(wrap,k); wrap.appendChild(k); } const r=fit(k, wrap.clientWidth||el.clientWidth); wrap.style.overflowX=(r&&r.scroll)?'auto':'hidden'; wrap.style.height=(r&&r.h)?(r.h+'px'):''; }); };
+    run(); requestAnimationFrame(run); setTimeout(run,150); setTimeout(run,500); setTimeout(run,1200); if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(run).catch(()=>{}); } } }
 };
 
 const QuestionCard={
