@@ -241,7 +241,7 @@ a{color:var(--accent)}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
 /* —— PDF 原书阅读器 —— */
-.pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);position:relative;width:min(94vw,1180px);left:50%;transform:translateX(-50%)}
+.pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);position:relative;margin-top:20px}
 .pdfv-drawer{position:absolute;left:0;top:0;bottom:0;width:78%;max-width:300px;z-index:30;background:var(--surface);border-right:1px solid var(--line);box-shadow:0 10px 40px rgba(0,0,0,.35);transform:translateX(-100%);transition:transform .25s ease;display:flex;flex-direction:column}
 .pdfv-drawer.open{transform:translateX(0)}
 .pdfv-drawer-h{display:flex;align-items:center;padding:14px 14px 10px;border-bottom:1px solid var(--line);font-size:14px}
@@ -758,7 +758,7 @@ const App={
     // 串行渲染：一次只画一页；轮到时再确认这页是否仍需要，避免快速滑动时并发分配大量 canvas
     async pdfvDrain(){ if(this._pdfvBusy)return; this._pdfvBusy=true; const main=this.$refs.pdfvMain, doc=this._pdfvDoc;
       try{ while(this._pdfvQueue&&this._pdfvQueue.length){ const n=this._pdfvQueue.shift(); if(!main||!doc)break; const el=main.querySelector('.pdfv-page[data-page="'+n+'"]'); if(!el){ continue; } el.dataset.queued=''; if(el.dataset.rendered==='1')continue; if(Math.abs(n-this.pdfv.cur)>this._pdfvKeep()+2){ continue; }
-          try{ const page=await doc.getPage(n); const dpr=Math.min(window.devicePixelRatio||1, 2); const cssW=this._pdfvDispW||Math.max(160,(main.clientWidth||600)-32); const eff=Math.min(dpr, 2000/cssW); const rscale=(cssW/(this._pdfvBaseW||cssW))*eff; const vp=page.getViewport({scale:rscale}); const cv=el.querySelector('canvas'); if(!cv)continue; cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; el.dataset.rendered='1'; el.style.height=''; this.pdfvPrune(); }catch(e){ el.dataset.rendered=''; }
+          try{ const page=await doc.getPage(n); const dpr=Math.min(window.devicePixelRatio||1, 3); const cssW=this._pdfvDispW||Math.max(160,(main.clientWidth||600)-32); const eff=Math.min(dpr, 2200/cssW); const rscale=(cssW/(this._pdfvBaseW||cssW))*eff; const vp=page.getViewport({scale:rscale}); const cv=el.querySelector('canvas'); if(!cv)continue; cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; el.dataset.rendered='1'; el.style.height=''; this.pdfvPrune(); }catch(e){ el.dataset.rendered=''; }
           await new Promise(r=>setTimeout(r,0)); }
       }finally{ this._pdfvBusy=false; } },
     pdfvUnrender(el){ if(!el||el.dataset.rendered!=='1')return; const cv=el.querySelector('canvas'); if(cv){ cv.width=0; cv.height=0; cv.style.width=''; } el.dataset.rendered=''; if(this._pdfvDispH)el.style.height=this._pdfvDispH+'px'; },
