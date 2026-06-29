@@ -241,7 +241,15 @@ a{color:var(--accent)}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
 /* —— PDF 原书阅读器 —— */
-.pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);position:relative}
+.pdfv-drawer{position:absolute;left:0;top:0;bottom:0;width:78%;max-width:300px;z-index:30;background:var(--surface);border-right:1px solid var(--line);box-shadow:0 10px 40px rgba(0,0,0,.35);transform:translateX(-100%);transition:transform .25s ease;display:flex;flex-direction:column}
+.pdfv-drawer.open{transform:translateX(0)}
+.pdfv-drawer-h{display:flex;align-items:center;padding:14px 14px 10px;border-bottom:1px solid var(--line);font-size:14px}
+.pdfv-drawer-h .toc-close{border:none;background:transparent;color:var(--ink-soft);font-size:20px;cursor:pointer}
+.pdfv-drawer-list{flex:1;overflow:auto;padding:6px}
+.pdfv-drawer-list>div{padding:11px 12px;border-radius:8px;font-size:14px;color:var(--ink);cursor:pointer}
+.pdfv-drawer-list>div.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.pdfv-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:25}
 .pdfv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
 .pdfv-bar .ttl{font-weight:700;font-size:15px;flex:1;min-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pdfv-zoom{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:0 4px;height:34px;background:var(--surface)}
@@ -269,6 +277,7 @@ a{color:var(--accent)}
 .pdfv-main .pdfv-page{display:flex;justify-content:center;width:100%}
 .pdfv-main .pdfv-page canvas{box-shadow:var(--shadow);background:#fff;border-radius:2px;max-width:100%;height:auto}
 .pdfv-single{overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px;background:var(--surface-2)}
+@media(max-width:900px){ .pdfv-single{padding:8px;overflow:hidden;align-items:center} }
 .pdfv-single canvas{box-shadow:var(--shadow);background:#fff;border-radius:2px;max-width:100%;height:auto}
 .pdfv-foot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 16px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
 .pdfv-foot button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 16px;font-size:13px;cursor:pointer}
@@ -459,8 +468,8 @@ const App={
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', busy:false },
-    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'', mode:'scroll' },
-    pdfvMobile:false,
+    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'', mode:'scroll', msg:'' },
+    pdfvMobile:false, pdfvTocOpen:false,
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
     mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
@@ -713,20 +722,20 @@ const App={
     // —— 浏览器内 PDF 原书阅读（PDF.js 直接渲染原页，不做 OCR/转换）——
     async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
     _isMobile(){ try{ const coarse=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches; return !!coarse && (window.innerWidth||9999)<=900; }catch(_){ return (window.innerWidth||9999)<=820; } },
-    async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; try{ await this.ensurePdfjs(); const doc=await window.pdfjsLib.getDocument({data:buf}).promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.title=title||'PDF'; this.pdfvMobile=this._isMobile();
+    async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; this.pdfv.msg=this.pdfv.msg||'解析中…'; try{ await this.ensurePdfjs(); const task=window.pdfjsLib.getDocument({data:buf}); if(task.onProgress!==undefined){ task.onProgress=(p)=>{ if(p&&p.total)this.pdfv.msg='解析中 '+Math.round(p.loaded/p.total*100)+'%'; }; } const doc=await task.promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.title=title||'PDF'; this.pdfvMobile=this._isMobile(); if(this.pdfvMobile)this.pdfv.scale=1;
         let pref=''; try{ pref=localStorage.getItem('zb_pdfmode')||''; }catch(_){}
         this.pdfv.mode = this.pdfvMobile ? 'page' : (pref==='page'?'page':'scroll');
         let saved=1; try{ saved=Math.min(Math.max(1,parseInt(localStorage.getItem(this._pdfvPosKey())||'1',10)||1),this.pdfv.pages); }catch(_){ saved=1; }
         this.pdfv.cur=saved; this.pdfv.open=true;
         this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(saved>1); } this.pdfvSetupThumbs(); if(saved>1)this.flash('已回到上次阅读的第 '+saved+' 页'); });
-      }catch(e){ this.flash('PDF 解析失败：'+e.message,true); } this.pdfv.loading=false; },
+      }catch(e){ this.flash('PDF 解析失败：'+e.message,true); } this.pdfv.loading=false; this.pdfv.msg=''; },
     _pdfvPosKey(){ return 'zb_pdfpos:'+(this.pdfv.title||'PDF'); },
     pdfvSavePos(){ try{ localStorage.setItem(this._pdfvPosKey(), String(this.pdfv.cur)); }catch(_){} },
     pdfvToggleMode(){ this.pdfv.mode = this.pdfv.mode==='scroll' ? 'page' : 'scroll'; try{ localStorage.setItem('zb_pdfmode', this.pdfv.mode); }catch(_){} const cur=this.pdfv.cur; if(this.pdfv.mode==='page'){ this._pdfvQueue=[]; if(this._pdfvObsR)this._pdfvObsR.disconnect(); const main=this.$refs.pdfvMain; if(main&&this._pdfvScroll)main.removeEventListener('scroll',this._pdfvScroll); this.$nextTick(()=>this.pdfvRenderSingle()); } else { this.$nextTick(()=>{ this.pdfvSetupPages(false); this.$nextTick(()=>this.pdfvGoto(cur)); }); } },
     // 单页模式：只渲染当前一页到一个 canvas（内存恒定，手机不崩）
-    async pdfvRenderSingle(){ const doc=this._pdfvDoc, cv=this.$refs.pdfvSingle; if(!doc||!cv)return; this.pdfv.rendering=true; try{ const page=await doc.getPage(this.pdfv.cur); const dpr=Math.min(window.devicePixelRatio||1, 3); const host=cv.parentElement; const cw=Math.max(120,((host&&host.clientWidth)||600)-24); const vp1=page.getViewport({scale:1}); const cssW=Math.min(vp1.width*(Number(this.pdfv.scale)||1.2), cw); const rscale=(cssW/vp1.width)*dpr; const vp=page.getViewport({scale:rscale}); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const host2=cv.parentElement; if(host2)host2.scrollTop=0; }catch(e){} this.pdfv.rendering=false; },
+    async pdfvRenderSingle(){ const doc=this._pdfvDoc, cv=this.$refs.pdfvSingle; if(!doc||!cv)return; this.pdfv.rendering=true; try{ const page=await doc.getPage(this.pdfv.cur); const dpr=Math.min(window.devicePixelRatio||1, 3); const host=cv.parentElement; const cw=Math.max(120,((host&&host.clientWidth)||600)-24); const ch=Math.max(200,((host&&host.clientHeight)||700)-16); const vp1=page.getViewport({scale:1}); const z=Number(this.pdfv.scale)||1; let cssW; if(this.pdfvMobile){ const fitW=Math.min(cw, ch*(vp1.width/vp1.height)); cssW=fitW*z; } else { cssW=Math.min(vp1.width*(z||1.2), cw); } const rscale=(cssW/vp1.width)*dpr; const vp=page.getViewport({scale:rscale}); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const host2=cv.parentElement; if(host2)host2.scrollTop=0; }catch(e){} this.pdfv.rendering=false; },
     pdfvTouchStart(e){ const t=e.touches&&e.touches[0]; this._pdfvTx=t?t.clientX:0; this._pdfvTy=t?t.clientY:0; },
-    pdfvTouchEnd(e){ const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; const dx=t.clientX-(this._pdfvTx||0), dy=t.clientY-(this._pdfvTy||0); if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)*1.5){ if(dx<0)this.pdfvNext(); else this.pdfvPrev(); } },
+    pdfvTouchEnd(e){ if((Number(this.pdfv.scale)||1)>1.05)return; const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; const dx=t.clientX-(this._pdfvTx||0), dy=t.clientY-(this._pdfvTy||0); if(Math.abs(dy)>50 && Math.abs(dy)>Math.abs(dx)){ if(dy<0)this.pdfvNext(); else this.pdfvPrev(); } else if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)){ if(dx<0)this.pdfvNext(); else this.pdfvPrev(); } },
     // 连续滚动：为每页占位 + 懒加载渲染 + 滚动联动当前页；restore=true 时打开后回到上次阅读页
     async pdfvSetupPages(restore){ const doc=this._pdfvDoc, main=this.$refs.pdfvMain; if(!doc||!main)return; try{ const p1=await doc.getPage(1); const vp1=p1.getViewport({scale:1}); this._pdfvAspect=vp1.height/vp1.width; this._pdfvBaseW=vp1.width; }catch(_){ this._pdfvAspect=1.414; this._pdfvBaseW=600; }
       const scale=Number(this.pdfv.scale)||1.2; const cw=Math.max(120,(main.clientWidth||600)-40); const dispW=Math.min(this._pdfvBaseW*scale, cw); const dispH=Math.round(dispW*this._pdfvAspect); this._pdfvDispW=dispW; this._pdfvDispH=dispH;
@@ -786,7 +795,7 @@ const App={
     pdfShelfBySubject(){ const g={math:[],computer:[],politics:[],english:[],other:[]}; for(const it of (this.pdfShelf.items||[])){ (g[it.subject]||g.other).push(it); } return g; },
     async loadPdfShelf(){ if(!this.token)return; this.pdfShelf.loading=true; this.pdfShelf.note=''; try{ const res=await fetch('/api/pdfs',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(res.status===404 || !ct.includes('json')){ this.pdfShelf.cloudReady=false; this.pdfShelf.note='云端未就绪：检测不到 /api/pdfs 接口。请确认已把 functions/api/pdfs.js 提交并重新部署。'; } else { const d=await res.json().catch(()=>null); if(!res.ok){ this.pdfShelf.cloudReady=false; this.pdfShelf.note=(d&&d.error)||('云端不可用（HTTP '+res.status+'）'); } else { this.pdfShelf.items=d.items||[]; this.pdfShelf.cloudReady=true; } } }catch(e){ this.pdfShelf.cloudReady=false; this.pdfShelf.note='云端连接失败：'+e.message; } this.pdfShelf.loading=false; },
     async uploadPdf(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; e.target.value=''; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const mb=f.size/1048576; if(mb>95 && !confirm('文件 '+mb.toFixed(1)+'MB，可能超出上传上限（约 100MB）。仍要上传？\n超大书建议改用「本地打开」或先拆分。')) return; const title=(this.ingest.bookTitle||'').trim()||f.name.replace(/\.pdf$/i,''); const subject=this.guessSubject(f.name)||this.ingest.subject||'computer'; this.pdfShelf.uploading=true; this.pdfShelf.pct=0; this.pdfShelf.note=''; this.pdfShelf.prog='读取文件 '+f.name+'（'+mb.toFixed(1)+'MB）…'; try{ const buf=await f.arrayBuffer(); await new Promise((resolve,reject)=>{ const xhr=new XMLHttpRequest(); xhr.open('PUT','/api/pdfs?title='+encodeURIComponent(title)+'&subject='+encodeURIComponent(subject)); xhr.setRequestHeader('authorization','Bearer '+this.token); xhr.setRequestHeader('content-type','application/pdf'); xhr.upload.onprogress=(ev)=>{ if(ev.lengthComputable){ this.pdfShelf.pct=Math.round(ev.loaded/ev.total*100); this.pdfShelf.prog='上传中 '+(ev.loaded/1048576).toFixed(1)+' / '+mb.toFixed(1)+' MB'; } }; xhr.onload=()=>{ const ct=xhr.getResponseHeader('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=JSON.parse(xhr.responseText); }catch(_){} } if(xhr.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; reject(new Error('访问码无效')); return; } if(xhr.status===404 || !ct.includes('json')){ reject(new Error('上传接口不可用：请确认已部署 functions/api/pdfs.js，并在绑定 R2（PDF_BUCKET）后【重新部署一次】。')); return; } if(xhr.status<200||xhr.status>=300){ reject(new Error((d&&d.error)||('上传失败 HTTP '+xhr.status))); return; } this.pdfShelf.pct=100; resolve(d); }; xhr.onerror=()=>reject(new Error('网络错误，上传中断')); xhr.send(buf); }); this.flash('已上传《'+title+'》到云端'); await this.loadPdfShelf(); }catch(err){ this.pdfShelf.note=err.message; this.flash(err.message,true); } this.pdfShelf.uploading=false; this.pdfShelf.prog=''; this.pdfShelf.pct=0; },
-    async openShelfPdf(it){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.pdfv.loading=true; try{ const res=await fetch('/api/pdfs?id='+encodeURIComponent(it.id),{headers:{'authorization':'Bearer '+this.token}}); if(!res.ok)throw new Error('下载失败 '+res.status); const buf=await res.arrayBuffer(); await this.pdfvOpenSrc(buf, it.title); }catch(e){ this.pdfv.loading=false; this.flash('打开失败：'+e.message,true); } },
+    async openShelfPdf(it){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.pdfv.loading=true; this.pdfv.msg='连接中…'; try{ const res=await fetch('/api/pdfs?id='+encodeURIComponent(it.id),{headers:{'authorization':'Bearer '+this.token}}); if(!res.ok)throw new Error('下载失败 '+res.status); const total=parseInt(res.headers.get('content-length')||it.size||'0',10)||0; let buf; if(res.body&&res.body.getReader){ const reader=res.body.getReader(); const chunks=[]; let got=0; while(true){ const {done,value}=await reader.read(); if(done)break; chunks.push(value); got+=value.length; this.pdfv.msg='下载中 '+(total?Math.round(got/total*100)+'%':((got/1048576).toFixed(1)+'MB'))+'（'+(got/1048576).toFixed(1)+'/'+(total?(total/1048576).toFixed(1):'?')+'MB）'; } const all=new Uint8Array(got); let off=0; for(const c of chunks){ all.set(c,off); off+=c.length; } buf=all.buffer; } else { buf=await res.arrayBuffer(); } this.pdfv.msg='解析中…'; await this.pdfvOpenSrc(buf, it.title); }catch(e){ this.pdfv.loading=false; this.pdfv.msg=''; this.flash('打开失败：'+e.message,true); } },
     async deleteShelfPdf(it){ if(!confirm('确定删除云端 PDF《'+it.title+'》？此操作不可恢复。')) return; try{ await this.api('/api/pdfs?id='+encodeURIComponent(it.id),{method:'DELETE'}); this.flash('已删除《'+it.title+'》'); if(this.pdfv.title===it.title)this.pdfvClose(); await this.loadPdfShelf(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
     async pdfExtractText(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const doc=this._pdfDoc; this.ingest.pdf.busy=true; this.ingest.pdf.done=0; this.ingest.result=null;
@@ -949,7 +958,7 @@ const App={
         <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:14px">
           <label class="btn subtle" style="cursor:pointer">本地打开（仅本次）<input type="file" accept="application/pdf,.pdf" @change="pdfvOpenLocal" style="display:none" /></label>
           <label class="btn" style="cursor:pointer"><span v-if="pdfShelf.uploading" class="spin"></span>上传 PDF 到云端<input type="file" accept="application/pdf,.pdf" :disabled="pdfShelf.uploading" @change="uploadPdf" style="display:none" /></label>
-          <span v-if="pdfv.loading" class="muted"><span class="spin"></span> 正在解析 PDF…</span>
+          <span v-if="pdfv.loading" class="muted"><span class="spin"></span> {{ pdfv.msg || '正在打开 PDF…' }}</span>
         </div>
         <div v-if="pdfShelf.uploading" style="margin:0 0 14px;max-width:520px">
           <div class="muted" style="font-size:13px;margin-bottom:6px">{{ pdfShelf.prog }} <span v-if="pdfShelf.pct">· {{ pdfShelf.pct }}%</span></div>
@@ -993,10 +1002,19 @@ const App={
             <div class="pdfv-single" v-if="pdfv.mode==='page'" @touchstart.passive="pdfvTouchStart" @touchend="pdfvTouchEnd"><canvas ref="pdfvSingle"></canvas></div>
           </div>
           <div class="pdfv-foot">
+            <button v-if="pdfvMobile" @click="pdfvTocOpen=true">☰ 目录</button>
             <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
             <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
             <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
           </div>
+          <div v-if="pdfvMobile" class="pdfv-drawer" :class="{open:pdfvTocOpen}">
+            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">共 {{ pdfv.pages }} 页</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
+            <input class="inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码回车跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
+            <div class="pdfv-drawer-list">
+              <div v-for="n in pdfv.pages" :key="n" :class="{on:n===pdfv.cur}" @click="pdfvGoto(n); pdfvTocOpen=false">第 {{ n }} 页</div>
+            </div>
+          </div>
+          <div v-if="pdfvMobile && pdfvTocOpen" class="pdfv-backdrop" @click="pdfvTocOpen=false"></div>
         </div>
         <div v-else-if="!pdfv.loading" class="empty"><p>选择一个 PDF 直接在线阅读。适合公式、图表多、不想被 OCR 弄花的教材。<br>提示：PDF 仅在本次打开期间保留；想长期保存请用「整理笔记」导入，或把 PDF 放进部署的 public/。</p></div>
       </div>
