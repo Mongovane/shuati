@@ -278,7 +278,7 @@ a{color:var(--accent)}
 .pdfv-main .pdfv-page{display:flex;justify-content:center;width:100%}
 .pdfv-main .pdfv-page canvas{box-shadow:var(--shadow);background:#fff;border-radius:2px;max-width:100%;height:auto}
 .pdfv-single{overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px;background:var(--surface-2)}
-@media(max-width:900px){ .pdfv-single{padding:8px;overflow:hidden;align-items:center;touch-action:none;overscroll-behavior:contain} }
+@media(max-width:900px){ .pdfv-single{padding:8px;overflow:auto;align-items:flex-start;overscroll-behavior:contain} }
 .pdfv-drawer-jump{font-size:13px;padding:7px 10px;height:auto}
 .pdfv-single canvas{box-shadow:var(--shadow);background:#fff;border-radius:2px;max-width:100%;height:auto}
 .pdfv-foot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 16px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
@@ -726,16 +726,16 @@ const App={
     _isMobile(){ try{ const coarse=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches; return !!coarse && (window.innerWidth||9999)<=900; }catch(_){ return (window.innerWidth||9999)<=820; } },
     async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; this.pdfv.msg=this.pdfv.msg||'解析中…'; try{ await this.ensurePdfjs(); const task=window.pdfjsLib.getDocument({data:buf}); if(task.onProgress!==undefined){ task.onProgress=(p)=>{ if(p&&p.total)this.pdfv.msg='解析中 '+Math.round(p.loaded/p.total*100)+'%'; }; } const doc=await task.promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.title=title||'PDF'; this.pdfvMobile=this._isMobile();
         let pref=''; try{ pref=localStorage.getItem('zb_pdfmode')||''; }catch(_){}
-        this.pdfv.mode = (pref==='page'?'page':'scroll');
+        this.pdfv.mode = this.pdfvMobile ? 'page' : (pref==='page'?'page':'scroll');
         let saved=1; try{ saved=Math.min(Math.max(1,parseInt(localStorage.getItem(this._pdfvPosKey())||'1',10)||1),this.pdfv.pages); }catch(_){ saved=1; }
         this.pdfv.cur=saved; this.pdfv.open=true;
         this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(saved>1); } this.pdfvSetupThumbs(); if(saved>1)this.flash('已回到上次阅读的第 '+saved+' 页'); });
       }catch(e){ this.flash('PDF 解析失败：'+e.message,true); } this.pdfv.loading=false; this.pdfv.msg=''; },
     _pdfvPosKey(){ return 'zb_pdfpos:'+(this.pdfv.title||'PDF'); },
     pdfvSavePos(){ try{ localStorage.setItem(this._pdfvPosKey(), String(this.pdfv.cur)); }catch(_){} },
-    pdfvToggleMode(){ this.pdfv.mode = this.pdfv.mode==='scroll' ? 'page' : 'scroll'; try{ localStorage.setItem('zb_pdfmode', this.pdfv.mode); }catch(_){} const cur=this.pdfv.cur; if(this.pdfv.mode==='page'){ this._pdfvQueue=[]; if(this._pdfvObsR)this._pdfvObsR.disconnect(); const main=this.$refs.pdfvMain; if(main&&this._pdfvScroll)main.removeEventListener('scroll',this._pdfvScroll); this.$nextTick(()=>this.pdfvRenderSingle()); } else { this.$nextTick(()=>{ this.pdfvSetupPages(false); this.$nextTick(()=>this.pdfvGoto(cur)); }); } },
+    pdfvToggleMode(){ this.pdfv.mode = this.pdfv.mode==='scroll' ? 'page' : 'scroll'; try{ localStorage.setItem('zb_pdfmode', this.pdfv.mode); }catch(_){} const cur=this.pdfv.cur; this._pdfvQueue=[]; this._pdfvBusy=false; if(this.pdfv.mode==='page'){ if(this._pdfvObsR)this._pdfvObsR.disconnect(); const main=this.$refs.pdfvMain; if(main&&this._pdfvScroll)main.removeEventListener('scroll',this._pdfvScroll); this.$nextTick(()=>this.pdfvRenderSingle()); } else { this.$nextTick(()=>{ this.pdfvSetupPages(false); this.$nextTick(()=>this.pdfvGoto(cur)); }); } },
     // 单页模式：只渲染当前一页到一个 canvas（内存恒定，手机不崩）
-    async pdfvRenderSingle(){ const doc=this._pdfvDoc, cv=this.$refs.pdfvSingle; if(!doc||!cv)return; this.pdfv.rendering=true; try{ const page=await doc.getPage(this.pdfv.cur); const dpr=Math.min(window.devicePixelRatio||1, 3); const host=cv.parentElement; const cw=Math.max(120,((host&&host.clientWidth)||600)-24); const ch=Math.max(200,((host&&host.clientHeight)||700)-16); const vp1=page.getViewport({scale:1}); const z=Number(this.pdfv.scale)||1; let cssW; if(this.pdfvMobile){ const fitW=Math.min(cw, ch*(vp1.width/vp1.height)); cssW=fitW*z; } else { cssW=Math.min(vp1.width*(z||1.2), cw); } const rscale=(cssW/vp1.width)*dpr; const vp=page.getViewport({scale:rscale}); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const host2=cv.parentElement; if(host2)host2.scrollTop=0; }catch(e){} this.pdfv.rendering=false; },
+    async pdfvRenderSingle(){ const doc=this._pdfvDoc, cv=this.$refs.pdfvSingle; if(!doc||!cv)return; this.pdfv.rendering=true; try{ const page=await doc.getPage(this.pdfv.cur); const dpr=Math.min(window.devicePixelRatio||1, 3); const host=cv.parentElement; const cw=Math.max(120,((host&&host.clientWidth)||600)-24); const vp1=page.getViewport({scale:1}); const z=Number(this.pdfv.scale)||1.2; const cssW=Math.min(vp1.width*z, cw); const rscale=(cssW/vp1.width)*dpr; const vp=page.getViewport({scale:rscale}); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const host2=cv.parentElement; if(host2)host2.scrollTop=0; }catch(e){} this.pdfv.rendering=false; },
     pdfvTouchStart(e){ const t=e.touches&&e.touches[0]; this._pdfvTx=t?t.clientX:0; this._pdfvTy=t?t.clientY:0; },
     pdfvTouchMove(e){ if((Number(this.pdfv.scale)||1)<=1.05){ if(e.cancelable)e.preventDefault(); } },
     pdfvTouchEnd(e){ if((Number(this.pdfv.scale)||1)>1.05)return; const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; const dx=t.clientX-(this._pdfvTx||0), dy=t.clientY-(this._pdfvTy||0); if(Math.abs(dy)>45 && Math.abs(dy)>Math.abs(dx)){ if(dy<0)this.pdfvNext(); else this.pdfvPrev(); } else if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)){ if(dx<0)this.pdfvNext(); else this.pdfvPrev(); } },
@@ -992,7 +992,7 @@ const App={
             <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
             <input class="bk-jump inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value)" placeholder="跳页" />
             <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
-            <button class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
+            <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
             <button class="btn subtle" @click="pdfvClose">关闭</button>
           </div>
           <div class="pdfv-body" :class="{'one-col': pdfv.mode==='page'}">
@@ -1002,13 +1002,22 @@ const App={
             <div class="pdfv-main" ref="pdfvMain" v-if="pdfv.mode==='scroll'">
               <div v-for="n in pdfv.pages" :key="n" class="pdfv-page" :data-page="n"><canvas></canvas></div>
             </div>
-            <div class="pdfv-single" v-if="pdfv.mode==='page'" @touchstart.passive="pdfvTouchStart" @touchmove="pdfvTouchMove" @touchend="pdfvTouchEnd"><canvas ref="pdfvSingle"></canvas></div>
+            <div class="pdfv-single" v-if="pdfv.mode==='page'"><canvas ref="pdfvSingle"></canvas></div>
           </div>
           <div class="pdfv-foot">
+            <button v-if="pdfvMobile" @click="pdfvTocOpen=true">☰ 目录</button>
             <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
             <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
             <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
           </div>
+          <div v-if="pdfvMobile" class="pdfv-drawer" :class="{open:pdfvTocOpen}">
+            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">共 {{ pdfv.pages }} 页</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
+            <input class="inp pdfv-drawer-jump" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
+            <div class="pdfv-drawer-list">
+              <div v-for="n in pdfv.pages" :key="n" :class="{on:n===pdfv.cur}" @click="pdfvGoto(n); pdfvTocOpen=false">第 {{ n }} 页</div>
+            </div>
+          </div>
+          <div v-if="pdfvMobile && pdfvTocOpen" class="pdfv-backdrop" @click="pdfvTocOpen=false"></div>
         </div>
         <div v-else-if="!pdfv.loading" class="empty"><p>选择一个 PDF 直接在线阅读。适合公式、图表多、不想被 OCR 弄花的教材。<br>提示：PDF 仅在本次打开期间保留；想长期保存请用「整理笔记」导入，或把 PDF 放进部署的 public/。</p></div>
       </div>
