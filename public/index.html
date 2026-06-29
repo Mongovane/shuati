@@ -241,7 +241,7 @@ a{color:var(--accent)}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
 /* —— PDF 原书阅读器 —— */
-.pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);position:relative}
+.pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);position:relative;width:min(94vw,1180px);left:50%;transform:translateX(-50%)}
 .pdfv-drawer{position:absolute;left:0;top:0;bottom:0;width:78%;max-width:300px;z-index:30;background:var(--surface);border-right:1px solid var(--line);box-shadow:0 10px 40px rgba(0,0,0,.35);transform:translateX(-100%);transition:transform .25s ease;display:flex;flex-direction:column}
 .pdfv-drawer.open{transform:translateX(0)}
 .pdfv-drawer-h{display:flex;align-items:center;padding:14px 14px 10px;border-bottom:1px solid var(--line);font-size:14px}
@@ -470,7 +470,7 @@ const App={
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', busy:false },
-    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1.2, title:'', mode:'scroll', msg:'' },
+    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1, title:'', mode:'scroll', msg:'' },
     pdfvMobile:false, pdfvTocOpen:false,
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
@@ -735,13 +735,13 @@ const App={
     pdfvSavePos(){ try{ localStorage.setItem(this._pdfvPosKey(), String(this.pdfv.cur)); }catch(_){} },
     pdfvToggleMode(){ this.pdfv.mode = this.pdfv.mode==='scroll' ? 'page' : 'scroll'; try{ localStorage.setItem('zb_pdfmode', this.pdfv.mode); }catch(_){} const cur=this.pdfv.cur; this._pdfvQueue=[]; this._pdfvBusy=false; if(this.pdfv.mode==='page'){ if(this._pdfvObsR)this._pdfvObsR.disconnect(); const main=this.$refs.pdfvMain; if(main&&this._pdfvScroll)main.removeEventListener('scroll',this._pdfvScroll); this.$nextTick(()=>this.pdfvRenderSingle()); } else { this.$nextTick(()=>{ this.pdfvSetupPages(false); this.$nextTick(()=>this.pdfvGoto(cur)); }); } },
     // 单页模式：只渲染当前一页到一个 canvas（内存恒定，手机不崩）
-    async pdfvRenderSingle(){ const doc=this._pdfvDoc, cv=this.$refs.pdfvSingle; if(!doc||!cv)return; this.pdfv.rendering=true; try{ const page=await doc.getPage(this.pdfv.cur); const dpr=Math.min(window.devicePixelRatio||1, 3); const host=cv.parentElement; const cw=Math.max(120,((host&&host.clientWidth)||600)-24); const vp1=page.getViewport({scale:1}); const z=Number(this.pdfv.scale)||1.2; const cssW=Math.min(vp1.width*z, cw); const rscale=(cssW/vp1.width)*dpr; const vp=page.getViewport({scale:rscale}); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const host2=cv.parentElement; if(host2)host2.scrollTop=0; }catch(e){} this.pdfv.rendering=false; },
+    async pdfvRenderSingle(){ const doc=this._pdfvDoc, cv=this.$refs.pdfvSingle; if(!doc||!cv)return; this.pdfv.rendering=true; try{ const page=await doc.getPage(this.pdfv.cur); const dpr=Math.min(window.devicePixelRatio||1, 3); const host=cv.parentElement; const cw=Math.max(120,((host&&host.clientWidth)||600)-20); const vp1=page.getViewport({scale:1}); const z=Number(this.pdfv.scale)||1; const cssW=cw*z; const eff=Math.min(dpr, 2400/cssW); const rscale=(cssW/vp1.width)*eff; const vp=page.getViewport({scale:rscale}); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const host2=cv.parentElement; if(host2)host2.scrollTop=0; }catch(e){} this.pdfv.rendering=false; },
     pdfvTouchStart(e){ const t=e.touches&&e.touches[0]; this._pdfvTx=t?t.clientX:0; this._pdfvTy=t?t.clientY:0; },
     pdfvTouchMove(e){ if((Number(this.pdfv.scale)||1)<=1.05){ if(e.cancelable)e.preventDefault(); } },
     pdfvTouchEnd(e){ if((Number(this.pdfv.scale)||1)>1.05)return; const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; const dx=t.clientX-(this._pdfvTx||0), dy=t.clientY-(this._pdfvTy||0); if(Math.abs(dy)>45 && Math.abs(dy)>Math.abs(dx)){ if(dy<0)this.pdfvNext(); else this.pdfvPrev(); } else if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)){ if(dx<0)this.pdfvNext(); else this.pdfvPrev(); } },
     // 连续滚动：为每页占位 + 懒加载渲染 + 滚动联动当前页；restore=true 时打开后回到上次阅读页
     async pdfvSetupPages(restore){ const doc=this._pdfvDoc, main=this.$refs.pdfvMain; if(!doc||!main)return; try{ const p1=await doc.getPage(1); const vp1=p1.getViewport({scale:1}); this._pdfvAspect=vp1.height/vp1.width; this._pdfvBaseW=vp1.width; }catch(_){ this._pdfvAspect=1.414; this._pdfvBaseW=600; }
-      const scale=Number(this.pdfv.scale)||1.2; const cw=Math.max(120,(main.clientWidth||600)-40); const dispW=Math.min(this._pdfvBaseW*scale, cw); const dispH=Math.round(dispW*this._pdfvAspect); this._pdfvDispW=dispW; this._pdfvDispH=dispH;
+      const scale=Number(this.pdfv.scale)||1; const cw=Math.max(120,(main.clientWidth||600)-32); const dispW=Math.max(160, cw*scale); const dispH=Math.round(dispW*this._pdfvAspect); this._pdfvDispW=dispW; this._pdfvDispH=dispH;
       this._pdfvQueue=[]; this._pdfvBusy=false;
       main.querySelectorAll('.pdfv-page').forEach(el=>{ el.dataset.rendered=''; el.dataset.queued=''; el.style.height=dispH+'px'; const cv=el.querySelector('canvas'); if(cv){ cv.width=0; cv.height=0; cv.style.width=''; } });
       if(this._pdfvObsR)this._pdfvObsR.disconnect();
@@ -752,13 +752,13 @@ const App={
       this._pdfvScroll=()=>{ if(this._pdfvRaf)return; this._pdfvRaf=requestAnimationFrame(()=>{ this._pdfvRaf=0; this.pdfvScrollSync(); }); };
       main.addEventListener('scroll',this._pdfvScroll,{passive:true});
       if(restore){ let saved=1; try{ saved=Math.min(Math.max(1,parseInt(localStorage.getItem(this._pdfvPosKey())||'1',10)||1),this.pdfv.pages); }catch(_){ saved=1; } if(saved>1){ this.$nextTick(()=>{ this.pdfvGoto(saved); }); } } },
-    _pdfvKeep(){ return this._isMobile()?4:12; },
+    _pdfvKeep(){ return this._isMobile()?4:8; },
     // 入队（不立即渲染）：只排还在当前窗口附近、尚未渲染的页
     pdfvEnqueue(n,el){ if(!el||el.dataset.rendered==='1'||el.dataset.queued==='1')return; if(Math.abs(n-this.pdfv.cur)>this._pdfvKeep()+2)return; el.dataset.queued='1'; this._pdfvQueue=this._pdfvQueue||[]; this._pdfvQueue.push(n); this.pdfvDrain(); },
     // 串行渲染：一次只画一页；轮到时再确认这页是否仍需要，避免快速滑动时并发分配大量 canvas
     async pdfvDrain(){ if(this._pdfvBusy)return; this._pdfvBusy=true; const main=this.$refs.pdfvMain, doc=this._pdfvDoc;
       try{ while(this._pdfvQueue&&this._pdfvQueue.length){ const n=this._pdfvQueue.shift(); if(!main||!doc)break; const el=main.querySelector('.pdfv-page[data-page="'+n+'"]'); if(!el){ continue; } el.dataset.queued=''; if(el.dataset.rendered==='1')continue; if(Math.abs(n-this.pdfv.cur)>this._pdfvKeep()+2){ continue; }
-          try{ const page=await doc.getPage(n); const isMobile=this._isMobile(); const dpr=Math.min(window.devicePixelRatio||1, isMobile?1.25:2); const cssW=this._pdfvDispW||Math.min(this._pdfvBaseW*(Number(this.pdfv.scale)||1.2), Math.max(120,(main.clientWidth||600)-40)); const rscale=(cssW/(this._pdfvBaseW||cssW))*dpr; const vp=page.getViewport({scale:rscale}); const cv=el.querySelector('canvas'); if(!cv)continue; cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; el.dataset.rendered='1'; el.style.height=''; this.pdfvPrune(); }catch(e){ el.dataset.rendered=''; }
+          try{ const page=await doc.getPage(n); const dpr=Math.min(window.devicePixelRatio||1, 2); const cssW=this._pdfvDispW||Math.max(160,(main.clientWidth||600)-32); const eff=Math.min(dpr, 2000/cssW); const rscale=(cssW/(this._pdfvBaseW||cssW))*eff; const vp=page.getViewport({scale:rscale}); const cv=el.querySelector('canvas'); if(!cv)continue; cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); cv.style.width=Math.round(cssW)+'px'; await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; el.dataset.rendered='1'; el.style.height=''; this.pdfvPrune(); }catch(e){ el.dataset.rendered=''; }
           await new Promise(r=>setTimeout(r,0)); }
       }finally{ this._pdfvBusy=false; } },
     pdfvUnrender(el){ if(!el||el.dataset.rendered!=='1')return; const cv=el.querySelector('canvas'); if(cv){ cv.width=0; cv.height=0; cv.style.width=''; } el.dataset.rendered=''; if(this._pdfvDispH)el.style.height=this._pdfvDispH+'px'; },
