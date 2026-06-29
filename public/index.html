@@ -256,7 +256,7 @@ a{color:var(--accent)}
 .pdfv-zoom button{width:28px;height:30px;border:none;background:transparent;color:var(--ink);font-size:17px;line-height:1}
 .pdfv-zoom span{font-size:12.5px;color:var(--ink-soft);min-width:42px;text-align:center}
 .pdfv-body{display:grid;grid-template-columns:144px 1fr;height:min(78vh,880px)}
-.pdfv-body.one-col{grid-template-columns:1fr}
+.pdfv-body.one-col{grid-template-columns:1fr;height:auto}
 @media(max-width:700px){
   .pdfv-body{grid-template-columns:84px 1fr;height:min(82vh,900px)}
   .pdfv-body.one-col{grid-template-columns:1fr}
@@ -277,10 +277,10 @@ a{color:var(--accent)}
 .pdfv-main{overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px;background:var(--surface-2)}
 .pdfv-main .pdfv-page{display:flex;justify-content:center;width:100%;flex:0 0 auto}
 .pdfv-main .pdfv-page canvas{box-shadow:var(--shadow);background:#fff;border-radius:2px;max-width:100%;height:auto}
-.pdfv-single{overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px;background:var(--surface-2)}
-@media(max-width:900px){ .pdfv-single{padding:8px;overflow:auto;align-items:flex-start;overscroll-behavior:contain} }
+.pdfv-single{display:flex;justify-content:center;align-items:flex-start;padding:12px;background:var(--surface-2)}
+.pdfv-single canvas{display:block;max-width:100%;height:auto;box-shadow:var(--shadow);background:#fff}
+@media(max-width:900px){ .pdfv-single{padding:6px} }
 .pdfv-drawer-jump{font-size:13px;padding:7px 10px;height:auto}
-.pdfv-single canvas{box-shadow:var(--shadow);background:#fff;border-radius:2px;max-width:100%;height:auto}
 .pdfv-foot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 16px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
 .pdfv-foot button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 16px;font-size:13px;cursor:pointer}
 .pdfv-foot button:disabled{opacity:.4;cursor:not-allowed}
@@ -751,6 +751,7 @@ const App={
       if(this._pdfvScroll)main.removeEventListener('scroll',this._pdfvScroll);
       this._pdfvScroll=()=>{ if(this._pdfvRaf)return; this._pdfvRaf=requestAnimationFrame(()=>{ this._pdfvRaf=0; this.pdfvScrollSync(); }); };
       main.addEventListener('scroll',this._pdfvScroll,{passive:true});
+      this.$nextTick(()=>{ for(let i=this.pdfv.cur-1;i<=this.pdfv.cur+2;i++){ const e=main.querySelector('.pdfv-page[data-page="'+i+'"]'); if(e)this.pdfvEnqueue(i,e); } });
       if(restore){ let saved=1; try{ saved=Math.min(Math.max(1,parseInt(localStorage.getItem(this._pdfvPosKey())||'1',10)||1),this.pdfv.pages); }catch(_){ saved=1; } if(saved>1){ this.$nextTick(()=>{ this.pdfvGoto(saved); }); } } },
     _pdfvKeep(){ return this._isMobile()?4:8; },
     // 入队（不立即渲染）：只排还在当前窗口附近、尚未渲染的页
@@ -763,8 +764,8 @@ const App={
       }finally{ this._pdfvBusy=false; } },
     pdfvUnrender(el){ if(!el||el.dataset.rendered!=='1')return; const cv=el.querySelector('canvas'); if(cv){ cv.width=0; cv.height=0; cv.style.width=''; } el.dataset.rendered=''; if(this._pdfvDispH)el.style.height=this._pdfvDispH+'px'; },
     pdfvPrune(){ const main=this.$refs.pdfvMain; if(!main)return; const KEEP=this._pdfvKeep(); const lo=this.pdfv.cur-KEEP, hi=this.pdfv.cur+KEEP; main.querySelectorAll('.pdfv-page').forEach(el=>{ if(el.dataset.rendered==='1'){ const p=parseInt(el.dataset.page,10); if(p<lo||p>hi)this.pdfvUnrender(el); } }); },
-    pdfvScrollSync(){ const main=this.$refs.pdfvMain; if(!main)return; const top=main.scrollTop+90; let cur=1; const els=main.querySelectorAll('.pdfv-page'); for(const el of els){ if(el.offsetTop<=top)cur=parseInt(el.dataset.page,10); else break; } if(cur&&cur!==this.pdfv.cur){ this.pdfv.cur=cur; this.pdfvSavePos(); this.pdfvPrune(); const el=main.querySelector('.pdfv-page[data-page="'+cur+'"]'); if(el)this.pdfvEnqueue(cur,el); const t=this.$refs.pdfvRail&&this.$refs.pdfvRail.querySelector('.pdfv-thumb[data-page="'+cur+'"]'); if(t)t.scrollIntoView({block:'nearest'}); } },
-    pdfvGoto(n){ const t=Math.min(Math.max(1,parseInt(n,10)||1),this.pdfv.pages); this.pdfv.cur=t; this.pdfvSavePos(); if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { const main=this.$refs.pdfvMain; if(main){ const sel='.pdfv-page[data-page="'+t+'"]'; const el=main.querySelector(sel); if(el){ this.pdfvEnqueue(t,el); main.scrollTop=el.offsetTop; this.pdfvPrune(); const fix=()=>{ const e2=main.querySelector(sel); if(e2)main.scrollTop=e2.offsetTop; }; requestAnimationFrame(fix); setTimeout(fix,180); setTimeout(fix,460); } } } const r=this.$refs.pdfvRail&&this.$refs.pdfvRail.querySelector('.pdfv-thumb[data-page="'+t+'"]'); if(r)r.scrollIntoView({block:'nearest'}); },
+    pdfvScrollSync(){ const main=this.$refs.pdfvMain; if(!main)return; const top=main.scrollTop+90; let cur=1; const els=main.querySelectorAll('.pdfv-page'); for(const el of els){ if(el.offsetTop<=top)cur=parseInt(el.dataset.page,10); else break; } for(let i=cur-1;i<=cur+2;i++){ const e=main.querySelector('.pdfv-page[data-page="'+i+'"]'); if(e)this.pdfvEnqueue(i,e); } if(cur&&cur!==this.pdfv.cur){ this.pdfv.cur=cur; this.pdfvSavePos(); this.pdfvPrune(); const t=this.$refs.pdfvRail&&this.$refs.pdfvRail.querySelector('.pdfv-thumb[data-page="'+cur+'"]'); if(t)t.scrollIntoView({block:'nearest'}); } },
+    pdfvGoto(n){ const t=Math.min(Math.max(1,parseInt(n,10)||1),this.pdfv.pages); this.pdfv.cur=t; this.pdfvSavePos(); if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { const main=this.$refs.pdfvMain; if(main){ const sel='.pdfv-page[data-page="'+t+'"]'; const el=main.querySelector(sel); if(el){ for(let i=t-1;i<=t+2;i++){ const e=main.querySelector('.pdfv-page[data-page="'+i+'"]'); if(e)this.pdfvEnqueue(i,e); } main.scrollTop=el.offsetTop; this.pdfvPrune(); const fix=()=>{ const e2=main.querySelector(sel); if(e2)main.scrollTop=e2.offsetTop; }; requestAnimationFrame(fix); setTimeout(fix,180); setTimeout(fix,460); } } } const r=this.$refs.pdfvRail&&this.$refs.pdfvRail.querySelector('.pdfv-thumb[data-page="'+t+'"]'); if(r)r.scrollIntoView({block:'nearest'}); },
     pdfvPrev(){ this.pdfvGoto(this.pdfv.cur-1); },
     pdfvNext(){ this.pdfvGoto(this.pdfv.cur+1); },
     pdfvZoom(d){ this.pdfv.scale=Math.min(3,Math.max(0.5,Math.round((this.pdfv.scale+d)*10)/10)); const cur=this.pdfv.cur; if(this.pdfv.mode==='page'){ this.$nextTick(()=>this.pdfvRenderSingle()); } else { this.$nextTick(()=>{ this.pdfvSetupPages(false); this.$nextTick(()=>this.pdfvGoto(cur)); }); } },
