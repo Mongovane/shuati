@@ -191,6 +191,21 @@ a{color:var(--accent)}
 .modal-b .lbl{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:5px}
 .modal-b textarea.inp{width:100%;font-family:var(--font);font-size:14px;line-height:1.6;resize:vertical}
 .modal-b .prev-box{margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:10px;background:var(--surface-2)}
+.prev-list{display:flex;flex-direction:column;gap:10px}
+.prev-item{display:flex;gap:10px;padding:12px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
+.prev-item.noans{border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.prev-item.off{opacity:.5}
+.prev-ck{flex:none;padding-top:2px}
+.prev-ck input{width:18px;height:18px}
+.prev-body{flex:1;min-width:0}
+.prev-meta{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.prev-q{display:flex;gap:8px;margin-top:6px}
+.prev-lab{flex:none;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:2px 6px;height:fit-content}
+.prev-lab.ans{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.prev-q .rich{font-size:14px;line-height:1.6;flex:1;min-width:0;overflow-x:auto}
+.prev-opts{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px;font-size:13.5px;color:var(--ink)}
+.prev-opt b{color:var(--accent)}
+.modal-f .muted{margin-right:auto}
 .modal-f{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px;border-top:1px solid var(--line)}
 .bank-row{background:var(--surface);border:1px solid var(--line)}
 .bk-toctoggle:hover{background:var(--surface-2);color:var(--ink)}
@@ -530,6 +545,7 @@ const App={
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
     bookExtract:{ busy:false, prog:'', done:0, total:0 },
+    extractPreview:{ open:false, items:[], title:'', subject:'', source:'' },
     reader:{ open:false, fontSize:19, lineGap:1.9, theme:'paper', serif:false, barsHidden:false, panel:false, tocOpen:false },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
@@ -840,20 +856,24 @@ const App={
       const stem=(stemPart||'').trim(); if(!stem)return null;
       return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:'', stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[] }; },
     async _postQuestions(arr, subject, source){ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } return inserted; },
+    _openPreview(arr, title, subject, source){ this.extractPreview={ open:true, items:arr.map(q=>Object.assign({_use:true},q)), title, subject, source }; },
+    extractMissingCount(){ return this.extractPreview.items.filter(q=>q._use && !(q.answer&&q.answer.length)).length; },
+    extractUseCount(){ return this.extractPreview.items.filter(q=>q._use).length; },
+    extractToggleMissing(){ const hasOn=this.extractPreview.items.some(q=>q._use&&!(q.answer&&q.answer.length)); this.extractPreview.items.forEach(q=>{ if(!(q.answer&&q.answer.length))q._use=!hasOn; }); },
+    extractClose(){ this.extractPreview.open=false; this.extractPreview.items=[]; },
+    typeName(t){ return ({single_choice:'单选',multiple_choice:'多选',true_false:'判断',fill_blank:'填空',short_answer:'简答',code:'代码'})[t]||t; },
     async localExtractPage(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src});
       if(!arr.length){ this.flash('这一页没解析出题目（可能不是习题页，或编号格式特殊，可改用 AI 抽取）',true); return; }
-      if(!confirm('本地解析出 '+arr.length+' 道题（不花 AI 额度）。\n导入题库？\n\n说明：计算/证明题会按「简答题」入库，刷题时自评；导入后建议到「题库」抽查答案是否拆对。')) return;
-      this.bookExtract.busy=true; this.bookExtract.prog='导入中…';
-      try{ const n=await this._postQuestions(arr,m.subject,src); this.flash('已从本页导入 '+n+' 道题到题库（未用 AI）'); this.loadMeta(); this.loadStats(); }
-      catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
+      this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src); },
     async localExtractBook(){ const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       let all=[]; for(const m of b.pages){ all=all.concat(this.mdToQuestions(m.content_md,{subject:m.subject||b.subject,source:b.title})); }
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
-      if(!confirm('本地解析出 '+all.length+' 道题（全程不花 AI 额度）。\n整本《'+b.title+'》导入题库？\n\n计算/证明题按「简答题」入库；导入后可在「题库」抽查答案。')) return;
-      this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=all.length;
-      try{ let inserted=0; const CH=40; for(let i=0;i<all.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,all.length)+' / '+all.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:b.subject, source:b.title, questions:all.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); this.bookExtract.done=Math.min(i+CH,all.length); }
-        this.flash('已从《'+b.title+'》导入 '+inserted+' 道题到题库（全程未用 AI）'); this.loadMeta(); this.loadStats(); }
+      this._openPreview(all, '《'+b.title+'》整本（预览）', b.subject, b.title); },
+    async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
+      this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
+      try{ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); this.bookExtract.done=Math.min(i+CH,arr.length); }
+        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'); this.loadMeta(); this.loadStats(); this.extractClose(); }
       catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
     // —— 浏览器内 PDF 原书阅读（PDF.js 直接渲染原页，不做 OCR/转换）——
     async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
@@ -1653,6 +1673,36 @@ const App={
       <h4>目录 <span style="color:var(--rsoft);font-weight:400;margin-left:6px">{{ currentBook.pages.length }} 篇</span><button class="ricon" style="margin-left:auto" @click="reader.tocOpen=false">✕</button></h4>
       <div class="list">
         <div v-for="(m,i) in currentBook.pages" :key="m.id" :class="{on:i===bookIdx}" @click="readerGoto(i)">{{ pageLabel(m) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="extractPreview.open" class="modal-mask" @click.self="extractClose">
+    <div class="modal" style="max-width:860px;width:94vw">
+      <div class="modal-h"><b>抽题预览 · {{ extractPreview.title }}</b><button class="toc-close" @click="extractClose">✕</button></div>
+      <div class="modal-b">
+        <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <span>共解析 <b>{{ extractPreview.items.length }}</b> 题，已勾选 <b>{{ extractUseCount() }}</b> 题导入</span>
+          <span v-if="extractMissingCount()" class="muted" style="color:var(--bad)">其中 {{ extractMissingCount() }} 题没抽到答案</span>
+          <button v-if="extractPreview.items.some(q=>!(q.answer&&q.answer.length))" class="btn subtle xs" @click="extractToggleMissing">勾选/取消「无答案」的题</button>
+          <span class="muted" style="font-size:12px">提示：计算/证明题按「简答题」入库；导入后仍可在「题库」编辑修改。</span>
+        </div>
+        <div class="prev-list">
+          <div v-for="(q,i) in extractPreview.items" :key="i" class="prev-item" :class="{off:!q._use, noans:!(q.answer&&q.answer.length)}">
+            <label class="prev-ck"><input type="checkbox" v-model="q._use" /></label>
+            <div class="prev-body">
+              <div class="prev-meta"><span class="tag2">{{ typeName(q.type) }}</span><span v-if="q.chapter" class="muted" style="font-size:12px">{{ q.chapter }}</span><span v-if="!(q.answer&&q.answer.length)" class="tag" style="color:var(--bad);border-color:var(--bad)">无答案</span></div>
+              <div class="prev-q"><span class="prev-lab">题干</span><rich-text :content="q.stem || '（空）'" /></div>
+              <div v-if="q.options&&q.options.length" class="prev-opts"><span v-for="o in q.options" :key="o.key" class="prev-opt"><b>{{ o.key }}.</b> {{ o.text }}</span></div>
+              <div class="prev-q" v-if="q.answer&&q.answer.length"><span class="prev-lab ans">答案</span><rich-text :content="q.answer.join('\n')" /></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-f">
+        <span v-if="bookExtract.busy" class="muted">{{ bookExtract.prog }}</span>
+        <button class="btn subtle" :disabled="bookExtract.busy" @click="extractClose">取消</button>
+        <button class="btn" :disabled="bookExtract.busy || !extractUseCount()" @click="extractDoImport"><span v-if="bookExtract.busy" class="spin"></span>导入勾选的 {{ extractUseCount() }} 题（不花 AI）</button>
       </div>
     </div>
   </div>
