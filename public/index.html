@@ -545,7 +545,7 @@ const App={
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
     bookExtract:{ busy:false, prog:'', done:0, total:0 },
-    extractPreview:{ open:false, items:[], title:'', subject:'', source:'' },
+    extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0 },
     reader:{ open:false, fontSize:19, lineGap:1.9, theme:'paper', serif:false, barsHidden:false, panel:false, tocOpen:false },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
@@ -669,6 +669,14 @@ const App={
     async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); const si=this.bank.sel.indexOf(q.id); if(si>=0)this.bank.sel.splice(si,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
     async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
     async bankBatchSubject(){ const ids=[...this.bank.sel]; const subj=this.bank.batchSubject; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!subj){ this.flash('请选择目标科目',true); return; } try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.subject=subj; }); this.flash('已将 '+(d.updated||ids.length)+' 题改为「'+this.subjName(subj)+'」'); this.bank.sel=[]; this.bank.batchSubject=''; this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('批量改科目失败：'+e.message,true); } },
+    async bankDedup(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('扫描整个题库，删除题干完全相同的重复题（每组只保留一道）。\n建议先备份。继续？'))return; this.bank.loading=true; try{
+        let all=[]; let off=0; const lim=200; while(true){ const p=new URLSearchParams(); p.set('mode','all'); p.set('order','seq'); p.set('limit',lim); p.set('offset',off); const d=await this.api('/api/questions?'+p.toString()); const items=d.items||[]; all=all.concat(items); if(items.length<lim)break; off+=lim; if(off>40000)break; }
+        const seen=new Set(); const dupIds=[]; for(const q of all){ const k=(q.subject||'')+'|'+String(q.stem||'').replace(/\s+/g,' ').trim(); if(seen.has(k))dupIds.push(q.id); else seen.add(k); }
+        if(!dupIds.length){ this.flash('没有发现重复题（共 '+all.length+' 题）'); this.bank.loading=false; return; }
+        if(!confirm('共扫描 '+all.length+' 题，发现 '+dupIds.length+' 道重复，将删除（每组保留第一道）。确认？')){ this.bank.loading=false; return; }
+        let del=0; const CH=100; for(let i=0;i<dupIds.length;i+=CH){ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:dupIds.slice(i,i+CH)})}); del+=(d.deleted||dupIds.slice(i,i+CH).length); }
+        this.flash('已清理 '+del+' 道重复题'); this.loadMeta(); this.loadStats(); await this.loadBank(true);
+      }catch(e){ if(e.message!=='unauth')this.flash('清理失败：'+e.message,true); } this.bank.loading=false; },
     async bankAutoClassify(){ const changes={}; let n=0; for(const q of this.bank.items){ const opt=Array.isArray(q.options)?q.options.map(o=>o&&o.text).join(' '):''; const g=this.classifySubject([q.stem,q.chapter,opt].join('  ')); if(g&&g!==q.subject){ (changes[g]=changes[g]||[]).push(q); n++; } } if(!n){ this.flash('本页没有可自动纠正的题（特征不明确的不动）'); return; } if(!confirm('将按题干内容自动纠正本页 '+n+' 道题的科目（仅强特征命中的）。继续？'))return; try{ for(const subj of Object.keys(changes)){ const arr=changes[subj]; const ids=arr.map(q=>q.id); await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); arr.forEach(q=>q.subject=subj); } this.flash('已自动归类 '+n+' 题'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('智能归类失败：'+e.message,true); } },
     bankOpenEdit(q){ this.bankEdit={ open:true, q, stem:q.stem||'', analysis:q.analysis||'', subject:q.subject||'', type:q.type||'', options:(Array.isArray(q.options)?q.options.map(o=>({key:o.key||'',text:o.text||''})):[]), answerText:(Array.isArray(q.answer)?q.answer.join(this.isChoiceType(q.type)?', ':'\n'):(q.answer||'')), busy:false }; },
     isChoiceType(t){ return t==='single_choice'||t==='multiple_choice'||t==='true_false'; },
@@ -856,7 +864,7 @@ const App={
       const stem=(stemPart||'').trim(); if(!stem)return null;
       return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:'', stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[] }; },
     async _postQuestions(arr, subject, source){ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } return inserted; },
-    _openPreview(arr, title, subject, source){ this.extractPreview={ open:true, items:arr.map(q=>Object.assign({_use:true},q)), title, subject, source }; },
+    _openPreview(arr, title, subject, source){ const seen=new Set(); const uniq=[]; let dup=0; for(const q of arr){ const k=String(q.stem||'').replace(/\s+/g,' ').trim(); if(!k)continue; if(seen.has(k)){ dup++; continue; } seen.add(k); uniq.push(q); } this.extractPreview={ open:true, items:uniq.map(q=>Object.assign({_use:true},q)), title, subject, source, dup }; },
     extractMissingCount(){ return this.extractPreview.items.filter(q=>q._use && !(q.answer&&q.answer.length)).length; },
     extractUseCount(){ return this.extractPreview.items.filter(q=>q._use).length; },
     extractToggleMissing(){ const hasOn=this.extractPreview.items.some(q=>q._use&&!(q.answer&&q.answer.length)); this.extractPreview.items.forEach(q=>{ if(!(q.answer&&q.answer.length))q._use=!hasOn; }); },
@@ -1325,6 +1333,7 @@ const App={
         <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
         <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
         <button class="btn subtle" v-if="bank.items.length" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）">🪄 智能归类(本页)</button>
+        <button class="btn subtle" v-if="bank.total" @click="bankDedup" title="扫描整个题库，删除题干完全相同的重复题（每组保留一道）">🧹 清理重复</button>
         <template v-if="bank.sel.length">
           <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
           <button class="btn subtle" @click="bankBatchSubject">应用</button>
@@ -1684,6 +1693,7 @@ const App={
       <div class="modal-b">
         <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
           <span>共解析 <b>{{ extractPreview.items.length }}</b> 题，已勾选 <b>{{ extractUseCount() }}</b> 题导入</span>
+          <span v-if="extractPreview.dup" class="muted">（已自动去重 {{ extractPreview.dup }} 题）</span>
           <span v-if="extractMissingCount()" class="muted" style="color:var(--bad)">其中 {{ extractMissingCount() }} 题没抽到答案</span>
           <button v-if="extractPreview.items.some(q=>!(q.answer&&q.answer.length))" class="btn subtle xs" @click="extractToggleMissing">勾选/取消「无答案」的题</button>
           <span class="muted" style="font-size:12px">提示：计算/证明题按「简答题」入库；导入后仍可在「题库」编辑修改。</span>
