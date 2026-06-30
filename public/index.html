@@ -240,6 +240,68 @@ a{color:var(--accent)}
 .rich .katex-display{overflow:hidden;max-width:100%}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
+/* —— 沉浸式阅读（番茄/七猫风格：可调字号、阅读主题、点击/滑动翻篇）—— */
+.reader{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;background:var(--rbg);color:var(--rink);-webkit-tap-highlight-color:transparent}
+.reader.t-paper{--rbg:#f6f5f1;--rink:#2c2a27;--rsoft:#9a978f;--rline:#e6e3db;--racc:#b06a3a}
+.reader.t-sepia{--rbg:#ecdcc0;--rink:#5b4a32;--rsoft:#a08a64;--rline:#dcc8a4;--racc:#8a5a28}
+.reader.t-green{--rbg:#cfe4cf;--rink:#2e3f30;--rsoft:#6b8a6e;--rline:#b7d3b7;--racc:#2f6b3a}
+.reader.t-night{--rbg:#16161a;--rink:#b6b6b2;--rsoft:#6f6f74;--rline:#2a2a31;--racc:#c98a52}
+.reader .r-scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;position:relative}
+.reader .r-wrap{max-width:740px;margin:0 auto;padding:60px 26px 116px}
+.reader .r-head{margin:0 0 22px}
+.reader .r-head .rt{font-size:calc(var(--rfs,19px) + 4px);font-weight:700;line-height:1.4}
+.reader .r-head .rs{font-size:13px;color:var(--rsoft);margin-top:6px}
+.reader .r-head .rsum{font-size:13.5px;color:var(--racc);font-weight:600;margin-top:12px;padding-left:12px;border-left:3px solid var(--racc)}
+.reader .rich{font-size:var(--rfs,19px);line-height:var(--rlh,1.9);color:var(--rink)}
+.reader.serif .r-wrap{font-family:"Songti SC","Noto Serif SC","Source Han Serif SC",Georgia,"Times New Roman",serif}
+.reader .rich p{margin:0 0 1em}
+.reader .rich img{max-width:100%;height:auto;display:block;margin:18px auto;border-radius:8px;background:#fff;padding:6px;border:1px solid var(--rline)}
+.reader .rich a{color:var(--racc)}
+.reader .rich h1,.reader .rich h2,.reader .rich h3,.reader .rich h4,.reader .rich strong{color:var(--rink)}
+.reader .rich ol,.reader .rich ul{padding-left:1.7em;margin:1em 0}
+.reader .rich ol>li,.reader .rich ul>li{margin:.55em 0}
+.reader .rich code{background:color-mix(in srgb,var(--rink) 9%,transparent);padding:1px 5px;border-radius:5px;font-size:.92em}
+.reader .rich pre{background:color-mix(in srgb,var(--rink) 9%,transparent);padding:12px 14px;border-radius:10px;overflow:auto}
+.reader .rich blockquote{border-left:3px solid var(--rline);margin:1em 0;padding:2px 0 2px 14px;color:var(--rsoft)}
+.reader .rich .katex-display{overflow-x:auto;overflow-y:hidden;max-width:100%;text-align:left;padding:4px 0 8px}
+.reader .rich .mathwrap{display:block;max-width:100%;overflow-x:auto;margin:6px 0}
+.reader .rich .figcap,.reader .rich figure.fig figcaption{text-align:center;font-size:13px;color:var(--rsoft)}
+.reader .r-top,.reader .r-bot{position:absolute;left:0;right:0;background:color-mix(in srgb,var(--rbg) 90%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);z-index:6;transition:transform .26s ease}
+.reader .r-top{top:0;display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid var(--rline)}
+.reader .r-bot{bottom:0;padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--rline)}
+.reader.bars-hidden .r-top{transform:translateY(-100%)}
+.reader.bars-hidden .r-bot{transform:translateY(100%)}
+.reader .r-top .rttl{flex:1;min-width:0;font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reader .ricon{min-width:38px;height:38px;border:none;background:transparent;color:var(--rink);font-size:17px;cursor:pointer;border-radius:9px;flex:none;font-weight:600}
+.reader .ricon:hover{background:color-mix(in srgb,var(--rink) 8%,transparent)}
+.reader .r-bot .rrow{display:flex;align-items:center;gap:10px;max-width:740px;margin:0 auto}
+.reader .rbtn{flex:1;height:42px;border:1px solid var(--rline);background:color-mix(in srgb,var(--rink) 4%,transparent);color:var(--rink);border-radius:11px;font-weight:600;font-size:14px;cursor:pointer}
+.reader .rbtn:disabled{opacity:.4;cursor:default}
+.reader .rprog{font-size:12.5px;color:var(--rsoft);text-align:center;margin-bottom:9px}
+.reader .rprog b{color:var(--rink)}
+.reader .r-panel{position:absolute;left:0;right:0;bottom:0;z-index:8;background:var(--rbg);border-top:1px solid var(--rline);padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(100%);transition:transform .26s ease;box-shadow:0 -10px 40px rgba(0,0,0,.18)}
+.reader .r-panel.open{transform:translateY(0)}
+.reader .r-panel .pr{display:flex;align-items:center;gap:12px;margin:0 auto 16px;max-width:740px}
+.reader .r-panel .pr:last-child{margin-bottom:0}
+.reader .r-panel .lbl{width:42px;font-size:13px;color:var(--rsoft);flex:none}
+.reader .r-panel .seg{display:flex;gap:8px;flex:1}
+.reader .r-panel .seg button{flex:1;min-width:54px;height:38px;border:1px solid var(--rline);background:transparent;color:var(--rink);border-radius:10px;font-size:13.5px;cursor:pointer}
+.reader .r-panel .seg button.on{border-color:var(--racc);color:var(--racc);background:color-mix(in srgb,var(--racc) 10%,transparent)}
+.reader .r-panel .step{display:flex;align-items:center;gap:10px;flex:1}
+.reader .r-panel .step button{width:54px;height:38px;border:1px solid var(--rline);background:transparent;color:var(--rink);border-radius:10px;font-size:15px;cursor:pointer}
+.reader .r-panel .step .val{flex:1;text-align:center;font-size:14px;color:var(--rink)}
+.reader .r-panel .sw{width:38px;height:38px;border-radius:50%;border:2px solid var(--rline);cursor:pointer;flex:none}
+.reader .r-panel .sw.on{border-color:var(--racc);box-shadow:0 0 0 2px var(--rbg) inset}
+.reader .r-panel .sw.paper{background:#f6f5f1}.reader .r-panel .sw.sepia{background:#ecdcc0}.reader .r-panel .sw.green{background:#cfe4cf}.reader .r-panel .sw.night{background:#16161a}
+.reader .r-panel-backdrop{position:absolute;inset:0;z-index:7}
+.reader .r-toc{position:absolute;top:0;bottom:0;left:0;width:84%;max-width:340px;z-index:9;background:var(--rbg);border-right:1px solid var(--rline);transform:translateX(-100%);transition:transform .26s ease;display:flex;flex-direction:column;box-shadow:10px 0 40px rgba(0,0,0,.18)}
+.reader .r-toc.open{transform:translateX(0)}
+.reader .r-toc h4{margin:0;padding:16px 14px 12px;font-size:15px;display:flex;align-items:center;border-bottom:1px solid var(--rline)}
+.reader .r-toc .list{flex:1;overflow:auto;padding:6px}
+.reader .r-toc .list>div{padding:12px;border-radius:9px;font-size:14px;color:var(--rink);cursor:pointer;line-height:1.4}
+.reader .r-toc .list>div.on{background:color-mix(in srgb,var(--racc) 14%,transparent);color:var(--racc);font-weight:600}
+.reader .r-toc-backdrop{position:absolute;inset:0;z-index:8;background:rgba(0,0,0,.4)}
+@media(max-width:600px){ .reader .r-wrap{padding:54px 18px 108px} }
 /* —— PDF 原书阅读器 —— */
 .pdfv{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);position:relative;margin-top:20px}
 .pdfv-drawer{position:absolute;left:0;top:0;bottom:0;width:78%;max-width:300px;z-index:30;background:var(--surface);border-right:1px solid var(--line);box-shadow:0 10px 40px rgba(0,0,0,.35);transform:translateX(-100%);transition:transform .25s ease;display:flex;flex-direction:column}
@@ -467,6 +529,7 @@ const App={
     ocrCfg:{ model:'', base:'', key:'' },
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
+    reader:{ open:false, fontSize:19, lineGap:1.9, theme:'paper', serif:false, barsHidden:false, panel:false, tocOpen:false },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', busy:false },
@@ -505,7 +568,7 @@ const App={
     'ingest.pageNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.questionNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
-    currentBookId(){ this.bookIdx=0; this.bookTocOpen=false; this.genq.result=null; },
+    currentBookId(v){ let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; },
     bookIdx(){ this.genq.result=null; },
     booksMode(v){ if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
@@ -543,6 +606,24 @@ const App={
     bookPrev(){ this.bookGoto(this.bookIdx-1); },
     bookNext(){ this.bookGoto(this.bookIdx+1); },
     bookJumpPage(p){ const b=this.currentBook; if(!b)return; const n=parseInt(p,10); if(!Number.isFinite(n))return; const idx=b.pages.findIndex(m=>Number(m.page)===n); if(idx>=0)this.bookGoto(idx); else this.flash('没有第 '+n+' 页',true); },
+    // —— 沉浸式阅读器（番茄/七猫风格）——
+    readerLoadCfg(){ try{ const c=JSON.parse(localStorage.getItem('zb_reader')||'null'); if(c&&typeof c==='object'){ this.reader.fontSize=Math.min(30,Math.max(15,parseInt(c.fontSize,10)||19)); this.reader.lineGap=[1.6,1.9,2.3].includes(c.lineGap)?c.lineGap:1.9; this.reader.theme=['paper','sepia','green','night'].includes(c.theme)?c.theme:'paper'; this.reader.serif=!!c.serif; } }catch(_){ } },
+    readerSaveCfg(){ try{ localStorage.setItem('zb_reader', JSON.stringify({fontSize:this.reader.fontSize,lineGap:this.reader.lineGap,theme:this.reader.theme,serif:this.reader.serif})); }catch(_){ } },
+    readerOpen(){ if(!this.currentBook||!this.currentPageMat){ this.flash('请先选择一本书',true); return; } this.readerLoadCfg(); this.reader.barsHidden=false; this.reader.panel=false; this.reader.tocOpen=false; this.reader.open=true; try{ document.body.style.overflow='hidden'; }catch(_){ } this.$nextTick(()=>this.readerScrollTop()); },
+    readerClose(){ this.reader.open=false; this.reader.panel=false; this.reader.tocOpen=false; try{ document.body.style.overflow=''; }catch(_){ } },
+    readerScrollTop(){ const el=this.$refs.readerScroll; if(el)el.scrollTop=0; },
+    readerFont(d){ this.reader.fontSize=Math.min(30,Math.max(15,this.reader.fontSize+d)); this.readerSaveCfg(); },
+    readerSetGap(g){ this.reader.lineGap=g; this.readerSaveCfg(); },
+    readerSetTheme(t){ this.reader.theme=t; this.readerSaveCfg(); },
+    readerSetSerif(v){ this.reader.serif=!!v; this.readerSaveCfg(); },
+    readerToggleBars(){ this.reader.barsHidden=!this.reader.barsHidden; if(this.reader.barsHidden)this.reader.panel=false; },
+    readerSavePos(){ try{ const b=this.currentBook; if(b)localStorage.setItem('zb_readpos:'+b.key, String(this.bookIdx)); }catch(_){ } },
+    readerPrev(){ if(this.bookIdx<=0)return; this.bookPrev(); this.reader.panel=false; this.readerSavePos(); this.$nextTick(()=>this.readerScrollTop()); },
+    readerNext(){ const b=this.currentBook; if(!b||this.bookIdx>=b.pages.length-1)return; this.bookNext(); this.reader.panel=false; this.readerSavePos(); this.$nextTick(()=>this.readerScrollTop()); },
+    readerGoto(i){ this.bookGoto(i); this.reader.tocOpen=false; this.readerSavePos(); this.$nextTick(()=>this.readerScrollTop()); },
+    readerTap(e){ if(this.reader.tocOpen){ this.reader.tocOpen=false; return; } if(this.reader.panel){ this.reader.panel=false; return; } try{ const sel=window.getSelection&&window.getSelection().toString(); if(sel&&sel.length)return; }catch(_){ } if(e.target&&e.target.closest&&e.target.closest('a,button,input,textarea,select,.katex,img,pre,code'))return; const w=window.innerWidth||360; const x=(e.clientX!=null)?e.clientX:w/2; if(x<w*0.3)this.readerPrev(); else if(x>w*0.7)this.readerNext(); else this.readerToggleBars(); },
+    readerTouchStart(e){ const t=e.touches&&e.touches[0]; this._rsx=t?t.clientX:0; this._rsy=t?t.clientY:0; this._rst=Date.now(); },
+    readerTouchEnd(e){ const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; const dx=t.clientX-(this._rsx||0), dy=t.clientY-(this._rsy||0), dt=Date.now()-(this._rst||0); if(dt<600 && Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.6){ if(dx<0)this.readerNext(); else this.readerPrev(); } },
     async loadConfig(){ if(!this.token)return; try{ const c=await this.api('/api/config'); this.ai.model=c.ai_model||''; this.ai.visionModel=c.ai_vision_model||''; this.ai.hasAI=!!c.has_ai; this.ai.hasCfAI=!!c.has_cf_ai; }catch(e){} },
     async loadCfUsage(){ if(!this.token)return; try{ const res=await fetch('/api/cfocr',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(ct.includes('json')){ const d=await res.json(); if(res.ok){ this.cfocr.used=d.used||0; this.cfocr.limit=d.limit||150; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; this.ai.hasCfAI=!!d.has_cf_ai; } } }catch(e){} },
     async cfocrOcrCanvas(cv){ const b64=cv.toDataURL('image/png').split(',')[1]; const body={image_b64:b64}; if((this.ingest.local.cfModel||'').trim().startsWith('@cf/'))body.model=this.ingest.local.cfModel.trim(); const res=await fetch('/api/cfocr',{method:'POST',headers:{'authorization':'Bearer '+this.token,'content-type':'application/json'},body:JSON.stringify(body)}); const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } if(res.status===404 || !ct.includes('json')){ const e=new Error('Workers AI 接口不可用：请确认已部署 functions/api/cfocr.js 并绑定 Workers AI（变量名 AI），然后重新部署。'); e.fatal=true; throw e; } if(d){ if(typeof d.used==='number')this.cfocr.used=d.used; if(typeof d.limit==='number')this.cfocr.limit=d.limit; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; } if(res.status===429){ const e=new Error((d&&d.error)||'今日免费额度已用完'); e.quota=true; throw e; } if(!res.ok){ const e=new Error((d&&d.error)||('Workers AI 失败 HTTP '+res.status)); if(/未绑定|绑定/.test(e.message))e.fatal=true; throw e; } return String((d&&d.text)||'').trim(); },
@@ -871,6 +952,7 @@ const App={
     stealthShow(){ this.stealth.hidden=false; },
     onKey(e){ const tag=(e.target&&e.target.tagName)||'';
       if(this.stealth.hidden){ e.preventDefault(); this.stealth.hidden=false; return; }
+      if(this.reader.open){ if(e.key==='Escape'){ if(this.reader.tocOpen){this.reader.tocOpen=false;return;} if(this.reader.panel){this.reader.panel=false;return;} this.readerClose(); return; } if(tag==='INPUT'||tag==='TEXTAREA')return; if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); this.readerNext(); return; } if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.readerPrev(); return; } return; }
       if(e.key==='`'||e.key==='~'){ if(tag==='INPUT'||tag==='TEXTAREA')return; e.preventDefault(); this.stealth.hidden=true; } },
     onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
     onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; },
@@ -1071,6 +1153,7 @@ const App={
                 <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
               </div>
+              <button class="bk-toctoggle" @click="readerOpen" title="全屏沉浸阅读：可调字号、行距、主题，点两侧翻篇">📖 沉浸阅读</button>
               <input class="bk-jump inp" type="number" min="1" @keyup.enter="bookJumpPage($event.target.value)" placeholder="跳页" title="输入页码回车跳转" />
             </div>
             <div class="bk-body">
@@ -1463,6 +1546,47 @@ const App={
       </div>
     </div>
 
+  </div>
+
+  <div v-if="reader.open && currentBook && currentPageMat" class="reader" :class="['t-'+reader.theme, {serif:reader.serif, 'bars-hidden':reader.barsHidden}]" :style="{'--rfs':reader.fontSize+'px','--rlh':reader.lineGap}">
+    <div class="r-scroll" ref="readerScroll" @click="readerTap" @touchstart.passive="readerTouchStart" @touchend.passive="readerTouchEnd">
+      <div class="r-wrap">
+        <div class="r-head">
+          <div class="rt">{{ currentPageMat.title }}</div>
+          <div class="rs">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
+          <div v-if="currentPageMat.summary" class="rsum">{{ currentPageMat.summary }}</div>
+        </div>
+        <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;height:auto;display:block;margin:0 auto 18px;border-radius:10px;border:1px solid var(--rline);background:#fff;padding:6px" />
+        <rich-text :content="currentPageMat.content_md" :key="currentPageMat.id" />
+      </div>
+    </div>
+    <div class="r-top">
+      <button class="ricon" @click="readerClose" title="退出阅读">‹ 退出</button>
+      <div class="rttl">{{ currentBook.title }}</div>
+      <button class="ricon" @click="reader.tocOpen=true" title="目录">☰</button>
+      <button class="ricon" @click="reader.panel=!reader.panel; reader.barsHidden=false" title="字号 / 主题">Aa</button>
+    </div>
+    <div class="r-bot">
+      <div class="rprog">第 <b>{{ bookIdx+1 }}</b> / {{ currentBook.pages.length }} 篇 · {{ Math.round((bookIdx+1)/currentBook.pages.length*100) }}%</div>
+      <div class="rrow">
+        <button class="rbtn" :disabled="bookIdx<=0" @click="readerPrev">← 上一篇</button>
+        <button class="rbtn" :disabled="bookIdx>=currentBook.pages.length-1" @click="readerNext">下一篇 →</button>
+      </div>
+    </div>
+    <div v-if="reader.panel" class="r-panel-backdrop" @click="reader.panel=false"></div>
+    <div class="r-panel" :class="{open:reader.panel}">
+      <div class="pr"><span class="lbl">字号</span><div class="step"><button @click="readerFont(-1)">A−</button><span class="val">{{ reader.fontSize }} px</span><button @click="readerFont(1)">A+</button></div></div>
+      <div class="pr"><span class="lbl">行距</span><div class="seg"><button :class="{on:reader.lineGap===1.6}" @click="readerSetGap(1.6)">紧凑</button><button :class="{on:reader.lineGap===1.9}" @click="readerSetGap(1.9)">适中</button><button :class="{on:reader.lineGap===2.3}" @click="readerSetGap(2.3)">宽松</button></div></div>
+      <div class="pr"><span class="lbl">字体</span><div class="seg"><button :class="{on:!reader.serif}" @click="readerSetSerif(false)">黑体</button><button :class="{on:reader.serif}" @click="readerSetSerif(true)">宋体</button></div></div>
+      <div class="pr"><span class="lbl">主题</span><div class="seg" style="gap:14px"><span class="sw paper" :class="{on:reader.theme==='paper'}" @click="readerSetTheme('paper')" title="纸白"></span><span class="sw sepia" :class="{on:reader.theme==='sepia'}" @click="readerSetTheme('sepia')" title="米黄"></span><span class="sw green" :class="{on:reader.theme==='green'}" @click="readerSetTheme('green')" title="护眼绿"></span><span class="sw night" :class="{on:reader.theme==='night'}" @click="readerSetTheme('night')" title="夜间"></span></div></div>
+    </div>
+    <div v-if="reader.tocOpen" class="r-toc-backdrop" @click="reader.tocOpen=false"></div>
+    <div class="r-toc" :class="{open:reader.tocOpen}">
+      <h4>目录 <span style="color:var(--rsoft);font-weight:400;margin-left:6px">{{ currentBook.pages.length }} 篇</span><button class="ricon" style="margin-left:auto" @click="reader.tocOpen=false">✕</button></h4>
+      <div class="list">
+        <div v-for="(m,i) in currentBook.pages" :key="m.id" :class="{on:i===bookIdx}" @click="readerGoto(i)">{{ pageLabel(m) }}</div>
+      </div>
+    </div>
   </div>
 
   <div v-if="toast" class="toast" :class="{err:toast.err}">{{ toast.msg }}</div>
