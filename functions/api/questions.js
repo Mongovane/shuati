@@ -91,12 +91,15 @@ export async function onRequestPatch({ request, env }) {
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
   const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
   if (!ids.length) return json({ error: '缺少题目 id' }, 400);
-  const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis'];
+  const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis', 'options', 'answer', 'tags'];
+  const JSON_FIELDS = new Set(['options', 'answer', 'tags']);
   const sets = [], vals = [];
   for (const k of ALLOWED) {
     if (body[k] !== undefined && body[k] !== null) {
       sets.push(`${k} = ?`);
-      vals.push(k === 'difficulty' ? (Number(body[k]) || 3) : String(body[k]));
+      if (k === 'difficulty') vals.push(Number(body[k]) || 3);
+      else if (JSON_FIELDS.has(k)) vals.push(JSON.stringify(Array.isArray(body[k]) ? body[k] : (body[k] === '' ? [] : [body[k]])));
+      else vals.push(String(body[k]));
     }
   }
   if (!sets.length) return json({ error: '没有可更新的字段' }, 400);
