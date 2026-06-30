@@ -654,13 +654,13 @@ const App={
     async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
     async bankBatchSubject(){ const ids=[...this.bank.sel]; const subj=this.bank.batchSubject; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!subj){ this.flash('请选择目标科目',true); return; } try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.subject=subj; }); this.flash('已将 '+(d.updated||ids.length)+' 题改为「'+this.subjName(subj)+'」'); this.bank.sel=[]; this.bank.batchSubject=''; this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('批量改科目失败：'+e.message,true); } },
     async bankAutoClassify(){ const changes={}; let n=0; for(const q of this.bank.items){ const opt=Array.isArray(q.options)?q.options.map(o=>o&&o.text).join(' '):''; const g=this.classifySubject([q.stem,q.chapter,opt].join('  ')); if(g&&g!==q.subject){ (changes[g]=changes[g]||[]).push(q); n++; } } if(!n){ this.flash('本页没有可自动纠正的题（特征不明确的不动）'); return; } if(!confirm('将按题干内容自动纠正本页 '+n+' 道题的科目（仅强特征命中的）。继续？'))return; try{ for(const subj of Object.keys(changes)){ const arr=changes[subj]; const ids=arr.map(q=>q.id); await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); arr.forEach(q=>q.subject=subj); } this.flash('已自动归类 '+n+' 题'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('智能归类失败：'+e.message,true); } },
-    bankOpenEdit(q){ this.bankEdit={ open:true, q, stem:q.stem||'', analysis:q.analysis||'', subject:q.subject||'', type:q.type||'', options:(Array.isArray(q.options)?q.options.map(o=>({key:o.key||'',text:o.text||''})):[]), answerText:(Array.isArray(q.answer)?q.answer.join(this._choiceType(q.type)?', ':'\n'):(q.answer||'')), busy:false }; },
-    _choiceType(t){ return t==='single_choice'||t==='multiple_choice'||t==='true_false'; },
+    bankOpenEdit(q){ this.bankEdit={ open:true, q, stem:q.stem||'', analysis:q.analysis||'', subject:q.subject||'', type:q.type||'', options:(Array.isArray(q.options)?q.options.map(o=>({key:o.key||'',text:o.text||''})):[]), answerText:(Array.isArray(q.answer)?q.answer.join(this.isChoiceType(q.type)?', ':'\n'):(q.answer||'')), busy:false }; },
+    isChoiceType(t){ return t==='single_choice'||t==='multiple_choice'||t==='true_false'; },
     bankEditAddOpt(){ const keys=['A','B','C','D','E','F','G','H']; const used=new Set(this.bankEdit.options.map(o=>o.key)); const k=keys.find(x=>!used.has(x))||String(this.bankEdit.options.length+1); this.bankEdit.options.push({key:k,text:''}); },
     bankEditDelOpt(i){ this.bankEdit.options.splice(i,1); },
     bankCloseEdit(){ this.bankEdit.open=false; this.bankEdit.q=null; },
     async bankSaveEdit(){ const e=this.bankEdit; if(!e.q)return; if(!String(e.stem).trim()){ this.flash('题干不能为空',true); return; } e.busy=true;
-      const isChoice=this._choiceType(e.type);
+      const isChoice=this.isChoiceType(e.type);
       const options=isChoice ? e.options.filter(o=>String(o.key).trim()).map(o=>({key:String(o.key).trim(),text:String(o.text||'').trim()})) : [];
       let answer; if(isChoice){ answer=String(e.answerText||'').split(/[,，、\s]+/).map(s=>s.trim()).filter(Boolean); if(e.type==='true_false')answer=answer.map(s=>/^(t|true|对|是|正确|√)$/i.test(s)?'T':(/^(f|false|错|否|错误|×)$/i.test(s)?'F':s.toUpperCase())); else answer=answer.map(s=>s.toUpperCase()); } else { const txt=String(e.answerText||'').trim(); answer=txt?[txt]:[]; }
       try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[e.q.id],stem:e.stem,analysis:e.analysis,subject:e.subject,type:e.type,options,answer})}); e.q.stem=e.stem; e.q.analysis=e.analysis; e.q.subject=e.subject; e.q.type=e.type; e.q.options=options; e.q.answer=answer; this.flash('已保存'); this.loadMeta(); this.bankCloseEdit(); }catch(err){ if(err.message!=='unauth')this.flash('保存失败：'+err.message,true); } e.busy=false; },
@@ -823,10 +823,12 @@ const App={
         if(cur)cur.lines.push(raw); }
       flush();
       const out=[]; for(const it of items){ const q=this._buildQuestionFromItem(it, ctx); if(q)out.push(q); } return out; },
-    _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body)return null; const L=body.split('\n');
-      const solRe=/^\s*[>*\s]*(解答|证明|分析|解|证|答案|答)\s*[：:．.、]?(\s|$)/; let sol=-1;
-      for(let i=0;i<L.length;i++){ if(solRe.test(L[i])){ sol=i; break; } }
-      let stemPart, solPart=''; if(sol>=0){ stemPart=L.slice(0,sol).join('\n').trim(); solPart=L.slice(sol).join('\n').trim(); } else { stemPart=body; }
+    _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body)return null;
+      // 找"解/证/解答/证明/分析/答案"边界：可在行首，也可在句末标点后（MinerU 常把题目和解答放在同一段）
+      const solRe=/(^|[\n。．.；;！!？?）)\]】」])\s*[>*【「\[]?\s*(解答|证明|分析|解|证|答案|答)\s*[】」\]]?\s*[：:．.、]?\s*(?=[\s$（(\\A-Za-z\u4e00-\u9fa5\d])/;
+      const m=body.match(solRe); let stemPart, solPart='';
+      if(m && m.index!=null){ const cut=m.index+(m[1]?m[1].length:0); const head=body.slice(0,cut).trim(); if(head){ stemPart=head; solPart=body.slice(cut).trim(); } else { stemPart=body; } }
+      else { stemPart=body; }
       const optRe=/^\s*[（(]?\s*([A-DＡ-Ｄ])\s*[）).．、]\s*(.+)$/; const sl=stemPart.split('\n'); const opts=[]; const keep=[];
       for(const ln of sl){ const om=ln.match(optRe); if(om){ opts.push({ key:this._fullToHalf(om[1]), text:om[2].trim() }); } else keep.push(ln); }
       let type='short_answer', options=[], answer=[], analysis='';
@@ -1338,7 +1340,7 @@ const App={
             </div>
             <label class="lbl">题干（支持 Markdown / LaTeX，行内公式用 $…$ 需成对）</label>
             <textarea class="inp" v-model="bankEdit.stem" rows="5"></textarea>
-            <template v-if="_choiceType(bankEdit.type) && bankEdit.type!=='true_false'">
+            <template v-if="isChoiceType(bankEdit.type) && bankEdit.type!=='true_false'">
               <label class="lbl" style="margin-top:10px">选项</label>
               <div v-for="(o,i) in bankEdit.options" :key="i" class="row" style="gap:8px;margin-bottom:6px">
                 <input class="inp" style="width:54px;text-align:center" v-model="o.key" placeholder="A" />
@@ -1350,7 +1352,7 @@ const App={
             <label class="lbl" style="margin-top:10px">正确答案
               <span class="muted" style="font-weight:400">{{ bankEdit.type==='single_choice' ? '（填选项字母，如 C）' : bankEdit.type==='multiple_choice' ? '（多个字母用逗号，如 A,C）' : bankEdit.type==='true_false' ? '（填 T 或 F）' : bankEdit.type==='fill_blank' ? '（每空一行）' : '（参考答案文本）' }}</span>
             </label>
-            <textarea class="inp" v-model="bankEdit.answerText" :rows="_choiceType(bankEdit.type)?1:4" placeholder="答案"></textarea>
+            <textarea class="inp" v-model="bankEdit.answerText" :rows="isChoiceType(bankEdit.type)?1:4" placeholder="答案"></textarea>
             <label class="lbl" style="margin-top:10px">解析（可选）</label>
             <textarea class="inp" v-model="bankEdit.analysis" rows="3"></textarea>
             <div class="prev-box"><div class="lbl">预览</div><rich-text :content="bankEdit.stem || '（空）'" /></div>
