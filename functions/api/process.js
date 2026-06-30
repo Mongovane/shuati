@@ -43,10 +43,15 @@ export async function onRequestPost({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体不是合法 JSON' }, 400); }
 
-  const subject = VALID_SUBJECTS.includes(body.subject) ? body.subject : 'computer';
+  // 动态科目：合法科目 = 内置四科 ∪ subjects 表里用户自建的科目
+  const subjList = await loadSubjectList(env);
+  const validCodes = new Set([...VALID_SUBJECTS, ...subjList.map((x) => x.code)]);
+  const subject = validCodes.has(body.subject) ? body.subject : 'computer';
   const defChapter = (body.chapter || '').trim();
   const defSource = (body.source || '').trim();
   const kind = VALID_KINDS.includes(body.kind) ? body.kind : 'auto';
+  // trusted：前端直接传来的结构化题目数组（本地解析 / JSON 导入）→ 信任其科目，不做关键词猜测覆盖
+  const trusted = Array.isArray(body.questions) && body.questions.length > 0;
 
   let questions = [];
   let materials = [];
@@ -77,13 +82,19 @@ export async function onRequestPost({ request, env }) {
   }
 
   // —— 校验 + 入库：题目 ——
-  const subjList = await loadSubjectList(env);
   const cleanedQ = [];
   for (const q of questions) {
     if (!q || !q.stem) continue;
     const type = VALID_TYPES.includes(q.type) ? q.type : 'single_choice';
-    const guessed = guessSubjectFromText([q.stem, q.chapter, Array.isArray(q.options) ? q.options.map(o => o && o.text).join(' ') : ''].join('  '), subjList);
-    const subj = guessed || (VALID_SUBJECTS.includes(q.subject) ? q.subject : subject);
+    let subj;
+    if (trusted) {
+      // 信任前端给定的科目（本地解析/JSON 导入），不臆测覆盖
+      subj = (q.subject && validCodes.has(q.subject)) ? q.subject
+           : (validCodes.has(body.subject) ? body.subject : (q.subject || subject));
+    } else {
+      const guessed = guessSubjectFromText([q.stem, q.chapter, Array.isArray(q.options) ? q.options.map(o => o && o.text).join(' ') : ''].join('  '), subjList);
+      subj = guessed || (validCodes.has(q.subject) ? q.subject : subject);
+    }
     const id = (q.id && String(q.id).trim()) || `${subj}-${crypto.randomUUID().slice(0, 8)}`;
     cleanedQ.push({
       id,
@@ -106,7 +117,7 @@ export async function onRequestPost({ request, env }) {
   for (const m of materials) {
     const content = String(m?.content_md || m?.content || '').trim();
     if (!content) continue;
-    const subj = VALID_SUBJECTS.includes(m.subject) ? m.subject : subject;
+    const subj = validCodes.has(m.subject) ? m.subject : subject;
     const id = (m.id && String(m.id).trim()) || `mat-${subj}-${crypto.randomUUID().slice(0, 12)}`;
     cleanedM.push({
       id,
