@@ -176,6 +176,7 @@ const App={
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.loading=false;
     },
+    srcBook(s){ const t=String(s||'').split(' · ')[0].trim(); return t || '未知来源'; },
     prev(){ if(this.qi>0)this.qi--; },
     qnavCls(q,i){ const c=[]; if(i===this.qi)c.push('cur'); const a=this.sessionAns[q.id]; if(a===true)c.push('ok'); else if(a===false)c.push('bad'); else if(q.mastered)c.push('ok'); else if(q.wrong_count>0)c.push('bad'); else if(q.right_count>0)c.push('done'); else c.push('un'); return c; },
     next(){ if(this.qi<this.queue.length-1)this.qi++; else this.startSession(true); },
@@ -910,7 +911,7 @@ const App={
           <div class="bank-main">
             <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span v-if="q.mastered" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已掌握</span><span v-else-if="q.wrong_count>0" class="q-badge" style="color:var(--bad);border-color:var(--bad)">错 {{ q.wrong_count }} 次</span><span v-else-if="q.right_count>0" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已做对</span><span v-if="q.favorited" class="q-badge" style="color:var(--accent);border-color:var(--accent)">★ 收藏</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
             <div class="bank-stem"><rich-text :content="q.stem || '（空题干）'" /></div>
-            <div v-if="q.source || q.page" class="muted" style="font-size:11.5px;margin-top:4px;opacity:.85">📖 {{ q.source || '未知来源' }}<span v-if="q.page"> · 第 {{ q.page }} 页</span></div>
+            <div v-if="q.source || q.page" class="bank-src"><span class="bank-src-book" :title="q.source">📖 {{ srcBook(q.source) }}</span><span v-if="q.page" class="bank-src-pg">P{{ q.page }}</span></div>
           </div>
           <div class="bank-side">
             <button class="btn subtle xs" @click="bankOpenEdit(q)">编辑</button>
