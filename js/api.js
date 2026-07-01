@@ -35,6 +35,26 @@ const ApiMixin = {
       return data;
     },
 
+    // 带进度的下载：流式读取，回调报告已下载大小/百分比，最后解析 JSON。网络失败会抛错，交由调用方回退到离线层
+    async _fetchProgress(path, onProgress) {
+      const res = await fetch(path, { headers: { authorization: 'Bearer ' + this.token } });
+      if (res.status === 401) { this.token = ''; try { localStorage.removeItem('zb_token'); } catch (_) {} this.view = 'settings'; throw new Error('unauth'); }
+      if (!res.ok) throw new Error('请求失败 ' + res.status);
+      const total = parseInt(res.headers.get('content-length') || '0', 10) || 0;
+      if (!res.body || !res.body.getReader) { const d = await res.json(); this._setOffline(false); return d; }
+      const reader = res.body.getReader(); const chunks = []; let loaded = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value); loaded += value.length;
+        if (onProgress) { const mb = loaded / 1048576; let m = mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(loaded / 1024)) + ' KB'; if (total && loaded <= total) m += ' · ' + Math.round(loaded / total * 100) + '%'; onProgress(m); }
+      }
+      let size = 0; for (const c of chunks) size += c.length;
+      const buf = new Uint8Array(size); let off = 0; for (const c of chunks) { buf.set(c, off); off += c.length; }
+      this._setOffline(false);
+      return JSON.parse(new TextDecoder('utf-8').decode(buf));
+    },
+
     // —— 离线存储（IndexedDB）——
     _offDB() {
       return this.__offDB || (this.__offDB = new Promise((res, rej) => {
