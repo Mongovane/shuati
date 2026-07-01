@@ -1,5 +1,5 @@
 -- ============================================================
---  Cloudflare D1 完整建表 + 索引脚本
+ Cloudflare D1 完整建表 + 索引脚本
 -- 这是唯一需要执行的数据库脚本，跑它就得到全部表和全部索引。
 -- 执行（新库或旧库都安全，全部 IF NOT EXISTS，不会动已有数据）：
 --   wrangler d1 execute <你的库名> --file=./schema.sql --remote
@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS questions (
   chapter     TEXT,                             -- 章节 / 知识点，如「数据结构-线性表」
   type        TEXT NOT NULL,                    -- single_choice | multiple_choice | true_false | fill_blank | short_answer | code
   difficulty  INTEGER DEFAULT 3,                -- 难度 1~5
-  source      TEXT,                             -- 来源，如「2023真题」
+  source      TEXT,                             -- 来源，如「2023真题」/ 书名
+  page        INTEGER,                           -- 来自原书第几页（抽题时记录，可空）
   passage     TEXT,                             -- 阅读理解 / 完形填空的公共材料（可空）
   stem        TEXT NOT NULL,                    -- 题干（支持 Markdown / LaTeX / 代码块）
   options     TEXT,                             -- JSON 字符串：[{"key":"A","text":"..."}]
