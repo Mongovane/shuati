@@ -63,7 +63,7 @@ const App={
     'ingest.pageNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.questionNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
-    view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } },
+    view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); },
     mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
     currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender(); },
     bookIdx(){ this.genq.result=null; },
@@ -110,6 +110,9 @@ const App={
     saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问码',true); return; }
       this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，可以开始使用'); this.loadSubjects(); this.loadMeta(); this.go('practice'); },
     logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('已退出登录'); },
+    _syncHash(v){ try{ const want='#/'+v; if(location.hash!==want)location.hash=want; }catch(_){ } },
+    _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catch(_){ } h=(h.split('?')[0]||'').split('/')[0]; return ['practice','wrong','favorite','books','bank','ingest','mock','stats','settings'].includes(h)?h:''; },
+    onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
     go(v){ this.view=v;
       if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); this.startSession(); }
       if(v==='wrong'||v==='stats') this.loadStats();
@@ -521,11 +524,14 @@ const App={
     if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession();
       try{ const bm=localStorage.getItem('zb_booksmode'); if(bm==='notes'||bm==='pdf')this.booksMode=bm; }catch(_){ }
       try{ const sb=localStorage.getItem('zb_bookid'); if(sb)this.currentBookId=sb; }catch(_){ }
-      try{ const sv=localStorage.getItem('zb_view'); if(sv && sv!=='settings'){ this.view=sv; if(sv==='bank')this.loadBank(true); } }catch(_){ }
+      let startView=this._viewFromHash();
+      if(!startView){ try{ const sv=localStorage.getItem('zb_view'); if(sv && sv!=='settings')startView=sv; }catch(_){ } }
+      if(startView && startView!==this.view){ this.go(startView); } else { this._syncHash(this.view); }
       this.$nextTick(()=>this.mineruResume());
     } else { this.view='settings'; }
+    window.addEventListener('hashchange', this.onHashChange);
   },
-  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); },
+  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); },
   template:`
   <div class="topbar"><div class="topbar-in">
     <div class="brand"><span class="dot"></span>{{ appName }}</div>
