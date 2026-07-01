@@ -374,3 +374,6 @@ a{color:var(--accent)}
 .qnav-dot.bad{background:var(--bad);border-color:var(--bad);color:#fff}
 .qnav-dot.cur{outline:2px solid var(--accent);outline-offset:2px}
 .acc-ring{display:block;margin:14px auto 6px}
+.bank-src{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:11.5px;color:var(--ink-soft);min-width:0}
+.bank-src-book{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto;opacity:.9}
+.bank-src-pg{flex:none;border:1px solid var(--line);border-radius:99px;padding:1px 8px;font-weight:600;opacity:.9}
