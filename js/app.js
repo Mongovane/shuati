@@ -11,14 +11,14 @@ const App={
     subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:true,
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
-    queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{},
+    queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'',
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
     stats:null, statsLoading:false,
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
-    materials:{ subject:'all', items:[], loading:false, loaded:false },
+    materials:{ subject:'all', items:[], loading:false, loaded:false, progText:'' },
     booksMode:'notes',
     pageRendering:false,
     offline:false,
@@ -106,7 +106,14 @@ const App={
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.materials.loading=false; this.materials.loaded=true; },
+    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='';
+      try{
+        let d;
+        try{ d=await this._fetchProgress('/api/materials?limit=500', m=>{ this.materials.progText=m; }); this._offPut('/api/materials?limit=500', d); }
+        catch(err){ if(err.message==='unauth'){ this.materials.loading=false; this.materials.loaded=true; return; } d=await this.api('/api/materials?limit=500'); }
+        this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
+      }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
+      this.materials.loading=false; this.materials.loaded=true; this.materials.progText=''; },
     bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
     flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
     bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1); if(ni!==this.bookIdx)this.flashPageRender(); this.bookIdx=ni; this.bookTocOpen=false; },
@@ -143,7 +150,7 @@ const App={
     _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catch(_){ } h=(h.split('?')[0]||'').split('/')[0]; return ['practice','wrong','favorite','books','bank','ingest','mock','stats','settings'].includes(h)?h:''; },
     onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
     go(v){ this.view=v;
-      if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); this.startSession(); }
+      if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); if(this.sessionView!==v || !this.queue.length) this.startSession(); }
       if(v==='wrong'||v==='stats') this.loadStats();
       if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta(); this.loadBank(true); }
     },
@@ -183,7 +190,7 @@ const App={
       Object.entries(extra).forEach(([k,v])=>p.set(k,v)); return p.toString();
     },
     async startSession(keep){ if(!this.token)return;
-      this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0; this.sessionAns={};
+      this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0; this.sessionAns={}; this.sessionView=this.view;
       if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
       const dedup=(arr)=>{ const m=new Map(); for(const q of (arr||[])){ if(q&&q.id!=null&&!m.has(q.id))m.set(q.id,q); } return [...m.values()]; };
       try{
@@ -714,6 +721,7 @@ const App={
           <label class="btn subtle" style="cursor:pointer">本地打开（仅本次）<input type="file" accept="application/pdf,.pdf" @change="pdfvOpenLocal" style="display:none" /></label>
           <label class="btn" style="cursor:pointer"><span v-if="pdfShelf.uploading" class="spin"></span>上传 PDF 到云端<input type="file" accept="application/pdf,.pdf" :disabled="pdfShelf.uploading" @change="uploadPdf" style="display:none" /></label>
           <span v-if="pdfv.loading" class="muted"><span class="spin"></span> {{ pdfv.msg || '正在打开 PDF…' }}</span>
+          <span v-else-if="pdfShelf.loading" class="muted"><span class="spin"></span> 正在加载 PDF 列表…</span>
         </div>
         <div v-if="pdfShelf.uploading" style="margin:0 0 14px;max-width:520px">
           <div class="muted" style="font-size:13px;margin-bottom:6px">{{ pdfShelf.prog }} <span v-if="pdfShelf.pct">· {{ pdfShelf.pct }}%</span></div>
@@ -775,7 +783,7 @@ const App={
       </div>
       <div v-show="booksMode==='notes'">
       <template v-if="!materials.loaded">
-        <div class="bk-loading" style="min-height:200px"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载教材…</span></div>
+        <div class="bk-loading" style="min-height:200px"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载教材…<span v-if="materials.progText"> {{ materials.progText }}</span></span></div>
       </template>
       <template v-else-if="!materialBooks.length">
         <div class="empty">
