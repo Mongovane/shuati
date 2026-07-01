@@ -140,6 +140,15 @@ a{color:var(--accent)}
   .card{padding:18px 15px}
   .stem{font-size:16px}
   select,.inp{min-width:0;flex:1}
+  /* 标签栏（导入/整理笔记切换等）：横向滚动，不再竖排换行 */
+  .seg{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .seg::-webkit-scrollbar{display:none}
+  .seg button{white-space:nowrap;flex:0 0 auto}
+  /* 工具栏字段自动两列填满，减少上下滚动 */
+  .toolbar{gap:8px}
+  .toolbar .field{flex:1 1 46%;min-width:118px}
+  .toolbar .field select,.toolbar .field .inp{width:100%}
+  h2{font-size:22px;margin:.1em 0 .5em}
 }
 /* —— 教材阅读 Books 美化 —— */
 .bk-shelf{margin-bottom:20px}
