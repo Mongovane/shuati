@@ -30,6 +30,7 @@ export function rowToQuestion(r) {
     type: r.type,
     difficulty: r.difficulty,
     source: r.source,
+    page: r.page != null ? r.page : null,
     passage: r.passage || '',
     stem: r.stem,
     options: parse(r.options, []),
