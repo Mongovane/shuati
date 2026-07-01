@@ -357,3 +357,20 @@ a{color:var(--accent)}
 .pdfv-foot button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;padding:7px 16px;font-size:13px;cursor:pointer}
 .pdfv-foot button:disabled{opacity:.4;cursor:not-allowed}
 .pdfv-foot button:not(:disabled):hover{border-color:var(--accent);color:var(--accent)}
+.offline-bar{max-width:1100px;margin:10px auto 0;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;color:#fff;background:linear-gradient(90deg,#b45309,#d97706);box-shadow:0 2px 10px rgba(180,83,9,.25)}
+.q-badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid;line-height:1.5;background:transparent}
+.qnav-wrap{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.qnav-toggle{width:100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:none;border:0;padding:0 0 10px;margin:0;cursor:pointer;font-size:12.5px;color:var(--ink-soft);font-family:inherit}
+.qnav-caret{margin-left:auto;color:var(--accent);font-weight:600}
+.qnav-legend{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
+.qnav-legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-left:8px;vertical-align:-1px}
+.qnav-legend i.ok{background:var(--ok)} .qnav-legend i.bad{background:var(--bad)} .qnav-legend i.done{background:color-mix(in srgb,var(--ok) 45%,var(--surface-2))} .qnav-legend i.un{background:var(--surface-2);border:1px solid var(--line)}
+.qnav{display:flex;flex-wrap:wrap;gap:7px}
+.qnav-dot{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:transform .08s}
+.qnav-dot:hover{transform:translateY(-1px)}
+.qnav-dot.un{background:var(--surface);color:var(--ink-soft)}
+.qnav-dot.done{background:color-mix(in srgb,var(--ok) 14%,var(--surface));border-color:color-mix(in srgb,var(--ok) 40%,var(--line));color:var(--ink)}
+.qnav-dot.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.qnav-dot.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+.qnav-dot.cur{outline:2px solid var(--accent);outline-offset:2px}
+.acc-ring{display:block;margin:14px auto 6px}

@@ -11,7 +11,8 @@ const App={
     subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:true,
     f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
     meta:{ subjects:[], chapters:[] },
-    queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false,
+    queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{},
+    sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
     stats:null, statsLoading:false,
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
@@ -20,6 +21,8 @@ const App={
     materials:{ subject:'all', items:[], loading:false },
     booksMode:'notes',
     pageRendering:false,
+    offline:false,
+    offlineQueued:0,
     mineruCfg:{ pageLimit:1000, fileLimit:5000, tokenExp:'' },
     mineruUsageView:{ date:'', pages:0, files:0 },
     mineruTokenBad:false,
@@ -47,6 +50,11 @@ const App={
     sourcePreview(){ return this.makeSource(); },
     wrongTotal(){ if(!this.stats)return 0; return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); },
     cur(){ return this.queue[this.qi]||null; },
+    curStatus(){ const q=this.cur; if(!q)return null; if(q.mastered)return{t:'已掌握',c:'var(--ok)'}; if(q.wrong_count>0)return{t:'错过 '+q.wrong_count+' 次',c:'var(--bad)'}; if(q.right_count>0)return{t:'已做对',c:'var(--ok)'}; return null; },
+    accPct(){ const t=this.statTotals; const d=t.right+t.wrong; return d?Math.round(t.right/d*100):0; },
+    ringDash(){ const C=2*Math.PI*52; return (this.accPct/100*C).toFixed(1)+' '+C.toFixed(1); },
+    sessionDone(){ return Object.keys(this.sessionAns).length; },
+    sessionElapsed(){ if(!this.sessionStart)return '0:00'; let s=Math.max(0,Math.round((Date.now()-this.sessionStart)/1000)); const m=Math.floor(s/60); s=s%60; return m+':'+String(s).padStart(2,'0'); },
     statTotals(){ const z={totalQ:0,seen:0,wrongOpen:0,mastered:0,fav:0,right:0,wrong:0}; if(!this.stats)return z;
       for(const r of this.stats.bySubject){ z.totalQ+=r.total_q||0; z.seen+=r.seen||0; z.wrongOpen+=r.wrong_open||0; z.mastered+=r.mastered||0; z.fav+=r.favorited||0; z.right+=r.right_sum||0; z.wrong+=r.wrong_sum||0; } return z; },
     mockResult(){ const v=Object.values(this.mock.answers); return { graded:v.filter(x=>x!==null).length, correct:v.filter(x=>x===true).length, total:this.mock.questions.length }; },
@@ -110,6 +118,8 @@ const App={
     saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问码',true); return; }
       this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，可以开始使用'); this.loadSubjects(); this.loadMeta(); this.go('practice'); },
     logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('已退出登录'); },
+    _onOnline(){ this._setOffline(false); },
+    _onOffline(){ this._setOffline(true); },
     _syncHash(v){ try{ const want='#/'+v; if(location.hash!==want)location.hash=want; }catch(_){ } },
     _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catch(_){ } h=(h.split('?')[0]||'').split('/')[0]; return ['practice','wrong','favorite','books','bank','ingest','mock','stats','settings'].includes(h)?h:''; },
     onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
@@ -150,20 +160,29 @@ const App={
       if(this.f.subject&&this.f.subject!=='all') p.set('subject',this.f.subject);
       if(this.f.chapter) p.set('chapter',this.f.chapter);
       if(this.f.type) p.set('type',this.f.type);
-      p.set('order',this.f.order); p.set('mode',this.sessionMode);
+      p.set('order', this.sessionMode==='wrong' ? 'weak' : this.f.order); p.set('mode',this.sessionMode);
       Object.entries(extra).forEach(([k,v])=>p.set(k,v)); return p.toString();
     },
-    async startSession(){ if(!this.token)return;
-      this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0;
-      try{ const d=await this.api('/api/questions?'+this.qs({limit:30})); this.queue=d.items; this.loadedOnce=true; if(!this.queue.length)this.batchDone=true; }
+    async startSession(keep){ if(!this.token)return;
+      this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0; this.sessionAns={};
+      if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
+      const dedup=(arr)=>{ const m=new Map(); for(const q of (arr||[])){ if(q&&q.id!=null&&!m.has(q.id))m.set(q.id,q); } return [...m.values()]; };
+      try{
+        const d=await this.api('/api/questions?'+this.qs({limit:30}));
+        this.queue=dedup(d.items); this.queueTotal=(d.total!=null?d.total:this.queue.length); this.loadedOnce=true;
+        this.qnavOpen=this.queue.length<=16;
+        if(!this.queue.length)this.batchDone=true;
+      }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.loading=false;
     },
-    next(){ if(this.qi<this.queue.length-1)this.qi++; else this.batchDone=true; },
+    prev(){ if(this.qi>0)this.qi--; },
+    qnavCls(q,i){ const c=[]; if(i===this.qi)c.push('cur'); const a=this.sessionAns[q.id]; if(a===true)c.push('ok'); else if(a===false)c.push('bad'); else if(q.mastered)c.push('ok'); else if(q.wrong_count>0)c.push('bad'); else if(q.right_count>0)c.push('done'); else c.push('un'); return c; },
+    next(){ if(this.qi<this.queue.length-1)this.qi++; else this.startSession(true); },
     async deleteCurrentQuestion(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true; this.flash('已删除本题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
     async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
     findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
-    async onAnswered(p){ try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
+    async onAnswered(p){ this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; } try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
     async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
     async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
     async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){} },
@@ -530,8 +549,12 @@ const App={
       this.$nextTick(()=>this.mineruResume());
     } else { this.view='settings'; }
     window.addEventListener('hashchange', this.onHashChange);
+    try{ this.offline = (typeof navigator!=='undefined' && navigator.onLine===false); }catch(_){ }
+    window.addEventListener('online', this._onOnline);
+    window.addEventListener('offline', this._onOffline);
+    this._offQueueCount().then(n=>{ this.offlineQueued=n; if(n>0)this._offFlush(); }).catch(()=>{});
   },
-  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); },
+  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); },
   template:`
   <div class="topbar"><div class="topbar-in">
     <div class="brand"><span class="dot"></span>{{ appName }}</div>
@@ -550,6 +573,8 @@ const App={
     <button class="tab" :class="{active:view==='ingest'}" @click="view='ingest'">Import</button>
     <button class="tab" :class="{active:view==='settings'}" @click="view='settings'">Settings</button>
   </div></div>
+
+  <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
 
   <div class="wrap">
 
@@ -589,22 +614,68 @@ const App={
       <template v-else>
         <div v-if="cur">
           <div class="row" style="margin-bottom:12px;align-items:center;gap:10px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
-            <span class="muted" v-if="view==='wrong'">· 复习</span>
+            <span class="muted" v-if="view==='wrong'">· 复习（最不熟优先）</span>
+            <span class="muted" v-if="view==='wrong' && queueTotal">· 待复习 {{ queueTotal }} 题</span>
             <span class="muted" v-if="view==='favorite'">· 收藏</span>
+            <span v-if="curStatus" class="q-badge" :style="{color:curStatus.c,borderColor:curStatus.c}">{{ curStatus.t }}</span>
+            <span v-if="view==='practice' && queueTotal" class="muted">· {{ f._mode==='unseen'?'未做剩 '+queueTotal:'本范围共 '+queueTotal }} 题</span>
+            <span v-if="streak>=2" style="color:var(--accent);font-weight:600;font-size:13px">🔥 连对 {{ streak }}</span>
             <select class="bk-mini" style="margin-left:auto" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="改本题科目（纠正分类）"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
             <button class="bk-del" @click="deleteCurrentQuestion" title="从题库删除本题">删除本题</button>
           </div>
           <question-card :q="cur" :key="cur.id" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" />
+          <div class="row" style="justify-content:space-between;margin-top:16px;gap:8px">
+            <button class="btn subtle" :disabled="qi<=0" @click="prev">← 上一题</button>
+            <button class="btn" @click="next">{{ qi>=queue.length-1 ? '换一批 ↻' : '下一题 →' }}</button>
+          </div>
+          <div v-if="queue.length>1" class="qnav-wrap">
+            <button class="qnav-toggle" @click="qnavOpen=!qnavOpen">
+              <span>答题卡 · 已答 {{ sessionDone }}/{{ queue.length }}</span>
+              <span class="qnav-legend" v-if="qnavOpen"><i class="ok"></i>对<i class="bad"></i>错/待复习<i class="done"></i>做过<i class="un"></i>未做</span>
+              <span class="qnav-caret">{{ qnavOpen?'收起 ▴':'展开 ▾' }}</span>
+            </button>
+            <div v-if="qnavOpen" class="qnav">
+              <button v-for="(q,i) in queue" :key="q.id" class="qnav-dot" :class="qnavCls(q,i)" @click="qi=i" :title="'第'+(i+1)+'题'">{{ i+1 }}</button>
+            </div>
+          </div>
         </div>
         <div v-else class="empty">
-          <div class="big">{{ view==='wrong'?'✓':view==='favorite'?'☆':'∅' }}</div>
-          <p v-if="view==='wrong'">暂无错题，做得不错。</p>
-          <p v-else-if="view==='favorite'">暂无收藏题。点击题目上的 ★ 可收藏。</p>
-          <p v-else>没有匹配的题目。请调整筛选条件，或先导入题目。</p>
-          <div class="row" style="justify-content:center;margin-top:14px">
-            <button class="btn subtle" @click="startSession">重新加载</button>
-            <button class="btn" @click="view='ingest'">前往导入</button>
-          </div>
+          <template v-if="view==='practice' && f._mode==='unseen'">
+            <div class="big">🎉</div>
+            <p>太棒了！{{ f.subject==='all'?'全部':subjName(f.subject) }}{{ f.chapter?('· '+f.chapter):'' }} 的题都做过一遍了。</p>
+            <svg v-if="stats" class="acc-ring" viewBox="0 0 120 120" width="132" height="132">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" stroke-width="12"/>
+              <circle cx="60" cy="60" r="52" fill="none" :stroke="accPct>=60?'var(--ok)':'var(--bad)'" stroke-width="12" stroke-linecap="round" :stroke-dasharray="ringDash" transform="rotate(-90 60 60)"/>
+              <text x="60" y="56" text-anchor="middle" font-size="27" font-weight="700" fill="var(--ink)">{{ accPct }}%</text>
+              <text x="60" y="77" text-anchor="middle" font-size="12" fill="var(--ink-soft)">正确率</text>
+            </svg>
+            <p class="muted" v-if="stats">已作答 {{ statTotals.seen }} / {{ statTotals.totalQ }} · 待复习 {{ statTotals.wrongOpen }} · 已掌握 {{ statTotals.mastered }}</p>
+            <p class="muted">本次用时 {{ sessionElapsed }} · 最高连对 {{ bestStreak }}</p>
+            <div class="row" style="justify-content:center;margin-top:16px;gap:8px;flex-wrap:wrap">
+              <button class="btn" v-if="statTotals.wrongOpen" @click="go('wrong')">复习错题（{{ statTotals.wrongOpen }}）</button>
+              <button class="btn subtle" @click="f._mode='all'; startSession()">重做全部</button>
+              <button class="btn subtle" @click="go('stats')">查看统计</button>
+            </div>
+          </template>
+          <template v-else-if="view==='wrong'">
+            <div class="big">✓</div><p>暂无错题，做得不错。</p>
+            <div class="row" style="justify-content:center;margin-top:14px"><button class="btn" @click="go('practice')">去刷题</button></div>
+          </template>
+          <template v-else-if="view==='favorite'">
+            <div class="big">☆</div><p>暂无收藏题。刷题时点题目上的 ★ 可收藏。</p>
+            <div class="row" style="justify-content:center;margin-top:14px"><button class="btn" @click="go('practice')">去刷题</button></div>
+          </template>
+          <template v-else-if="f._mode==='mastered'">
+            <div class="big">∅</div><p>还没有标记为「已掌握」的题。</p>
+            <div class="row" style="justify-content:center;margin-top:14px"><button class="btn subtle" @click="f._mode='all'; startSession()">看全部题</button></div>
+          </template>
+          <template v-else>
+            <div class="big">∅</div><p>没有匹配的题目。请调整筛选条件，或先导入题目。</p>
+            <div class="row" style="justify-content:center;margin-top:14px">
+              <button class="btn subtle" @click="startSession">重新加载</button>
+              <button class="btn" @click="view='ingest'">前往导入</button>
+            </div>
+          </template>
         </div>
       </template>
     </div>

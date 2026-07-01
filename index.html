@@ -7,6 +7,14 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='3' width='16' height='18' rx='3' fill='%234b5563'/%3E%3Crect x='7' y='7' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='11' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='15' width='6' height='1.6' rx='.8' fill='%23ffffff'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" />
 <link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#2E45C4">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#10141B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="刷题文档">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 </head>
 <body>
 <div id="app"></div>
@@ -21,5 +29,6 @@
 <script src="js/api.js"></script>
 <script src="js/components/reader.js"></script>
 <script src="js/app.js"></script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 </body>
 </html>
