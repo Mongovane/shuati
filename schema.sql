@@ -1,7 +1,20 @@
 -- ============================================================
--- 广东专插本刷题系统  ·  Cloudflare D1 建表脚本
--- 在 Cloudflare 后台或本地执行：
---   wrangler d1 execute zhuanben --file=./schema.sql --remote
+--  Cloudflare D1 完整建表 + 索引脚本
+-- 这是唯一需要执行的数据库脚本，跑它就得到全部表和全部索引。
+-- 执行（新库或旧库都安全，全部 IF NOT EXISTS，不会动已有数据）：
+--   wrangler d1 execute <你的库名> --file=./schema.sql --remote
+--
+-- 【本文件包含的优化 · 索引】
+--   · questions(subject) / (chapter) / (type) / (subject,chapter 复合)
+--     —— 按科目、章节筛选取题时走索引，题量上万也不慢
+--   · progress(mastered) / (favorited) / (wrong_count)
+--     —— 错题本/收藏/掌握越攒越多时，「仅错题/仅收藏/已掌握」筛选不再全表扫
+--   · materials(subject) / (source)
+--
+-- 【不在本文件、属于代码层的优化（SQL 写不了，另在对应文件）】
+--   · 随机抽题不再全表 ORDER BY RANDOM()：改用 rowid 阈值窗口
+--     —— 见后端 functions/api/questions.js
+--   · 抽题预览显示「出自第 N 页」：见前端 public/js/app.js
 -- ============================================================
 
 -- 题库主表（覆盖全部科目）
@@ -23,6 +36,7 @@ CREATE TABLE IF NOT EXISTS questions (
 CREATE INDEX IF NOT EXISTS idx_q_subject ON questions(subject);
 CREATE INDEX IF NOT EXISTS idx_q_chapter ON questions(chapter);
 CREATE INDEX IF NOT EXISTS idx_q_type    ON questions(type);
+CREATE INDEX IF NOT EXISTS idx_q_subject_chapter ON questions(subject, chapter);
 
 -- 每道题的学习进度（错题本 / 收藏 / 掌握状态）
 CREATE TABLE IF NOT EXISTS progress (
@@ -36,6 +50,9 @@ CREATE TABLE IF NOT EXISTS progress (
   updated_at   INTEGER DEFAULT (unixepoch()),
   FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_pr_mastered  ON progress(mastered);
+CREATE INDEX IF NOT EXISTS idx_pr_favorited ON progress(favorited);
+CREATE INDEX IF NOT EXISTS idx_pr_wrong     ON progress(wrong_count);
 
 -- 模拟考成绩记录（用于追踪进步曲线）
 CREATE TABLE IF NOT EXISTS mock_results (
