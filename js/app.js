@@ -18,7 +18,7 @@ const App={
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
-    materials:{ subject:'all', items:[], loading:false },
+    materials:{ subject:'all', items:[], loading:false, loaded:false },
     booksMode:'notes',
     pageRendering:false,
     offline:false,
@@ -105,7 +105,7 @@ const App={
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.materials.loading=false; },
+    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.materials.loading=false; this.materials.loaded=true; },
     bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
     flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
     bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1); if(ni!==this.bookIdx)this.flashPageRender(); this.bookIdx=ni; this.bookTocOpen=false; },
@@ -338,7 +338,7 @@ const App={
         analysis=solPart; }
       else { type='short_answer'; if(solPart){ answer=[solPart]; analysis=solPart; } }
       const stem=(stemPart||'').trim(); if(!stem)return null;
-      return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:'', stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[], _page:(ctx.page!=null?ctx.page:null) }; },
+      return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:'', stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[], page:(ctx.page!=null?ctx.page:null) }; },
     async _postQuestions(arr, subject, source){ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } return inserted; },
     _openPreview(arr, title, subject, source){ const seen=new Set(); const uniq=[]; let dup=0; for(const q of arr){ const k=String(q.stem||'').replace(/\s+/g,' ').trim(); if(!k)continue; if(seen.has(k)){ dup++; continue; } seen.add(k); uniq.push(q); } this.extractPreview={ open:true, items:uniq.map(q=>Object.assign({_use:true},q)), title, subject, source, dup }; },
     extractMissingCount(){ return this.extractPreview.items.filter(q=>q._use && !(q.answer&&q.answer.length)).length; },
@@ -355,7 +355,7 @@ const App={
       let all=[]; for(const m of b.pages){ all=all.concat(this.mdToQuestions(m.content_md,{subject:m.subject||b.subject,source:b.title,page:m.page})); }
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
       this._openPreview(all, '《'+b.title+'》整本（预览）', b.subject, b.title); },
-    async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; delete c._page; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
+    async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
       try{ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); this.bookExtract.done=Math.min(i+CH,arr.length); }
         this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'); this.loadMeta(); this.loadStats(); this.extractClose(); }
@@ -753,7 +753,10 @@ const App={
         <div v-else-if="!pdfv.loading" class="empty"><p>选择一个 PDF 直接在线阅读。适合公式、图表多、不想被 OCR 弄花的教材。<br>提示：PDF 仅在本次打开期间保留；想长期保存请用「整理笔记」导入，或把 PDF 放进部署的 public/。</p></div>
       </div>
       <div v-show="booksMode==='notes'">
-      <template v-if="!materialBooks.length">
+      <template v-if="!materials.loaded">
+        <div class="bk-loading" style="min-height:200px"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载教材…</span></div>
+      </template>
+      <template v-else-if="!materialBooks.length">
         <div class="empty">
           <p>还没有教材资料。去「导入」粘贴教材正文或上传教材 PDF，整理好的知识点会显示在这里。</p>
           <button class="btn" @click="view='ingest'">去导入教材</button>
@@ -905,8 +908,9 @@ const App={
         <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row" :class="{sel:bank.sel.includes(q.id)}">
           <input type="checkbox" class="bank-rowck" :checked="bank.sel.includes(q.id)" @change="bankToggle(q.id)" />
           <div class="bank-main">
-            <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
+            <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span v-if="q.mastered" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已掌握</span><span v-else-if="q.wrong_count>0" class="q-badge" style="color:var(--bad);border-color:var(--bad)">错 {{ q.wrong_count }} 次</span><span v-else-if="q.right_count>0" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已做对</span><span v-if="q.favorited" class="q-badge" style="color:var(--accent);border-color:var(--accent)">★ 收藏</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
             <div class="bank-stem"><rich-text :content="q.stem || '（空题干）'" /></div>
+            <div v-if="q.source || q.page" class="muted" style="font-size:11.5px;margin-top:4px;opacity:.85">📖 {{ q.source || '未知来源' }}<span v-if="q.page"> · 第 {{ q.page }} 页</span></div>
           </div>
           <div class="bank-side">
             <button class="btn subtle xs" @click="bankOpenEdit(q)">编辑</button>
@@ -1286,7 +1290,7 @@ const App={
               <div class="prev-q"><span class="prev-lab">题干</span><rich-text :content="q.stem || '（空）'" /></div>
               <div v-if="q.options&&q.options.length" class="prev-opts"><span v-for="o in q.options" :key="o.key" class="prev-opt"><b>{{ o.key }}.</b> {{ o.text }}</span></div>
               <div v-if="q.answer&&q.answer.length" class="prev-q"><span class="prev-lab ans">答案</span><rich-text :content="ansLines(q)" /></div>
-              <div v-if="q._page" class="muted" style="font-size:11.5px;margin-top:6px;opacity:.8">📄 出自第 {{ q._page }} 页</div>
+              <div v-if="q.page" class="muted" style="font-size:11.5px;margin-top:6px;opacity:.8">📄 出自第 {{ q.page }} 页</div>
             </div>
           </div>
         </div>
