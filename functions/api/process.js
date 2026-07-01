@@ -151,6 +151,7 @@ export async function onRequestPost({ request, env }) {
 
   try {
     if (cleanedQ.length) {
+      await ensureQuestionsSchema(env);
       const sql = `INSERT OR REPLACE INTO questions
         (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags, page)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`;
@@ -191,6 +192,12 @@ export async function onRequestPost({ request, env }) {
     sample: cleanedQ.slice(0, 3).map((q) => ({ subject: q.subject, type: q.type, stem: q.stem.slice(0, 60) })),
     material_sample: cleanedM.slice(0, 3).map((m) => ({ subject: m.subject, title: m.title })),
   });
+}
+
+async function ensureQuestionsSchema(env) {
+  // 老库的 questions 表可能没有 page 列，自动补上（已存在则忽略报错），无需手动迁移
+  try { await env.DB.prepare('ALTER TABLE questions ADD COLUMN page INTEGER').run(); }
+  catch (e) { /* duplicate column name：已存在，忽略 */ }
 }
 
 async function ensureMaterialsTable(env) {
