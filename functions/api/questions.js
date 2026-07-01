@@ -24,7 +24,7 @@ export async function onRequestGet({ request, env }) {
   const type = p.get('type');
   const mode = p.get('mode') || 'all';
   const search = p.get('q');
-  const order = p.get('order') === 'seq' ? 'seq' : 'random';
+  const order = ['seq','weak'].includes(p.get('order')) ? p.get('order') : 'random';
   const limit = Math.min(parseInt(p.get('limit') || '20', 10) || 20, 200);
   const offset = parseInt(p.get('offset') || '0', 10) || 0;
 
@@ -40,25 +40,43 @@ export async function onRequestGet({ request, env }) {
   else if (mode === 'mastered') where.push('IFNULL(pr.mastered, 0) = 1');
   else if (mode === 'unseen') where.push('pr.question_id IS NULL');
 
-  const orderBy = order === 'seq' ? 'q.created_at ASC, q.id ASC' : 'RANDOM()';
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-
-  const sql = `SELECT q.*, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.note AS user_note
-               FROM questions q
-               LEFT JOIN progress pr ON pr.question_id = q.id
-               ${whereSql}
-               ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
-  binds.push(limit, offset);
-
+  const baseSelect = `SELECT q.*, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.note AS user_note
+                      FROM questions q
+                      LEFT JOIN progress pr ON pr.question_id = q.id`;
   const countSql = `SELECT COUNT(*) AS total FROM questions q
                     LEFT JOIN progress pr ON pr.question_id = q.id ${whereSql}`;
 
   try {
-    const [list, cnt] = await Promise.all([
-      env.DB.prepare(sql).bind(...binds).all(),
-      env.DB.prepare(countSql).bind(...binds.slice(0, binds.length - 2)).first(),
-    ]);
-    return json({ items: list.results.map(rowToQuestion), total: cnt?.total ?? list.results.length });
+    let rows, total;
+    if (order === 'random') {
+      // 高效随机：随机取一个 rowid 阈值，从该点起按 rowid 顺序取 limit 条，不足则从头补齐，再打乱。
+      // 避免 ORDER BY RANDOM() 对整张表排序造成的全表扫描与高额 D1 读配额（上万题时尤其明显）。
+      const mx = await env.DB.prepare('SELECT MAX(rowid) AS m FROM questions').first();
+      const maxId = (mx && mx.m) || 0;
+      const threshold = maxId > 0 ? Math.floor(Math.random() * maxId) : 0;
+      const w1 = whereSql ? `${whereSql} AND q.rowid >= ?` : 'WHERE q.rowid >= ?';
+      const r1 = await env.DB.prepare(`${baseSelect} ${w1} ORDER BY q.rowid ASC LIMIT ?`).bind(...binds, threshold, limit).all();
+      rows = r1.results || [];
+      if (rows.length < limit) { // 阈值靠后，从头补齐
+        const r2 = await env.DB.prepare(`${baseSelect} ${whereSql} ORDER BY q.rowid ASC LIMIT ?`).bind(...binds, limit).all();
+        const got = new Set(rows.map(r => r.id));
+        for (const r of (r2.results || [])) { if (!got.has(r.id)) { rows.push(r); got.add(r.id); if (rows.length >= limit) break; } }
+      }
+      for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = rows[i]; rows[i] = rows[j]; rows[j] = t; }
+      const c = await env.DB.prepare(countSql).bind(...binds).first();
+      total = c?.total ?? rows.length;
+    } else {
+      const orderBy = order === 'seq' ? 'q.created_at ASC, q.id ASC'
+        : 'IFNULL(pr.wrong_count,0) DESC, IFNULL(pr.right_count,0) ASC, RANDOM()'; // weak：最不熟优先
+      const sql = `${baseSelect} ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+      const [list, cnt] = await Promise.all([
+        env.DB.prepare(sql).bind(...binds, limit, offset).all(),
+        env.DB.prepare(countSql).bind(...binds).first(),
+      ]);
+      rows = list.results; total = cnt?.total ?? rows.length;
+    }
+    return json({ items: rows.map(rowToQuestion), total });
   } catch (e) {
     return json({ error: '查询失败：' + e.message }, 500);
   }
