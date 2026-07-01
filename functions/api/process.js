@@ -3,6 +3,18 @@ import { json, checkAuth } from './_utils.js';
 const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 const VALID_TYPES = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer', 'code'];
 
+// 由"科目 + 题干内容"生成稳定 id（64-bit 双 FNV），同一题重复导入会覆盖而非新增，避免重复题
+function stableQid(subject, stem) {
+  const str = String(subject || '') + '|' + String(stem || '').replace(/\s+/g, ' ').trim();
+  let h1 = 0x811c9dc5 >>> 0, h2 = 0xc2b2ae35 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x85ebca6b) >>> 0;
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
 // —— 结构特征判科目（代码语法 / 数学 TeX 符号 / 英文占比）——
 function structuralSubject(s) {
   if (/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|for\s*\([^;]*;|while\s*\(/.test(s)) return 'computer';
@@ -95,7 +107,7 @@ export async function onRequestPost({ request, env }) {
       const guessed = guessSubjectFromText([q.stem, q.chapter, Array.isArray(q.options) ? q.options.map(o => o && o.text).join(' ') : ''].join('  '), subjList);
       subj = guessed || (validCodes.has(q.subject) ? q.subject : subject);
     }
-    const id = (q.id && String(q.id).trim()) || `${subj}-${crypto.randomUUID().slice(0, 8)}`;
+    const id = (q.id && String(q.id).trim()) || `${subj}-${stableQid(subj, q.stem)}`;
     cleanedQ.push({
       id,
       subject: subj,
@@ -103,6 +115,7 @@ export async function onRequestPost({ request, env }) {
       type,
       difficulty: Number.isInteger(q.difficulty) ? Math.min(5, Math.max(1, q.difficulty)) : 3,
       source: (q.source || defSource || '').trim() || null,
+      page: Number.isInteger(q.page) ? q.page : (Number.isInteger(q._page) ? q._page : null),
       passage: (q.passage || '').trim() || null,
       stem: String(q.stem),
       options: JSON.stringify(Array.isArray(q.options) ? q.options : []),
@@ -139,12 +152,12 @@ export async function onRequestPost({ request, env }) {
   try {
     if (cleanedQ.length) {
       const sql = `INSERT OR REPLACE INTO questions
-        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`;
+        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags, page)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`;
       await env.DB.batch(cleanedQ.map((q) =>
         env.DB.prepare(sql).bind(
           q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
-          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags
+          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.page
         )
       ));
     }
