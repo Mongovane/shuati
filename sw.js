@@ -4,7 +4,7 @@
    - CDN 静态资源（Vue / marked / highlight.js / KaTeX 的 CSS·JS·字体）：缓存优先 → 只下一次，之后离线可用
    - /api/*：始终走网络（题目/统计等动态数据、带鉴权，不缓存）
    改了应用文件想强制刷新预缓存时，把下面 VERSION 加一即可（联网时其实已自动拿最新）。 */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
@@ -51,7 +51,7 @@ async function networkFirst(req) {
   const c = await caches.open(CACHE);
   try {
     const res = await Promise.race([
-      fetch(req),
+      fetch(req, { cache: 'no-cache' }),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3500))
     ]);
     if (res && res.ok) c.put(req, res.clone());

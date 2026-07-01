@@ -149,6 +149,8 @@ a{color:var(--accent)}
   .toolbar .field{flex:1 1 46%;min-width:118px}
   .toolbar .field select,.toolbar .field .inp{width:100%}
   h2{font-size:22px;margin:.1em 0 .5em}
+  textarea{min-height:120px;font-size:15px}
+  .hint{font-size:12.5px}
 }
 /* —— 教材阅读 Books 美化 —— */
 .bk-shelf{margin-bottom:20px}
