@@ -23,6 +23,7 @@ const App={
     pageRendering:false,
     offline:false,
     offlineQueued:0,
+    offlineSyncing:false, offlineSyncMsg:'', offlineSynced:null,
     mineruCfg:{ pageLimit:1000, fileLimit:5000, tokenExp:'' },
     mineruUsageView:{ date:'', pages:0, files:0 },
     mineruTokenBad:false,
@@ -120,6 +121,24 @@ const App={
     logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('已退出登录'); },
     _onOnline(){ this._setOffline(false); },
     _onOffline(){ this._setOffline(true); },
+    async offlineSync(){
+      if(!this.token){ this.flash('请先登录',true); return; }
+      if(this.offline){ this.flash('当前离线，无法下载，请联网后再试',true); return; }
+      if(this.offlineSyncing)return; this.offlineSyncing=true; this.offlineSyncMsg='正在下载题目…';
+      try{
+        let questions=[], offset=0;
+        for(let i=0;i<400;i++){ const d=await this.api('/api/questions?mode=all&order=seq&limit=500&offset='+offset); const items=d.items||[]; questions=questions.concat(items); this.offlineSyncMsg='已下载题目 '+questions.length+' 道…'; if(items.length<500)break; offset+=items.length; }
+        this.offlineSyncMsg='正在下载教材…';
+        let materials=[]; try{ const d=await this.api('/api/materials?limit=2000'); materials=d.items||[]; }catch(_){ }
+        await this._offBulkPut('questions', questions);
+        await this._offBulkPut('materials', materials);
+        await this._offBulkPut('syncedAt', Date.now());
+        this.offlineSynced={ q:questions.length, m:materials.length, at:Date.now() };
+        this.flash('离线包已就绪：题目 '+questions.length+' 道、教材 '+materials.length+' 页，断网也能刷');
+      }catch(e){ if(e.message!=='unauth')this.flash('下载失败：'+e.message,true); }
+      this.offlineSyncing=false; this.offlineSyncMsg='';
+    },
+    async _loadOfflineSynced(){ try{ const at=await this._offBulk('syncedAt'); if(at){ const qs=await this._offBulk('questions'); const ms=await this._offBulk('materials'); this.offlineSynced={ q:(qs||[]).length, m:(ms||[]).length, at }; } }catch(_){ } },
     _syncHash(v){ try{ const want='#/'+v; if(location.hash!==want)location.hash=want; }catch(_){ } },
     _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catch(_){ } h=(h.split('?')[0]||'').split('/')[0]; return ['practice','wrong','favorite','books','bank','ingest','mock','stats','settings'].includes(h)?h:''; },
     onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
@@ -554,6 +573,7 @@ const App={
     window.addEventListener('online', this._onOnline);
     window.addEventListener('offline', this._onOffline);
     this._offQueueCount().then(n=>{ this.offlineQueued=n; if(n>0)this._offFlush(); }).catch(()=>{});
+    this._loadOfflineSynced();
   },
   beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); },
   template:`
@@ -1191,6 +1211,17 @@ const App={
           <button class="btn subtle xs" @click="mineruResetUsage">重置今日用量</button>
         </div>
         <div class="hint" style="margin-top:12px">设上限为 0 表示不限制。Token 到期后 MinerU <b>不支持续期</b>，需到控制台「API 管理 → 创建 Token」重建，再把新 Token 填到 Cloudflare Pages 环境变量 <code>MINERU_API_KEY</code> 并重新部署——这一步无法由应用自动完成。</div>
+      </div>
+      <div class="card" style="max-width:680px;margin-top:14px">
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px">离线使用（地铁/通勤）</div>
+        <div class="hint" style="margin-bottom:14px">把全部题目和教材一次性下载到本机，之后<b>彻底断网也能刷全部题、翻全部书、用筛选</b>。离线作答会排队，联网后自动补传。建议先「添加到主屏幕」装成 App 再用。</div>
+        <div class="row" style="gap:12px;align-items:center">
+          <button class="btn" :disabled="offlineSyncing || offline" @click="offlineSync"><span v-if="offlineSyncing" class="spin"></span>{{ offlineSyncing ? '下载中…' : '下载全部供离线使用' }}</button>
+          <span v-if="offlineSyncing" class="muted">{{ offlineSyncMsg }}</span>
+          <span v-else-if="offlineSynced" class="muted">已缓存 {{ offlineSynced.q }} 题 · {{ offlineSynced.m }} 页教材 · {{ new Date(offlineSynced.at).toLocaleString() }}</span>
+          <span v-else class="muted">尚未下载离线包</span>
+        </div>
+        <div class="hint" style="margin-top:12px">题库更新后想让离线包同步，重新点一次即可覆盖。离线包存在本机浏览器，换设备需各自下载。</div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
         <div style="font-weight:700;font-size:15px;margin-bottom:4px">科目管理</div>

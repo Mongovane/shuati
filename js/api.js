@@ -16,6 +16,8 @@ const ApiMixin = {
         // 网络不可用（离线）
         this._setOffline(true);
         if (method === 'GET') {
+          const synth = await this._offSynth(path);
+          if (synth !== undefined) return synth;
           const cached = await this._offGet(path);
           if (cached !== undefined) return cached;
         } else if (method === 'POST' && path.indexOf('/api/progress') === 0) {
@@ -37,8 +39,8 @@ const ApiMixin = {
     _offDB() {
       return this.__offDB || (this.__offDB = new Promise((res, rej) => {
         try {
-          const r = indexedDB.open('zb_offline', 1);
-          r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('get')) db.createObjectStore('get'); if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { autoIncrement: true }); };
+          const r = indexedDB.open('zb_offline', 2);
+          r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('get')) db.createObjectStore('get'); if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { autoIncrement: true }); if (!db.objectStoreNames.contains('bulk')) db.createObjectStore('bulk'); };
           r.onsuccess = () => res(r.result);
           r.onerror = () => rej(r.error);
         } catch (e) { rej(e); }
@@ -74,6 +76,54 @@ const ApiMixin = {
         if (done > 0) { this.offlineQueued = await this._offQueueCount(); this.flash('已补传 ' + done + ' 条离线作答记录'); this.loadStats && this.loadStats(); }
       } catch (_) {}
       this._flushing = false;
+    },
+    async _offBulk(key) {
+      try { const db = await this._offDB(); return await new Promise((res) => { const tx = db.transaction('bulk', 'readonly'); const rq = tx.objectStore('bulk').get(key); rq.onsuccess = () => res(rq.result != null ? rq.result : null); rq.onerror = () => res(null); }); } catch (_) { return null; }
+    },
+    async _offBulkPut(key, val) {
+      try { const db = await this._offDB(); await new Promise((res, rej) => { const tx = db.transaction('bulk', 'readwrite'); tx.objectStore('bulk').put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); } catch (_) {}
+    },
+    // 离线合成：用预下载的全量数据，在断网时"造出"接口响应（题库/教材/筛选/统计）
+    async _offSynth(path) {
+      let url; try { url = new URL(path, location.origin); } catch (_) { return undefined; }
+      const P = url.pathname, q = url.searchParams;
+      if (P.startsWith('/api/materials')) {
+        const mats = await this._offBulk('materials'); if (!mats) return undefined;
+        return { items: mats, total: mats.length, _offline: true };
+      }
+      if (P.startsWith('/api/progress')) {
+        const all = await this._offBulk('questions'); if (!all) return undefined;
+        const m = new Map();
+        for (const x of all) { const s = x.subject || ''; if (!m.has(s)) m.set(s, { subject: s, total_q: 0, seen: 0, wrong_open: 0, mastered: 0, favorited: 0, right_sum: 0, wrong_sum: 0 }); const o = m.get(s); const w = x.wrong_count || 0, r = x.right_count || 0; o.total_q++; if (w > 0 || r > 0) o.seen++; if (w > 0 && !x.mastered) o.wrong_open++; if (x.mastered) o.mastered++; if (x.favorited) o.favorited++; o.right_sum += r; o.wrong_sum += w; }
+        return { bySubject: [...m.values()], _offline: true };
+      }
+      if (P.startsWith('/api/questions')) {
+        const all = await this._offBulk('questions'); if (!all) return undefined;
+        if (q.get('meta')) {
+          const subMap = new Map(), chSet = new Set(), chaps = [];
+          for (const x of all) { subMap.set(x.subject, (subMap.get(x.subject) || 0) + 1); if (x.chapter) { const k = x.subject + '|' + x.chapter; if (!chSet.has(k)) { chSet.add(k); chaps.push({ subject: x.subject, chapter: x.chapter }); } } }
+          return { subjects: [...subMap].map(([subject, n]) => ({ subject, n })), chapters: chaps, _offline: true };
+        }
+        const subject = q.get('subject'), chapter = q.get('chapter'), type = q.get('type'), mode = q.get('mode') || 'all', order = q.get('order') || 'random', kw = (q.get('q') || '').trim();
+        let arr = all.filter((x) => {
+          if (subject && subject !== 'all' && x.subject !== subject) return false;
+          if (chapter && x.chapter !== chapter) return false;
+          if (type && x.type !== type) return false;
+          const w = x.wrong_count || 0, r = x.right_count || 0;
+          if (mode === 'unseen' && (w > 0 || r > 0 || x.favorited || x.mastered)) return false;
+          if (mode === 'wrong' && !(w > 0 && !x.mastered)) return false;
+          if (mode === 'favorite' && !x.favorited) return false;
+          if (mode === 'mastered' && !x.mastered) return false;
+          if (kw && !String(x.stem || '').includes(kw)) return false;
+          return true;
+        });
+        const total = arr.length;
+        if (order === 'random') { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } }
+        else if (order === 'weak') { arr = arr.slice().sort((a, b) => ((b.wrong_count || 0) - (a.wrong_count || 0)) || ((a.right_count || 0) - (b.right_count || 0))); }
+        const offset = parseInt(q.get('offset') || '0', 10) || 0, limit = parseInt(q.get('limit') || '30', 10) || 30;
+        return { items: arr.slice(offset, offset + limit), total, _offline: true };
+      }
+      return undefined;
     },
     _setOffline(v) { if (this.offline !== v) { this.offline = v; if (!v) this._offFlush(); } },
   }
