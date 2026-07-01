@@ -338,7 +338,7 @@ const App={
         analysis=solPart; }
       else { type='short_answer'; if(solPart){ answer=[solPart]; analysis=solPart; } }
       const stem=(stemPart||'').trim(); if(!stem)return null;
-      return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:'', stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[] }; },
+      return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:'', stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[], _page:(ctx.page!=null?ctx.page:null) }; },
     async _postQuestions(arr, subject, source){ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } return inserted; },
     _openPreview(arr, title, subject, source){ const seen=new Set(); const uniq=[]; let dup=0; for(const q of arr){ const k=String(q.stem||'').replace(/\s+/g,' ').trim(); if(!k)continue; if(seen.has(k)){ dup++; continue; } seen.add(k); uniq.push(q); } this.extractPreview={ open:true, items:uniq.map(q=>Object.assign({_use:true},q)), title, subject, source, dup }; },
     extractMissingCount(){ return this.extractPreview.items.filter(q=>q._use && !(q.answer&&q.answer.length)).length; },
@@ -348,14 +348,14 @@ const App={
     typeName(t){ return ({single_choice:'单选',multiple_choice:'多选',true_false:'判断',fill_blank:'填空',short_answer:'简答',code:'代码'})[t]||t; },
     ansLines(q){ return ((q&&q.answer)||[]).join('\n'); },
     async localExtractPage(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src});
+      const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
       if(!arr.length){ this.flash('这一页没解析出题目（可能不是习题页，或编号格式特殊，可改用 AI 抽取）',true); return; }
       this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src); },
     async localExtractBook(){ const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      let all=[]; for(const m of b.pages){ all=all.concat(this.mdToQuestions(m.content_md,{subject:m.subject||b.subject,source:b.title})); }
+      let all=[]; for(const m of b.pages){ all=all.concat(this.mdToQuestions(m.content_md,{subject:m.subject||b.subject,source:b.title,page:m.page})); }
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
       this._openPreview(all, '《'+b.title+'》整本（预览）', b.subject, b.title); },
-    async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
+    async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; delete c._page; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
       try{ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); this.bookExtract.done=Math.min(i+CH,arr.length); }
         this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'); this.loadMeta(); this.loadStats(); this.extractClose(); }
@@ -1285,7 +1285,8 @@ const App={
               <div class="prev-meta"><span class="tag2">{{ typeName(q.type) }}</span><span v-if="q.chapter" class="muted" style="font-size:12px">{{ q.chapter }}</span><span v-if="!(q.answer&&q.answer.length)" class="tag" style="color:var(--bad);border-color:var(--bad)">无答案</span></div>
               <div class="prev-q"><span class="prev-lab">题干</span><rich-text :content="q.stem || '（空）'" /></div>
               <div v-if="q.options&&q.options.length" class="prev-opts"><span v-for="o in q.options" :key="o.key" class="prev-opt"><b>{{ o.key }}.</b> {{ o.text }}</span></div>
-              <div class="prev-q" v-if="q.answer&&q.answer.length"><span class="prev-lab ans">答案</span><rich-text :content="ansLines(q)" /></div>
+              <div v-if="q.answer&&q.answer.length" class="prev-q"><span class="prev-lab ans">答案</span><rich-text :content="ansLines(q)" /></div>
+              <div v-if="q._page" class="muted" style="font-size:11.5px;margin-top:6px;opacity:.8">📄 出自第 {{ q._page }} 页</div>
             </div>
           </div>
         </div>
