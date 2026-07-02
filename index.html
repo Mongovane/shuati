@@ -5,9 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>刷题文档</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='3' width='16' height='18' rx='3' fill='%234b5563'/%3E%3Crect x='7' y='7' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='11' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='15' width='6' height='1.6' rx='.8' fill='%23ffffff'/%3E%3C/svg%3E" />
-<style>html,body{margin:0;background:#F5F6F2}[data-theme=dark] body,[data-theme=dark]{background:#10141B}</style>
+<style>
+html,body{margin:0;background:#F5F6F2}
+[data-theme=dark] body,[data-theme=dark]{background:#10141B}
+#splash{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#F5F6F2;transition:opacity .5s ease,visibility .5s ease}
+[data-theme=dark] #splash{background:#10141B}
+#splash.out{opacity:0;visibility:hidden;pointer-events:none}
+#splash svg{width:min(65vw,280px);height:auto;overflow:visible}
+.sp-draw{fill:none;stroke:#2E45C4;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:600;stroke-dashoffset:600;animation:draw 1.8s .15s cubic-bezier(.4,.0,.2,1) forwards}
+.sp-dot{fill:#2E45C4;r:0;opacity:0;animation:dot .3s 1.9s ease forwards}
+[data-theme=dark] .sp-draw{stroke:#6B8AFF}
+[data-theme=dark] .sp-dot{fill:#6B8AFF}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes dot{to{r:3.2;opacity:1}}
+</style>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" media="print" onload="this.media='all'" />
 <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" /></noscript>
 <link rel="manifest" href="manifest.json">
@@ -20,24 +33,28 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 </head>
 <body>
-<div id="app">
-<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;gap:16px;font-family:-apple-system,system-ui,sans-serif;color:#6b7280">
-  <div style="width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#2E45C4;border-radius:50%;animation:sp .7s linear infinite"></div>
-  <div style="font-size:15px;opacity:.7">◆ 刷题文档</div>
+<div id="splash">
+  <svg viewBox="0 0 140 100" xmlns="http://www.w3.org/2000/svg">
+    <path class="sp-draw" d="M 15,28 C 15,28 32,82 44,82 C 56,82 70,28 70,28 C 74,20 68,52 63,62 C 56,76 46,70 48,58 C 50,46 60,42 68,50 C 75,56 71,80 71,84 C 71,62 71,28 78,24 C 86,19 96,82 96,84 C 96,62 100,42 108,40 C 118,37 122,54 114,64 C 106,74 98,68 104,82"/>
+    <circle class="sp-dot" cx="107" cy="82"/>
+  </svg>
 </div>
-<style>@keyframes sp{to{transform:rotate(360deg)}}</style>
-</div>
+<div id="app"></div>
+<script>
+// 开屏后精确计算路径长度并修正 dasharray
+(function(){var p=document.querySelector('.sp-draw');if(p){try{var len=p.getTotalLength();p.style.strokeDasharray=len;p.style.strokeDashoffset=len;}catch(e){}}})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
-<script src="js/constants.js?v=6"></script>
-<script src="js/components/rich-text.js?v=6"></script>
-<script src="js/components/question-card.js?v=6"></script>
-<script src="js/api.js?v=6"></script>
-<script src="js/components/reader.js?v=6"></script>
-<script src="js/app.js?v=6"></script>
+<script src="js/constants.js?v=7"></script>
+<script src="js/components/rich-text.js?v=7"></script>
+<script src="js/components/question-card.js?v=7"></script>
+<script src="js/api.js?v=7"></script>
+<script src="js/components/reader.js?v=7"></script>
+<script src="js/app.js?v=7"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){

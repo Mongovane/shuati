@@ -4,18 +4,18 @@
    - CDN 静态资源（Vue / marked / highlight.js / KaTeX 的 CSS·JS·字体）：缓存优先 → 只下一次，之后离线可用
    - /api/*：始终走网络（题目/统计等动态数据、带鉴权，不缓存）
    改了应用文件想强制刷新预缓存时，把下面 VERSION 加一即可（联网时其实已自动拿最新）。 */
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
   './', './index.html', './manifest.json',
-  './css/style.css?v=6',
-  './js/constants.js?v=6',
-  './js/components/rich-text.js?v=6',
-  './js/components/question-card.js?v=6',
-  './js/api.js?v=6',
-  './js/components/reader.js?v=6',
-  './js/app.js?v=6',
+  './css/style.css?v=7',
+  './js/constants.js?v=7',
+  './js/components/rich-text.js?v=7',
+  './js/components/question-card.js?v=7',
+  './js/api.js?v=7',
+  './js/components/reader.js?v=7',
+  './js/app.js?v=7',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 
