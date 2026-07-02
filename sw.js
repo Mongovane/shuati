@@ -9,13 +9,13 @@ const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
   './', './index.html', './manifest.json',
-  './css/style.css',
-  './js/constants.js',
-  './js/components/rich-text.js',
-  './js/components/question-card.js',
-  './js/api.js',
-  './js/components/reader.js',
-  './js/app.js',
+  './css/style.css?v=4',
+  './js/constants.js?v=4',
+  './js/components/rich-text.js?v=4',
+  './js/components/question-card.js?v=4',
+  './js/api.js?v=4',
+  './js/components/reader.js?v=4',
+  './js/app.js?v=4',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 

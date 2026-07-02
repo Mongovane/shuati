@@ -1,4 +1,5 @@
 const { createApp } = Vue;
+const APP_VER = 'v4.0';
 // 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
 let qCache = {};
 const App={
@@ -53,6 +54,7 @@ const App={
     sourcePreview(){ return this.makeSource(); },
     wrongTotal(){ if(!this.stats)return 0; return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); },
     cur(){ return this.queue[this.qi]||null; },
+    appVer(){ return APP_VER; },
     curStatus(){ const q=this.cur; if(!q)return null; if(q.mastered)return{t:'已掌握',c:'var(--ok)'}; if(q.wrong_count>0)return{t:'错过 '+q.wrong_count+' 次',c:'var(--bad)'}; if(q.right_count>0)return{t:'已做对',c:'var(--ok)'}; return null; },
     accPct(){ const t=this.statTotals; const d=t.right+t.wrong; return d?Math.round(t.right/d*100):0; },
     ringDash(){ const C=2*Math.PI*52; return (this.accPct/100*C).toFixed(1)+' '+C.toFixed(1); },
@@ -1259,6 +1261,7 @@ const App={
         </div>
         <div class="hint" style="margin-top:12px">题库更新后想让离线包同步，重新点一次即可覆盖。离线包存在本机浏览器，换设备需各自下载。</div>
       </div>
+      <div class="muted" style="text-align:center;margin-top:24px;font-size:12px;opacity:.5">刷题文档 {{ appVer }}</div>
       <div class="card" style="max-width:680px;margin-top:14px">
         <div style="font-weight:700;font-size:15px;margin-bottom:4px">科目管理</div>
         <div class="hint" style="margin-bottom:14px">在这里增删改科目;新增后,刷题、题库、导入等所有科目下拉会自动出现该科目。「关键词」用于导入与「智能归类」时自动判断科目(术语类,逗号分隔);代码 / 数学符号 / 英文等结构特征已内置在程序里,无需填写。</div>
