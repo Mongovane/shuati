@@ -1,5 +1,5 @@
 const { createApp } = Vue;
-const APP_VER = 'v4.0';
+const APP_VER = 'v4.1';
 // 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
 let qCache = {};
 const App={
@@ -21,7 +21,7 @@ const App={
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
-    materials:{ subject:'all', items:[], loading:false, loaded:false, progText:'' },
+    materials:{ subject:'all', items:[], loading:false, loaded:false }, loadProgMsg:'',
     booksMode:'notes',
     pageRendering:false,
     offline:false,
@@ -110,26 +110,28 @@ const App={
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='正在请求…';
+    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.loadProgMsg='正在请求…';
+      const t0=Date.now(); const tmr=setInterval(()=>{ if(!this.loadProgMsg.includes('MB')&&!this.loadProgMsg.includes('KB')){ this.loadProgMsg='已等待 '+Math.round((Date.now()-t0)/1000)+' 秒…'; } },1000);
       try{
+        const self=this;
         const d = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open('GET', '/api/materials?limit=500');
-          xhr.setRequestHeader('authorization', 'Bearer ' + this.token);
-          xhr.onprogress = (e) => { const mb = e.loaded / 1048576; let m = mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(e.loaded / 1024)) + ' KB'; if (e.lengthComputable && e.loaded <= e.total) m += ' · ' + Math.round(e.loaded / e.total * 100) + '%'; this.materials.progText = m; };
-          xhr.onload = () => { if (xhr.status === 401) { this.token = ''; try { localStorage.removeItem('zb_token'); } catch (_) {} this.view = 'settings'; reject(new Error('unauth')); return; } if (xhr.status < 200 || xhr.status >= 300) { reject(new Error('请求失败 ' + xhr.status)); return; } try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(e); } };
-          xhr.onerror = () => reject(new Error('网络错误'));
+          xhr.setRequestHeader('authorization', 'Bearer ' + self.token);
+          xhr.onprogress = function(e){ const mb=e.loaded/1048576; let m=mb>=1?mb.toFixed(1)+' MB':Math.max(1,Math.round(e.loaded/1024))+' KB'; if(e.lengthComputable&&e.loaded<=e.total)m+=' · '+Math.round(e.loaded/e.total*100)+'%'; self.loadProgMsg=m; };
+          xhr.onload = function(){ if(xhr.status===401){ self.token=''; try{localStorage.removeItem('zb_token');}catch(_){} self.view='settings'; reject(new Error('unauth')); return; } if(xhr.status<200||xhr.status>=300){ reject(new Error('请求失败 '+xhr.status)); return; } try{resolve(JSON.parse(xhr.responseText));}catch(e){reject(e);} };
+          xhr.onerror = function(){ reject(new Error('网络错误')); };
           xhr.send();
         });
         this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
-        this.materials.progText='已加载 '+(d.items||[]).length+' 段';
+        this.loadProgMsg='已加载 '+(d.items||[]).length+' 段教材';
       }catch(e){
-        if(e.message==='unauth')return;
-        this.materials.progText='从缓存加载…';
-        try{ const d2=await this.api('/api/materials?limit=500'); this.materials.items=d2.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }
+        if(e.message==='unauth'){ clearInterval(tmr); this.materials.loading=false; this.materials.loaded=true; this.loadProgMsg=''; return; }
+        this.loadProgMsg='从缓存加载…';
+        try{ const d2=await this.api('/api/materials?limit=500'); this.materials.items=d2.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; this.loadProgMsg='已加载 '+(d2.items||[]).length+' 段'; }
         catch(e2){ if(e2.message!=='unauth')this.flash(e2.message,true); }
       }
-      this.materials.loading=false; this.materials.loaded=true; },
+      clearInterval(tmr); this.materials.loading=false; this.materials.loaded=true; },
     bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
     flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
     bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1); if(ni!==this.bookIdx)this.flashPageRender(); this.bookIdx=ni; this.bookTocOpen=false; },
@@ -813,7 +815,7 @@ const App={
       </div>
       <div v-show="booksMode==='notes'">
       <template v-if="!materials.loaded">
-        <div class="bk-loading" style="min-height:200px"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载教材…<span v-if="materials.progText"> {{ materials.progText }}</span></span></div>
+        <div class="bk-loading" style="min-height:200px"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载教材… {{ loadProgMsg }}</span></div>
       </template>
       <template v-else-if="!materialBooks.length">
         <div class="empty">
