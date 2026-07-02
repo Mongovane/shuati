@@ -616,7 +616,7 @@ const App={
     this._offQueueCount().then(n=>{ this.offlineQueued=n; if(n>0)this._offFlush(); }).catch(()=>{});
     this._loadOfflineSynced();
     // 开屏动画：等动画播完 + Vue 渲染完后淡出
-    const sp=document.getElementById('splash'); if(sp){ const dismiss=()=>{ sp.classList.add('out'); setTimeout(()=>sp.remove(),500); }; const elapsed=performance.now(); const minTime=1400; if(elapsed>=minTime)dismiss(); else setTimeout(dismiss,minTime-elapsed); }
+    const sp=document.getElementById('splash'); if(sp){ const dismiss=()=>{ sp.classList.add('out'); setTimeout(()=>sp.remove(),600); }; const elapsed=performance.now(); const minTime=2200; if(elapsed>=minTime)dismiss(); else setTimeout(dismiss,minTime-elapsed); }
   },
   beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); },
   template:`
