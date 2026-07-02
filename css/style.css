@@ -398,3 +398,14 @@ a{color:var(--accent)}
 .fold-arrow{font-size:13px;color:var(--ink-soft);transition:transform .2s ease;transform:rotate(-90deg);flex:none;margin-left:8px}
 .fold-arrow.open{transform:rotate(0)}
 .fold-body{overflow:hidden}
+.pdfv-fs{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+.pdfv-fs .pdfv-bar{flex:none;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--surface);gap:8px;flex-wrap:wrap;z-index:1}
+.pdfv-fs .pdfv-body{flex:1;overflow:hidden}
+.pdfv-fs .pdfv-main{height:100%;overflow-y:auto}
+.pdfv-fs .pdfv-single{height:100%;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:12px}
+.pdfv-fs .pdfv-foot{flex:none;padding:8px 14px;border-top:1px solid var(--line);background:var(--surface);display:flex;align-items:center;justify-content:center;gap:16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
+.pdfv-fs .pdfv-rail{flex:none;height:100%;overflow-y:auto}
+@media(max-width:560px){
+  .pdfv-fs .pdfv-bar{padding:6px 10px;font-size:13px}
+  .pdfv-fs .pdfv-bar .ttl{font-size:14px;max-width:40vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
