@@ -14,9 +14,9 @@ html,body{margin:0;background:#F5F6F2}
 #splash{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#F5F6F2;transition:opacity .5s ease,visibility .5s ease}
 [data-theme=dark] #splash{background:#10141B}
 #splash.out{opacity:0;visibility:hidden;pointer-events:none}
-.sp-w{font-family:'Sacramento',cursive;font-size:clamp(72px,20vw,100px);color:#2E45C4;white-space:nowrap;transform:rotate(90deg);letter-spacing:2px;clip-path:inset(0 100% 0 0);animation:spR 1.6s .35s cubic-bezier(.22,.61,.36,1) forwards}
+.sp-w{font-family:'Sacramento',cursive;font-size:clamp(56px,14vw,88px);color:#2E45C4;white-space:nowrap;letter-spacing:3px;opacity:0;clip-path:inset(0 100% 0 0);animation:spR 1.4s .3s cubic-bezier(.22,.61,.36,1) forwards}
 [data-theme=dark] .sp-w{color:#6B8AFF}
-@keyframes spR{to{clip-path:inset(0 0 0 0)}}
+@keyframes spR{to{opacity:1;clip-path:inset(0 0 0 0)}}
 </style>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
 <link rel="stylesheet" href="css/style.css?v=7">
