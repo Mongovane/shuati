@@ -665,7 +665,7 @@ const App={
             <button class="bk-del" @click="deleteCurrentQuestion" title="从题库删除本题">删除本题</button>
           </div>
           <question-card :q="cur" :key="cur.id" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" />
-          <div class="row" style="justify-content:space-between;margin-top:16px;gap:8px">
+          <div class="q-nav-bar">
             <button class="btn subtle" :disabled="qi<=0" @click="prev">← 上一题</button>
             <button class="btn" @click="next">{{ qi>=queue.length-1 ? '换一批 ↻' : '下一题 →' }}</button>
           </div>

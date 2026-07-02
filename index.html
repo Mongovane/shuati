@@ -17,7 +17,13 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;gap:16px;font-family:-apple-system,system-ui,sans-serif;color:#6b7280">
+  <div style="width:40px;height:40px;border:3px solid #e5e7eb;border-top-color:#2E45C4;border-radius:50%;animation:sp .7s linear infinite"></div>
+  <div style="font-size:15px;opacity:.7">◆ 刷题文档</div>
+</div>
+<style>@keyframes sp{to{transform:rotate(360deg)}}</style>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
