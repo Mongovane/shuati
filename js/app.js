@@ -11,7 +11,7 @@ const App={
     stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
     tokenInput:'', view:'practice',
     subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:true,
-    f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' },
+    f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' }, filterLock:false,
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'',
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
@@ -108,8 +108,25 @@ const App={
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='';
-      try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; this.materials.progText='已加载 '+(d.items||[]).length+' 段'; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
+    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='正在请求…';
+      try{
+        const d = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', '/api/materials?limit=500');
+          xhr.setRequestHeader('authorization', 'Bearer ' + this.token);
+          xhr.onprogress = (e) => { const mb = e.loaded / 1048576; let m = mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(e.loaded / 1024)) + ' KB'; if (e.lengthComputable && e.loaded <= e.total) m += ' · ' + Math.round(e.loaded / e.total * 100) + '%'; this.materials.progText = m; };
+          xhr.onload = () => { if (xhr.status === 401) { this.token = ''; try { localStorage.removeItem('zb_token'); } catch (_) {} this.view = 'settings'; reject(new Error('unauth')); return; } if (xhr.status < 200 || xhr.status >= 300) { reject(new Error('请求失败 ' + xhr.status)); return; } try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(e); } };
+          xhr.onerror = () => reject(new Error('网络错误'));
+          xhr.send();
+        });
+        this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
+        this.materials.progText='已加载 '+(d.items||[]).length+' 段';
+      }catch(e){
+        if(e.message==='unauth')return;
+        this.materials.progText='从缓存加载…';
+        try{ const d2=await this.api('/api/materials?limit=500'); this.materials.items=d2.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }
+        catch(e2){ if(e2.message!=='unauth')this.flash(e2.message,true); }
+      }
       this.materials.loading=false; this.materials.loaded=true; },
     bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
     flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
@@ -158,6 +175,7 @@ const App={
         if(c && c.q.length){
           this.queue=c.q; this.qi=c.i; this.queueTotal=c.t; this.sessionAns=c.a; this.sessionView=v; this.batchDone=c.bo; this.loadedOnce=c.lo; this.loading=false;
           delete qCache[v];
+          this.filterLock=true; this.$nextTick(()=>{ this.filterLock=false; });
         } else { this.startSession(); }
       }
       if(v==='wrong'||v==='stats') this.loadStats();
@@ -198,6 +216,7 @@ const App={
       p.set('order', this.sessionMode==='wrong' ? 'weak' : this.f.order); p.set('mode',this.sessionMode);
       Object.entries(extra).forEach(([k,v])=>p.set(k,v)); return p.toString();
     },
+    onFilter(){ if(this.filterLock)return; this.startSession(); },
     async startSession(keep){ if(!this.token)return;
       this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0; this.sessionAns={}; this.sessionView=this.view;
       if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
@@ -618,29 +637,29 @@ const App={
     <div v-if="['practice','wrong','favorite'].includes(view)">
       <div class="toolbar">
         <div class="field"><label>科目</label>
-          <select v-model="f.subject" @change="startSession">
+          <select v-model="f.subject" @change="onFilter">
             <option value="all">全部科目</option>
             <option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option>
           </select></div>
         <div class="field"><label>章节</label>
-          <select v-model="f.chapter" @change="startSession">
+          <select v-model="f.chapter" @change="onFilter">
             <option value="">全部章节</option>
             <option v-for="c in chaptersForSubject" :key="c.subject+'|'+c.chapter" :value="c.chapter">{{ c.chapter }} ({{ c.n }})</option>
           </select></div>
         <div class="field"><label>题型</label>
-          <select v-model="f.type" @change="startSession">
+          <select v-model="f.type" @change="onFilter">
             <option value="">全部题型</option>
             <option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option>
           </select></div>
         <div class="field" v-if="view==='practice'"><label>范围</label>
-          <select v-model="f._mode" @change="startSession">
+          <select v-model="f._mode" @change="onFilter">
             <option value="all">全部题目</option>
             <option value="unseen">仅未做</option>
             <option value="wrong">仅错题</option>
             <option value="favorite">仅收藏</option>
           </select></div>
         <div class="field"><label>顺序</label>
-          <select v-model="f.order" @change="startSession">
+          <select v-model="f.order" @change="onFilter">
             <option value="random">随机</option>
             <option value="seq">顺序</option>
           </select></div>
