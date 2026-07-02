@@ -783,7 +783,46 @@ const App={
             </div>
           </template>
         </template>
-        <div v-if="!pdfv.open && !pdfv.loading" class="empty"><p>选择一个 PDF 直接在线阅读。适合公式、图表多、不想被 OCR 弄花的教材。<br>提示：PDF 仅在本次打开期间保留；想长期保存请用「整理笔记」导入，或把 PDF 放进部署的 public/。</p></div>
+        <teleport to="body" :disabled="!pdfvMobile">
+        <div v-if="pdfv.open" class="pdfv" :class="{'pdfv-fs':pdfvMobile}" :style="pdfvMobile?'':'margin-top:14px'">
+          <div class="pdfv-bar">
+            <div class="ttl">{{ pdfv.title }}</div>
+            <div class="bk-nav">
+              <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
+              <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
+            </div>
+            <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
+            <input class="bk-jump inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value)" placeholder="跳页" />
+            <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
+            <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
+            <button class="btn subtle" @click="pdfvClose">关闭</button>
+          </div>
+          <div class="pdfv-body" :class="{'one-col': pdfv.mode==='page'}">
+            <div class="pdfv-rail" ref="pdfvRail" v-if="pdfv.mode==='scroll'">
+              <div v-for="n in pdfv.pages" :key="n" class="pdfv-thumb" :class="{on:n===pdfv.cur}" :data-page="n" @click="pdfvGoto(n)"><canvas></canvas><span>{{ n }}</span></div>
+            </div>
+            <div class="pdfv-main" ref="pdfvMain" v-if="pdfv.mode==='scroll'">
+              <div v-for="n in pdfv.pages" :key="n" class="pdfv-page" :data-page="n"><canvas></canvas></div>
+            </div>
+            <div class="pdfv-single" v-if="pdfv.mode==='page'"><canvas ref="pdfvSingle"></canvas></div>
+          </div>
+          <div class="pdfv-foot">
+            <button v-if="pdfvMobile" @click="pdfvTocOpen=true">☰ 目录</button>
+            <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
+            <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
+            <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
+          </div>
+          <div v-if="pdfvMobile" class="pdfv-drawer" :class="{open:pdfvTocOpen}">
+            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">共 {{ pdfv.pages }} 页</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
+            <input class="inp pdfv-drawer-jump" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
+            <div class="pdfv-drawer-list">
+              <div v-for="n in pdfv.pages" :key="n" :class="{on:n===pdfv.cur}" @click="pdfvGoto(n); pdfvTocOpen=false">第 {{ n }} 页</div>
+            </div>
+          </div>
+          <div v-if="pdfvMobile && pdfvTocOpen" class="pdfv-backdrop" @click="pdfvTocOpen=false"></div>
+        </div>
+        </teleport>
+        <div v-else-if="!pdfv.loading" class="empty"><p>选择一个 PDF 直接在线阅读。适合公式、图表多、不想被 OCR 弄花的教材。<br>提示：PDF 仅在本次打开期间保留；想长期保存请用「整理笔记」导入，或把 PDF 放进部署的 public/。</p></div>
       </div>
       <div v-show="booksMode==='notes'">
       <template v-if="!materials.loaded">
@@ -1281,43 +1320,6 @@ const App={
 
   </div>
 
-        <div v-if="pdfv.open" class="pdfv pdfv-fs">
-          <div class="pdfv-bar">
-            <div class="ttl">{{ pdfv.title }}</div>
-            <div class="bk-nav">
-              <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
-              <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
-            </div>
-            <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
-            <input class="bk-jump inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value)" placeholder="跳页" />
-            <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
-            <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
-            <button class="btn subtle" @click="pdfvClose">关闭</button>
-          </div>
-          <div class="pdfv-body" :class="{'one-col': pdfv.mode==='page'}">
-            <div class="pdfv-rail" ref="pdfvRail" v-if="pdfv.mode==='scroll'">
-              <div v-for="n in pdfv.pages" :key="n" class="pdfv-thumb" :class="{on:n===pdfv.cur}" :data-page="n" @click="pdfvGoto(n)"><canvas></canvas><span>{{ n }}</span></div>
-            </div>
-            <div class="pdfv-main" ref="pdfvMain" v-if="pdfv.mode==='scroll'">
-              <div v-for="n in pdfv.pages" :key="n" class="pdfv-page" :data-page="n"><canvas></canvas></div>
-            </div>
-            <div class="pdfv-single" v-if="pdfv.mode==='page'"><canvas ref="pdfvSingle"></canvas></div>
-          </div>
-          <div class="pdfv-foot">
-            <button v-if="pdfvMobile" @click="pdfvTocOpen=true">☰ 目录</button>
-            <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
-            <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
-            <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
-          </div>
-          <div v-if="pdfvMobile" class="pdfv-drawer" :class="{open:pdfvTocOpen}">
-            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">共 {{ pdfv.pages }} 页</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
-            <input class="inp pdfv-drawer-jump" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
-            <div class="pdfv-drawer-list">
-              <div v-for="n in pdfv.pages" :key="n" :class="{on:n===pdfv.cur}" @click="pdfvGoto(n); pdfvTocOpen=false">第 {{ n }} 页</div>
-            </div>
-          </div>
-          <div v-if="pdfvMobile && pdfvTocOpen" class="pdfv-backdrop" @click="pdfvTocOpen=false"></div>
-        </div>
   <div v-if="reader.open && currentBook && currentPageMat" class="reader" :class="['t-'+reader.theme, {serif:reader.serif, 'bars-hidden':reader.barsHidden}]" :style="{'--rfs':reader.fontSize+'px','--rlh':reader.lineGap}">
     <div class="r-scroll" ref="readerScroll" @click="readerTap" @touchstart.passive="readerTouchStart" @touchend.passive="readerTouchEnd">
       <div class="r-wrap">
