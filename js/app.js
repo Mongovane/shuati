@@ -106,11 +106,11 @@ const App={
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='';
+    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='正在请求…';
       try{
         let d;
         try{ d=await this._fetchProgress('/api/materials?limit=500', m=>{ this.materials.progText=m; }); this._offPut('/api/materials?limit=500', d); }
-        catch(err){ if(err.message==='unauth'){ this.materials.loading=false; this.materials.loaded=true; return; } d=await this.api('/api/materials?limit=500'); }
+        catch(err){ if(err.message==='unauth'){ this.materials.loading=false; this.materials.loaded=true; this.materials.progText=''; return; } this.materials.progText='从缓存加载…'; d=await this.api('/api/materials?limit=500'); }
         this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
       }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.materials.loading=false; this.materials.loaded=true; this.materials.progText=''; },
@@ -149,8 +149,21 @@ const App={
     _syncHash(v){ try{ const want='#/'+v; if(location.hash!==want)location.hash=want; }catch(_){ } },
     _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catch(_){ } h=(h.split('?')[0]||'').split('/')[0]; return ['practice','wrong','favorite','books','bank','ingest','mock','stats','settings'].includes(h)?h:''; },
     onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
-    go(v){ this.view=v;
-      if(['practice','wrong','favorite'].includes(v)){ if(v==='practice'&&!this.meta.subjects.length)this.loadMeta(); if(this.sessionView!==v || !this.queue.length) this.startSession(); }
+    go(v){
+      const prev=this.view;
+      if(['practice','wrong','favorite'].includes(prev) && this.queue.length){
+        if(!this._qCache) this._qCache={};
+        this._qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), sv:prev, bo:this.batchDone, lo:this.loadedOnce };
+      }
+      this.view=v;
+      if(['practice','wrong','favorite'].includes(v)){
+        if(v==='practice'&&!this.meta.subjects.length)this.loadMeta();
+        const c=this._qCache && this._qCache[v];
+        if(c && c.q.length){
+          this.queue=c.q; this.qi=c.i; this.queueTotal=c.t; this.sessionAns=c.a; this.sessionView=v; this.batchDone=c.bo; this.loadedOnce=c.lo; this.loading=false;
+          delete this._qCache[v];
+        } else { this.startSession(); }
+      }
       if(v==='wrong'||v==='stats') this.loadStats();
       if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta(); this.loadBank(true); }
     },
