@@ -1,4 +1,6 @@
 const { createApp } = Vue;
+// 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
+let qCache = {};
 const App={
   mixins: [ApiMixin, ReaderMixin],
   components:{ QuestionCard, RichText },
@@ -106,14 +108,9 @@ const App={
     makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
     currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
     sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
-    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='正在请求…';
-      try{
-        let d;
-        try{ d=await this._fetchProgress('/api/materials?limit=500', m=>{ this.materials.progText=m; }); this._offPut('/api/materials?limit=500', d); }
-        catch(err){ if(err.message==='unauth'){ this.materials.loading=false; this.materials.loaded=true; this.materials.progText=''; return; } this.materials.progText='从缓存加载…'; d=await this.api('/api/materials?limit=500'); }
-        this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
-      }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
-      this.materials.loading=false; this.materials.loaded=true; this.materials.progText=''; },
+    async loadMaterials(){ if(!this.token)return; this.materials.loading=true; this.materials.progText='';
+      try{ const d=await this.api('/api/materials?limit=500'); this.materials.items=d.items||[]; this.materials.progText='已加载 '+(d.items||[]).length+' 段'; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
+      this.materials.loading=false; this.materials.loaded=true; },
     bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
     flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
     bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1); if(ni!==this.bookIdx)this.flashPageRender(); this.bookIdx=ni; this.bookTocOpen=false; },
@@ -152,16 +149,15 @@ const App={
     go(v){
       const prev=this.view;
       if(['practice','wrong','favorite'].includes(prev) && this.queue.length){
-        if(!this._qCache) this._qCache={};
-        this._qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), sv:prev, bo:this.batchDone, lo:this.loadedOnce };
+        qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
       }
       this.view=v;
       if(['practice','wrong','favorite'].includes(v)){
         if(v==='practice'&&!this.meta.subjects.length)this.loadMeta();
-        const c=this._qCache && this._qCache[v];
+        const c=qCache[v];
         if(c && c.q.length){
           this.queue=c.q; this.qi=c.i; this.queueTotal=c.t; this.sessionAns=c.a; this.sessionView=v; this.batchDone=c.bo; this.loadedOnce=c.lo; this.loading=false;
-          delete this._qCache[v];
+          delete qCache[v];
         } else { this.startSession(); }
       }
       if(v==='wrong'||v==='stats') this.loadStats();
