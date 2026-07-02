@@ -1,5 +1,5 @@
 const { createApp } = Vue;
-const APP_VER = 'v4.3';
+const APP_VER = 'v4.4';
 // 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
 let qCache = {};
 const App={
@@ -17,12 +17,12 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'',
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    stats:null, statsLoading:false,
+    stats:null, statsDirty:true, statsLoading:false, settFold:{ mineru:true, offline:true, subjects:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
     materials:{ subject:'all', items:[], loading:false, loaded:false }, loadProgMsg:'',
-    booksMode:'notes',
+    booksMode:'notes', bookFold:{},
     pageRendering:false,
     offline:false,
     offlineQueued:0,
@@ -94,7 +94,7 @@ const App={
     async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); } }catch(e){} },
     async subjAdd(){ const m=this.subjMgr; const code=String(m.code||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,''); const name=String(m.name||'').trim(); if(!code){ this.flash('科目代码只能用小写字母/数字/下划线',true); return; } if(!name){ this.flash('请填写科目名称',true); return; } m.busy=true; try{ await this.api('/api/subjects',{method:'POST',body:JSON.stringify({code,name,sort:Number(m.sort)||(this.subjects.length+1),keywords:m.keywords||''})}); this.flash('已新增科目「'+name+'」'); this.subjMgr={ code:'', name:'', sort:'', keywords:'', busy:false }; await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('新增失败：'+e.message,true); } m.busy=false; },
     async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:Number(s.sort)||0,keywords:s.keywords||''})}); this.flash('已保存「'+s.t+'」'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } },
-    async subjDelete(s){ const others=this.subjects.filter(x=>x.v!==s.v); let moveTo=''; if(confirm('删除科目「'+s.t+'」。\n\n点「确定」=同时把该科目下的题目转移到其他科目；点「取消」=只删科目、旧题保留原标记（下拉不再显示该科目）。')){ const names=others.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const pick=prompt('把「'+s.t+'」的题目转到哪个科目？输入序号：\n'+names); const idx=parseInt(pick,10)-1; if(others[idx])moveTo=others[idx].v; else { this.flash('序号无效，已取消',true); return; } } try{ await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,moveTo})}); this.flash('已删除科目「'+s.t+'」'+(moveTo?('，题目已转到「'+this.subjName(moveTo)+'」'):'')); await this.loadSubjects(); this.loadMeta&&this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+    async subjDelete(s){ const others=this.subjects.filter(x=>x.v!==s.v); let moveTo=''; if(confirm('删除科目「'+s.t+'」。\n\n点「确定」=同时把该科目下的题目转移到其他科目；点「取消」=只删科目、旧题保留原标记（下拉不再显示该科目）。')){ const names=others.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const pick=prompt('把「'+s.t+'」的题目转到哪个科目？输入序号：\n'+names); const idx=parseInt(pick,10)-1; if(others[idx])moveTo=others[idx].v; else { this.flash('序号无效，已取消',true); return; } } try{ await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,moveTo})}); this.flash('已删除科目「'+s.t+'」'+(moveTo?('，题目已转到「'+this.subjName(moveTo)+'」'):'')); await this.loadSubjects(); this.loadMeta&&this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
     guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
     async setBookSubject(subj){ const b=this.currentBook; if(!b)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.materials.loading=true; try{ for(const m of b.pages){ await this.saveOneMaterial({id:m.id,subject:subj,title:m.title,source:m.source||null,page:m.page||null,page_image:m.page_image||null,content_md:m.content_md,summary:m.summary||'',tags:Array.isArray(m.tags)?m.tags:[]}); } this.flash('已将《'+b.title+'》归到「'+this.subjName(subj)+'」'); await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('修改科目失败：'+e.message,true); } this.materials.loading=false; },
     rewriteMdImages(s){ return String(s||'').replace(/\]\(\s*\.?\/?public\//g,'](/').replace(/\]\(\s*textbooks-pages\//g,'](/textbooks-pages/').replace(/(<img[^>]*\bsrc=["'])\.?\/?public\//g,'$1/'); },
@@ -142,7 +142,7 @@ const App={
     async loadCfUsage(){ if(!this.token)return; try{ const res=await fetch('/api/cfocr',{headers:{'authorization':'Bearer '+this.token}}); const ct=res.headers.get('content-type')||''; if(ct.includes('json')){ const d=await res.json(); if(res.ok){ this.cfocr.used=d.used||0; this.cfocr.limit=d.limit||150; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; this.ai.hasCfAI=!!d.has_cf_ai; } } }catch(e){} },
     async cfocrOcrCanvas(cv){ const b64=cv.toDataURL('image/png').split(',')[1]; const body={image_b64:b64}; if((this.ingest.local.cfModel||'').trim().startsWith('@cf/'))body.model=this.ingest.local.cfModel.trim(); const res=await fetch('/api/cfocr',{method:'POST',headers:{'authorization':'Bearer '+this.token,'content-type':'application/json'},body:JSON.stringify(body)}); const ct=res.headers.get('content-type')||''; let d=null; if(ct.includes('json')){ try{ d=await res.json(); }catch(_){} } if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; throw new Error('unauth'); } if(res.status===404 || !ct.includes('json')){ const e=new Error('Workers AI 接口不可用：请确认已部署 functions/api/cfocr.js 并绑定 Workers AI（变量名 AI），然后重新部署。'); e.fatal=true; throw e; } if(d){ if(typeof d.used==='number')this.cfocr.used=d.used; if(typeof d.limit==='number')this.cfocr.limit=d.limit; if(d.budget)this.cfocr.budget=d.budget; if(d.npp)this.cfocr.npp=d.npp; } if(res.status===429){ const e=new Error((d&&d.error)||'今日免费额度已用完'); e.quota=true; throw e; } if(!res.ok){ const e=new Error((d&&d.error)||('Workers AI 失败 HTTP '+res.status)); if(/未绑定|绑定/.test(e.message))e.fatal=true; throw e; } return String((d&&d.text)||'').trim(); },
     saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问码',true); return; }
-      this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，可以开始使用'); this.loadSubjects(); this.loadMeta(); this.loadMaterials(); this.loadPdfShelf(); this.loadStats(); this.go('practice'); },
+      this.token=t; localStorage.setItem('zb_token',t); this.tokenInput=''; this.flash('已保存，可以开始使用'); this.loadSubjects(); this.loadMeta(true); this.loadMaterials(); this.loadPdfShelf(); this.go('practice'); },
     logout(){ this.token=''; localStorage.removeItem('zb_token'); this.view='settings'; this.flash('已退出登录'); },
     _onOnline(){ this._setOffline(false); },
     _onOffline(){ this._setOffline(true); },
@@ -152,7 +152,7 @@ const App={
       if(this.offlineSyncing)return; this.offlineSyncing=true; this.offlineSyncMsg='正在下载题目…';
       try{
         let questions=[], offset=0;
-        for(let i=0;i<400;i++){ const d=await this.api('/api/questions?mode=all&order=seq&limit=500&offset='+offset); const items=d.items||[]; questions=questions.concat(items); this.offlineSyncMsg='已下载题目 '+questions.length+' 道…'; if(items.length<500)break; offset+=items.length; }
+        for(let i=0;i<400;i++){ const d=await this.api('/api/questions?mode=all&order=seq&limit=500&offset='+offset+'&nocount=1'); const items=d.items||[]; questions=questions.concat(items); this.offlineSyncMsg='已下载题目 '+questions.length+' 道…'; if(items.length<500)break; offset+=items.length; }
         this.offlineSyncMsg='正在下载教材…';
         let materials=[]; try{ const d=await this.api('/api/materials?limit=2000'); materials=d.items||[]; }catch(_){ }
         await this._offBulkPut('questions', questions);
@@ -182,26 +182,26 @@ const App={
           this.filterLock=true; this.$nextTick(()=>{ this.filterLock=false; });
         } else { this.startSession(); }
       }
-      if(v==='wrong'||v==='stats') this.loadStats();
+      if(v==='stats' && this.statsDirty) this.loadStats();
       if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta(); this.loadBank(true); }
     },
     async loadBank(reset){ if(!this.token)return; if(reset){ this.bank.offset=0; this.bank.items=[]; this.bank.sel=[]; } this.bank.loading=true; try{ const p=new URLSearchParams(); if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject); if(this.bank.type)p.set('type',this.bank.type); if(this.bank.kw&&this.bank.kw.trim())p.set('q',this.bank.kw.trim()); p.set('order','seq'); p.set('mode','all'); p.set('limit',this.bank.limit); p.set('offset',this.bank.offset); const d=await this.api('/api/questions?'+p.toString()); this.bank.items = reset ? (d.items||[]) : this.bank.items.concat(d.items||[]); this.bank.total=d.total||this.bank.items.length; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.bank.loading=false; },
     bankMore(){ this.bank.offset+=this.bank.limit; this.loadBank(false); },
     bankToggle(id){ const i=this.bank.sel.indexOf(id); i>=0?this.bank.sel.splice(i,1):this.bank.sel.push(id); },
     bankAllOnPage(){ const ids=this.bank.items.map(q=>q.id); const allSel=ids.every(id=>this.bank.sel.includes(id)); this.bank.sel = allSel ? this.bank.sel.filter(id=>!ids.includes(id)) : Array.from(new Set(this.bank.sel.concat(ids))); },
-    async bankSetSubject(q,subj){ if(!q||!subj||subj===q.subject)return; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
-    async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); const si=this.bank.sel.indexOf(q.id); if(si>=0)this.bank.sel.splice(si,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-    async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
-    async bankBatchSubject(){ const ids=[...this.bank.sel]; const subj=this.bank.batchSubject; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!subj){ this.flash('请选择目标科目',true); return; } try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.subject=subj; }); this.flash('已将 '+(d.updated||ids.length)+' 题改为「'+this.subjName(subj)+'」'); this.bank.sel=[]; this.bank.batchSubject=''; this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('批量改科目失败：'+e.message,true); } },
+    async bankSetSubject(q,subj){ if(!q||!subj||subj===q.subject)return; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
+    async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); const si=this.bank.sel.indexOf(q.id); if(si>=0)this.bank.sel.splice(si,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+    async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
+    async bankBatchSubject(){ const ids=[...this.bank.sel]; const subj=this.bank.batchSubject; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!subj){ this.flash('请选择目标科目',true); return; } try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.subject=subj; }); this.flash('已将 '+(d.updated||ids.length)+' 题改为「'+this.subjName(subj)+'」'); this.bank.sel=[]; this.bank.batchSubject=''; this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改科目失败：'+e.message,true); } },
     async bankDedup(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('扫描整个题库，删除题干完全相同的重复题（每组只保留一道）。\n建议先备份。继续？'))return; this.bank.loading=true; try{
         let all=[]; let off=0; const lim=200; while(true){ const p=new URLSearchParams(); p.set('mode','all'); p.set('order','seq'); p.set('limit',lim); p.set('offset',off); const d=await this.api('/api/questions?'+p.toString()); const items=d.items||[]; all=all.concat(items); if(items.length<lim)break; off+=lim; if(off>40000)break; }
         const seen=new Set(); const dupIds=[]; for(const q of all){ const k=(q.subject||'')+'|'+String(q.stem||'').replace(/\s+/g,' ').trim(); if(seen.has(k))dupIds.push(q.id); else seen.add(k); }
         if(!dupIds.length){ this.flash('没有发现重复题（共 '+all.length+' 题）'); this.bank.loading=false; return; }
         if(!confirm('共扫描 '+all.length+' 题，发现 '+dupIds.length+' 道重复，将删除（每组保留第一道）。确认？')){ this.bank.loading=false; return; }
         let del=0; const CH=100; for(let i=0;i<dupIds.length;i+=CH){ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:dupIds.slice(i,i+CH)})}); del+=(d.deleted||dupIds.slice(i,i+CH).length); }
-        this.flash('已清理 '+del+' 道重复题'); this.loadMeta(); this.loadStats(); await this.loadBank(true);
+        this.flash('已清理 '+del+' 道重复题'); this.loadMeta(true); this.statsDirty=true; await this.loadBank(true);
       }catch(e){ if(e.message!=='unauth')this.flash('清理失败：'+e.message,true); } this.bank.loading=false; },
-    async bankAutoClassify(){ const changes={}; let n=0; for(const q of this.bank.items){ const opt=Array.isArray(q.options)?q.options.map(o=>o&&o.text).join(' '):''; const g=this.classifySubject([q.stem,q.chapter,opt].join('  ')); if(g&&g!==q.subject){ (changes[g]=changes[g]||[]).push(q); n++; } } if(!n){ this.flash('本页没有可自动纠正的题（特征不明确的不动）'); return; } if(!confirm('将按题干内容自动纠正本页 '+n+' 道题的科目（仅强特征命中的）。继续？'))return; try{ for(const subj of Object.keys(changes)){ const arr=changes[subj]; const ids=arr.map(q=>q.id); await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); arr.forEach(q=>q.subject=subj); } this.flash('已自动归类 '+n+' 题'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('智能归类失败：'+e.message,true); } },
+    async bankAutoClassify(){ const changes={}; let n=0; for(const q of this.bank.items){ const opt=Array.isArray(q.options)?q.options.map(o=>o&&o.text).join(' '):''; const g=this.classifySubject([q.stem,q.chapter,opt].join('  ')); if(g&&g!==q.subject){ (changes[g]=changes[g]||[]).push(q); n++; } } if(!n){ this.flash('本页没有可自动纠正的题（特征不明确的不动）'); return; } if(!confirm('将按题干内容自动纠正本页 '+n+' 道题的科目（仅强特征命中的）。继续？'))return; try{ for(const subj of Object.keys(changes)){ const arr=changes[subj]; const ids=arr.map(q=>q.id); await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); arr.forEach(q=>q.subject=subj); } this.flash('已自动归类 '+n+' 题'); this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('智能归类失败：'+e.message,true); } },
     bankOpenEdit(q){ this.bankEdit={ open:true, q, stem:q.stem||'', analysis:q.analysis||'', subject:q.subject||'', type:q.type||'', options:(Array.isArray(q.options)?q.options.map(o=>({key:o.key||'',text:o.text||''})):[]), answerText:(Array.isArray(q.answer)?q.answer.join(this.isChoiceType(q.type)?', ':'\n'):(q.answer||'')), busy:false }; },
     isChoiceType(t){ return t==='single_choice'||t==='multiple_choice'||t==='true_false'; },
     bankEditAddOpt(){ const keys=['A','B','C','D','E','F','G','H']; const used=new Set(this.bankEdit.options.map(o=>o.key)); const k=keys.find(x=>!used.has(x))||String(this.bankEdit.options.length+1); this.bankEdit.options.push({key:k,text:''}); },
@@ -211,8 +211,10 @@ const App={
       const isChoice=this.isChoiceType(e.type);
       const options=isChoice ? e.options.filter(o=>String(o.key).trim()).map(o=>({key:String(o.key).trim(),text:String(o.text||'').trim()})) : [];
       let answer; if(isChoice){ answer=String(e.answerText||'').split(/[,，、\s]+/).map(s=>s.trim()).filter(Boolean); if(e.type==='true_false')answer=answer.map(s=>/^(t|true|对|是|正确|√)$/i.test(s)?'T':(/^(f|false|错|否|错误|×)$/i.test(s)?'F':s.toUpperCase())); else answer=answer.map(s=>s.toUpperCase()); } else { const txt=String(e.answerText||'').trim(); answer=txt?[txt]:[]; }
-      try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[e.q.id],stem:e.stem,analysis:e.analysis,subject:e.subject,type:e.type,options,answer})}); e.q.stem=e.stem; e.q.analysis=e.analysis; e.q.subject=e.subject; e.q.type=e.type; e.q.options=options; e.q.answer=answer; this.flash('已保存'); this.loadMeta(); this.bankCloseEdit(); }catch(err){ if(err.message!=='unauth')this.flash('保存失败：'+err.message,true); } e.busy=false; },
-    async loadMeta(){ if(!this.token)return; try{ this.meta=await this.api('/api/questions?meta=1'); }catch(e){} },
+      try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[e.q.id],stem:e.stem,analysis:e.analysis,subject:e.subject,type:e.type,options,answer})}); e.q.stem=e.stem; e.q.analysis=e.analysis; e.q.subject=e.subject; e.q.type=e.type; e.q.options=options; e.q.answer=answer; this.flash('已保存'); this.loadMeta(true); this.bankCloseEdit(); }catch(err){ if(err.message!=='unauth')this.flash('保存失败：'+err.message,true); } e.busy=false; },
+    async loadMeta(force){ if(!this.token)return;
+      if(!force){ try{ const c=JSON.parse(localStorage.getItem('zb_meta_cache')||'null'); if(c&&c.ts&&Date.now()-c.ts<300000&&c.d){ this.meta=c.d; return; } }catch(_){} }
+      try{ const d=await this.api('/api/questions?meta=1'); this.meta=d; try{localStorage.setItem('zb_meta_cache',JSON.stringify({d,ts:Date.now()}));}catch(_){} }catch(e){} },
     qs(extra={}){ const p=new URLSearchParams();
       if(this.f.subject&&this.f.subject!=='all') p.set('subject',this.f.subject);
       if(this.f.chapter) p.set('chapter',this.f.chapter);
@@ -227,9 +229,12 @@ const App={
       if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
       const dedup=(arr)=>{ const m=new Map(); for(const q of (arr||[])){ if(q&&q.id!=null&&!m.has(q.id))m.set(q.id,q); } return [...m.values()]; };
       try{
-        const d=await this.api('/api/questions?'+this.qs({limit:30}));
+        const extra={limit:30}; if(keep)extra.nocount=1;
+        const d=await this.api('/api/questions?'+this.qs(extra));
         if(this.view!==forView){ this.loading=false; return; }
-        this.queue=dedup(d.items); this.queueTotal=(d.total!=null?d.total:this.queue.length); this.loadedOnce=true;
+        this.queue=dedup(d.items);
+        if(!keep || d.total>0) this.queueTotal=(d.total!=null&&d.total>=0?d.total:this.queue.length);
+        this.loadedOnce=true;
         this.qnavOpen=this.queue.length<=16;
         if(!this.queue.length)this.batchDone=true;
       }
@@ -240,8 +245,8 @@ const App={
     prev(){ if(this.qi>0)this.qi--; },
     qnavCls(q,i){ const c=[]; if(i===this.qi)c.push('cur'); const a=this.sessionAns[q.id]; if(a===true)c.push('ok'); else if(a===false)c.push('bad'); else if(q.mastered)c.push('ok'); else if(q.wrong_count>0)c.push('bad'); else if(q.right_count>0)c.push('done'); else c.push('un'); return c; },
     next(){ if(this.qi<this.queue.length-1)this.qi++; else this.startSession(true); },
-    async deleteCurrentQuestion(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true; this.flash('已删除本题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-    async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
+    async deleteCurrentQuestion(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true; this.flash('已删除本题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+    async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
     findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
     async onAnswered(p){ this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; } try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
     async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
@@ -266,19 +271,19 @@ const App={
       if((q.type==='single_choice'||q.type==='multiple_choice') && q.options.length<2){ this.flash('选择题至少需要 2 个选项',true); return; }
       if(!q.answer.length){ this.flash('请输入答案',true); return; }
       this.ingest.busy=true; this.ingest.result=null;
-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('已免费保存 1 题'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(); this.loadStats(); }
+      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('已免费保存 1 题'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(true); this.statsDirty=true; }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.ingest.busy=false;
     },
     onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ this.ingest.photoDataUrl=String(rd.result||''); this.ingest.photoUrl=this.ingest.photoDataUrl; this.ingest.tab='photo'; this.flash('图片已加载，可手动录入或调用 AI OCR'); }; rd.onerror=()=>this.flash('图片读取失败',true); rd.readAsDataURL(file); },
-    async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(); this.loadStats(); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
+    async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
     async doIngest(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.currentSource() };
       if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON parse failed: '+e.message,true); return; }
         if(!Array.isArray(arr)||!arr.length){ this.flash('请粘贴非空 JSON 数组',true); return; } body.questions=arr;
       } else { if(!this.ingest.raw.trim()){ this.flash('请先粘贴原始文本',true); return; } body.raw_text=this.ingest.raw; body.kind=this.ingest.kind; }
       this.ingest.busy=true; this.ingest.result=null;
-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(); this.loadStats(); this.loadMaterials();
+      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.loadMaterials();
         if(this.ingest.tab==='ai')this.ingest.raw=''; else this.ingest.json=''; }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.ingest.busy=false;
@@ -370,7 +375,7 @@ const App={
       this.ingest.local.busy=false; this.ingest.local.prog='';
     },
     async photoToMaterialLocal(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.inserted=0; this.ingest.result=null; let tess=null; try{ let text=''; if(this.ingest.local.engine==='relay'){ try{ this.ingest.local.prog='中转站视觉 OCR 识别中…'; const img=new Image(); img.src=this.ingest.photoDataUrl; await img.decode(); const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight; cv.getContext('2d').drawImage(img,0,0); text=await this.relayOcrCanvas(cv); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); if(e.fatal){ this.ingest.local.busy=false; this.ingest.local.prog=''; return; } } } else if(this.ingest.local.engine==='cfai'){ try{ this.ingest.local.prog='Workers AI 识别中（今日 '+this.cfocr.used+'/'+this.cfocr.limit+'）…'; const img=new Image(); img.src=this.ingest.photoDataUrl; await img.decode(); const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight; cv.getContext('2d').drawImage(img,0,0); text=await this.cfocrOcrCanvas(cv); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); if(e.quota||e.fatal){ this.ingest.local.busy=false; this.ingest.local.prog=''; return; } } } else if(this.ingest.local.engine==='scribe'){ try{ this.ingest.local.prog='Scribe.js 识别中（首次较慢）…'; const img=new Image(); img.src=this.ingest.photoDataUrl; await img.decode(); const cv=document.createElement('canvas'); cv.width=img.naturalWidth; cv.height=img.naturalHeight; cv.getContext('2d').drawImage(img,0,0); text=await this.scribeOcrCanvas(cv); }catch(e){ this.flash('Scribe.js 不可用，已回退 tesseract：'+e.message,true); this.ingest.local.engine='tesseract'; } } if(!text){ this.ingest.local.prog='tesseract 识别中（首次较慢）…'; tess=await this.ensureTesseract(); const r=await tess.recognize(this.ingest.photoDataUrl); text=String(r?.data?.text||'').trim(); } if(!text){ this.flash('未识别出文字',true); } else { const n=await this.saveMaterialsLocal(text,this.materialBaseTitle()); this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('本地 OCR 完成，已保存 '+n+' 段教材（未调用 AI）'); this.loadMaterials(); } }catch(e){ if(e.message!=='unauth')this.flash('本地 OCR 失败：'+e.message,true); } if(tess&&tess.terminate){ try{ await tess.terminate(); }catch(_){} } this.ingest.local.busy=false; this.ingest.local.prog=''; },
-    async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI){ this.flash('未配置 AI 中转站，无法生成题目',true); return; } this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(); this.loadStats(); }catch(e){ if(e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; },
+    async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI){ this.flash('未配置 AI 中转站，无法生成题目',true); return; } this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; },
     // —— 本地抽题（不花 AI）：把 MinerU/Markdown 里现成的「编号习题 + 解答」用规则解析成结构化题目 ——
     _fullToHalf(s){ return String(s||'').replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)); },
     mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,''); const lines=text.split('\n');
@@ -419,7 +424,7 @@ const App={
     async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
       try{ let inserted=0; const CH=40; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); this.bookExtract.done=Math.min(i+CH,arr.length); }
-        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'); this.loadMeta(); this.loadStats(); this.extractClose(); }
+        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'); this.loadMeta(true); this.statsDirty=true; this.extractClose(); }
       catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
     // —— 浏览器内 PDF 原书阅读（PDF.js 直接渲染原页，不做 OCR/转换）——
     async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
@@ -539,7 +544,7 @@ const App={
         for(let i=0;i<chunks.length;i++){ this.ingest.pdf.prog='正在结构化第 '+(i+1)+'/'+chunks.length+' 段（已导入 '+total+'）';
           try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),raw_text:chunks[i]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
           catch(e){ if(e.message==='unauth'){ this.ingest.pdf.busy=false; return; } } }
-        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('PDF 文本处理完成，已导入 '+total+' 题'); this.loadMeta(); this.loadStats();
+        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('PDF 文本处理完成，已导入 '+total+' 题'); this.loadMeta(true); this.statsDirty=true;
       }catch(e){ this.flash('Failed: '+e.message,true); }
       this.ingest.pdf.busy=false; },
     async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
@@ -552,10 +557,10 @@ const App={
           const page=await doc.getPage(p); const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',Number(this.ingest.pdf.quality)||0.72);
           const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),kind:this.ingest.kind,images:[dataUrl]})}); total+=(d.inserted_questions??d.inserted)||0; mats+=d.inserted_materials||0; this.ingest.pdf.inserted=total; this.ingest.pdf.done=(p-st+1); if(d.sample) samples.push(...d.sample);
         }
-        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(); this.loadStats(); this.loadMaterials();
+        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(true); this.statsDirty=true; this.loadMaterials();
       }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
       this.ingest.pdf.busy=false; },
-    async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
+    async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); this.statsDirty=false; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
     rate(r){ const t=(r.right_sum||0)+(r.wrong_sum||0); return t?Math.round((r.right_sum||0)/t*100):0; },
     async startMock(){ if(!this.token)return; this.mock.finished=false; this.mock.answers={}; this.loading=true;
       const limit=this.mock.objectiveOnly?Math.min(200,(this.mock.count||20)*3):(this.mock.count||20);
@@ -601,7 +606,7 @@ const App={
     this.mineruRefreshUsage();
     try{ if(localStorage.getItem('zb_mineru_tokenbad')==='1')this.mineruTokenBad=true; }catch(_){}
     try{ this.bookTocOpen = (typeof window!=='undefined') ? window.innerWidth>860 : true; }catch(_){}
-    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadStats(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession();
+    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession();
       try{ const bm=localStorage.getItem('zb_booksmode'); if(bm==='notes'||bm==='pdf')this.booksMode=bm; }catch(_){ }
       try{ const sb=localStorage.getItem('zb_bookid'); if(sb)this.currentBookId=sb; }catch(_){ }
       let startView=this._viewFromHash();
@@ -767,8 +772,8 @@ const App={
         <template v-if="pdfShelf.items.length">
           <template v-for="(list,sub) in pdfShelfBySubject()" :key="sub">
             <div v-if="list.length" class="bk-shelf">
-              <div class="bk-shelf-label">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
-              <div class="bk-grid">
+              <div class="bk-shelf-label fold-head" @click="bookFold['pdf_'+sub]=!bookFold['pdf_'+sub]"><span>{{ subjName(sub)==='other'? '其他' : subjName(sub) }} <span class="muted" style="font-weight:400;font-size:12px">{{ list.length }} 本</span></span><span class="fold-arrow" :class="{open:!bookFold['pdf_'+sub]}">▾</span></div>
+              <div v-show="!bookFold['pdf_'+sub]" class="bk-grid">
                 <div v-for="it in list" :key="it.id" class="bk-card" @click="openShelfPdf(it)">
                   <span class="spine"></span>
                   <span class="t">{{ it.title }}</span>
@@ -830,8 +835,8 @@ const App={
       <template v-else>
         <template v-for="(list,sub) in booksBySubject" :key="sub">
           <div v-if="list.length" class="bk-shelf">
-            <div class="bk-shelf-label">{{ subjName(sub)==='other'? '其他' : subjName(sub) }}</div>
-            <div class="bk-grid">
+            <div class="bk-shelf-label fold-head" @click="bookFold[sub]=!bookFold[sub]"><span>{{ subjName(sub)==='other'? '其他' : subjName(sub) }} <span class="muted" style="font-weight:400;font-size:12px">{{ list.length }} 本</span></span><span class="fold-arrow" :class="{open:!bookFold[sub]}">▾</span></div>
+            <div v-show="!bookFold[sub]" class="bk-grid">
               <button v-for="b in list" :key="b.key" class="bk-card" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">
                 <span class="spine"></span>
                 <span class="t">{{ b.title }}</span>
@@ -1242,7 +1247,8 @@ const App={
         <div class="hint" style="margin-top:16px">访问码是你在 Cloudflare Pages 控制台设置的 <code>APP_TOKEN</code> 环境变量。它用于保护数据并防止他人使用你的 AI 额度。仅存储在当前浏览器中。</div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div style="font-weight:700;font-size:15px;margin-bottom:4px">MinerU 配额与 Token</div>
+        <div class="fold-head" @click="settFold.mineru=!settFold.mineru"><span style="font-weight:700;font-size:15px">MinerU 配额与 Token</span><span class="fold-arrow" :class="{open:!settFold.mineru}">▾</span></div>
+        <div v-show="!settFold.mineru" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">用于限制导入页数、避免超出 MinerU 每日额度，并在 Token 快过期时提醒你。用量为<b>本工具本地统计</b>（按提交的页数估算），实际以 MinerU 后台为准；每天 0 点自动归零。</div>
         <div class="row" style="gap:12px;flex-wrap:wrap;margin-bottom:12px">
           <div class="field" style="flex:1;min-width:150px"><label>每日页数上限</label><input class="inp" type="number" min="0" v-model.number="mineruCfg.pageLimit" placeholder="1000" /></div>
@@ -1255,9 +1261,11 @@ const App={
           <button class="btn subtle xs" @click="mineruResetUsage">重置今日用量</button>
         </div>
         <div class="hint" style="margin-top:12px">设上限为 0 表示不限制。Token 到期后 MinerU <b>不支持续期</b>，需到控制台「API 管理 → 创建 Token」重建，再把新 Token 填到 Cloudflare Pages 环境变量 <code>MINERU_API_KEY</code> 并重新部署——这一步无法由应用自动完成。</div>
+        </div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div style="font-weight:700;font-size:15px;margin-bottom:4px">离线使用（地铁/通勤）</div>
+        <div class="fold-head" @click="settFold.offline=!settFold.offline"><span style="font-weight:700;font-size:15px">离线使用（地铁/通勤）</span><span class="fold-arrow" :class="{open:!settFold.offline}">▾</span></div>
+        <div v-show="!settFold.offline" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">把全部题目和教材一次性下载到本机，之后<b>彻底断网也能刷全部题、翻全部书、用筛选</b>。离线作答会排队，联网后自动补传。建议先「添加到主屏幕」装成 App 再用。</div>
         <div class="row" style="gap:12px;align-items:center">
           <button class="btn" :disabled="offlineSyncing || offline" @click="offlineSync"><span v-if="offlineSyncing" class="spin"></span>{{ offlineSyncing ? '下载中…' : '下载全部供离线使用' }}</button>
@@ -1266,10 +1274,11 @@ const App={
           <span v-else class="muted">尚未下载离线包</span>
         </div>
         <div class="hint" style="margin-top:12px">题库更新后想让离线包同步，重新点一次即可覆盖。离线包存在本机浏览器，换设备需各自下载。</div>
+        </div>
       </div>
-      <div class="muted" style="text-align:center;margin-top:24px;font-size:12px;opacity:.5">刷题文档 {{ appVer }}</div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div style="font-weight:700;font-size:15px;margin-bottom:4px">科目管理</div>
+        <div class="fold-head" @click="settFold.subjects=!settFold.subjects"><span style="font-weight:700;font-size:15px">科目管理</span><span class="fold-arrow" :class="{open:!settFold.subjects}">▾</span></div>
+        <div v-show="!settFold.subjects" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">在这里增删改科目;新增后,刷题、题库、导入等所有科目下拉会自动出现该科目。「关键词」用于导入与「智能归类」时自动判断科目(术语类,逗号分隔);代码 / 数学符号 / 英文等结构特征已内置在程序里,无需填写。</div>
         <div v-for="s in subjects" :key="s.v" class="subj-edit">
           <div class="subj-row">
@@ -1291,6 +1300,7 @@ const App={
           </div>
           <input class="inp" style="width:100%;margin-top:6px" v-model="subjMgr.keywords" placeholder="关键词，逗号分隔（可留空，之后也能改）" />
         </div>
+        </div>
       </div>
 
       <div class="card" style="max-width:520px;margin-top:14px">
@@ -1303,6 +1313,7 @@ const App={
         <label class="row" style="cursor:pointer"><input type="checkbox" v-model="stealth.autoHide" /> <span class="muted">窗口失焦时自动隐藏（返回时恢复）</span></label>
         <div class="hint" style="margin-top:14px">快速隐藏：点击眼睛图标，或按 <code>&#96;</code>（1 左侧的按键）。再次按下或点击即可恢复。隐藏时页面只显示“同步中…”。</div>
       </div>
+      <div class="muted" style="text-align:center;margin-top:28px;font-size:12px;opacity:.4">刷题文档 {{ appVer }}</div>
     </div>
 
   </div>

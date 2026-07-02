@@ -93,7 +93,7 @@ const ApiMixin = {
             else break; // 服务端错误：留着下次再补
           } catch (_) { break; } // 又断网了：停止
         }
-        if (done > 0) { this.offlineQueued = await this._offQueueCount(); this.flash('已补传 ' + done + ' 条离线作答记录'); this.loadStats && this.loadStats(); }
+        if (done > 0) { this.offlineQueued = await this._offQueueCount(); this.flash('已补传 ' + done + ' 条离线作答记录'); this.statsDirty = true; }
       } catch (_) {}
       this._flushing = false;
     },
