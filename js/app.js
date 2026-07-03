@@ -893,6 +893,7 @@ const App={
               </div>
               <button class="bk-toctoggle" @click="readerOpen" title="全屏沉浸阅读：可调字号、行距、主题，点两侧翻篇">📖 沉浸阅读</button>
               <input class="bk-jump inp" type="number" min="1" @keyup.enter="bookJumpPage($event.target.value)" placeholder="跳页" title="输入页码回车跳转" />
+              <button class="btn subtle" @click="currentBookId=''" style="flex:none">关闭</button>
             </div>
             <div class="bk-body">
               <div v-if="pageRendering" class="bk-loading"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载本页…</span></div>
