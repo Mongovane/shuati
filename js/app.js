@@ -80,7 +80,7 @@ const App={
     mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
     currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender(); },
     bookIdx(){ this.genq.result=null; },
-    booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
+    booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
   methods:{
     bookKeyOf(m){ const s=String(m.source||'').replace(/[-_\s]*P\d+\s*$/i,'').trim(); if(s)return s; const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t||'未命名教材'; },
@@ -242,6 +242,34 @@ const App={
       if(this.view===forView) this.loading=false;
     },
     srcBook(s){ const t=String(s||'').split(' · ')[0].trim(); return t || '未知来源'; },
+    cleanPageMd(md){
+      if(!md)return '';
+      const lines=md.split('\n');
+      // 去页眉：只处理前 3 行
+      let start=0;
+      for(let i=0;i<Math.min(3,lines.length);i++){
+        const ln=lines[i].trim();
+        if(!ln){ start=i+1; continue; }
+        // 纯数字页码
+        if(/^\d{1,4}$/.test(ln)){ start=i+1; continue; }
+        // 居中装饰 · XXX · 或 • XXX •
+        if(/^[·•]\s*[\u4e00-\u9fa5]+\s*[·•]$/.test(ln)){ start=i+1; continue; }
+        // 纯中文无标点（6-22字）——大概率是重复书名页眉
+        // 只在首 2 行检查，且必须 ≥6 字（避免误删短句如"解"、"证明"）
+        if(i<2 && /^[\u4e00-\u9fa5]{6,22}$/.test(ln)){ start=i+1; continue; }
+        break;
+      }
+      // 去脚注
+      let end=lines.length;
+      for(let i=lines.length-1;i>=Math.max(start,lines.length-6);i--){
+        const ln=lines[i].trim();
+        if(!ln){ end=i; continue; }
+        if(/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(ln)){ end=i; continue; }
+        if(/^\d{1,4}$/.test(ln)){ end=i; continue; }
+        break;
+      }
+      return lines.slice(start,end).join('\n').trim();
+    },
     prev(){ if(this.qi>0)this.qi--; },
     qnavCls(q,i){ const c=[]; if(i===this.qi)c.push('cur'); const a=this.sessionAns[q.id]; if(a===true)c.push('ok'); else if(a===false)c.push('bad'); else if(q.mastered)c.push('ok'); else if(q.wrong_count>0)c.push('bad'); else if(q.right_count>0)c.push('done'); else c.push('un'); return c; },
     next(){ if(this.qi<this.queue.length-1)this.qi++; else this.startSession(true); },
@@ -756,8 +784,7 @@ const App={
         <button :class="{on:booksMode==='notes'}" @click="booksMode='notes'">整理笔记</button>
         <button :class="{on:booksMode==='pdf'}" @click="booksMode='pdf'">PDF 原书</button>
       </div>
-      <div v-show="booksMode==='pdf' || pdfv.open">
-        <div v-show="booksMode==='pdf'">
+      <div v-show="booksMode==='pdf'">
         <p class="muted" style="margin-bottom:14px">选一个 PDF 在浏览器里直接渲染原版页面（公式/图表/排版原样，不转换）。「本地打开」仅本次有效；「上传到云端」会存到 R2，之后任何设备都能打开。</p>
         <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:14px">
           <label class="btn subtle" style="cursor:pointer">本地打开（仅本次）<input type="file" accept="application/pdf,.pdf" @change="pdfvOpenLocal" style="display:none" /></label>
@@ -784,7 +811,6 @@ const App={
             </div>
           </template>
         </template>
-        </div>
         <div v-if="pdfv.open" class="pdfv" style="margin-top:14px">
           <div class="pdfv-bar">
             <div class="ttl">{{ pdfv.title }}</div>
@@ -858,7 +884,7 @@ const App={
             <div class="bk-bar">
               <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" :title="bookTocOpen?'收起目录':'展开目录'">{{ bookTocOpen ? '⟨ 收起目录' : '☰ 目录' }}</button>
               <div style="flex:1;min-width:160px">
-                <div class="ttl">{{ currentPageMat.title }}</div>
+                <div class="ttl">{{ pageLabel(currentPageMat) }}</div>
                 <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
               </div>
               <div class="bk-nav">
@@ -873,7 +899,7 @@ const App={
               <template v-else>
                 <div v-if="currentPageMat.summary" class="summary">{{ currentPageMat.summary }}</div>
                 <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;border-radius:12px;border:1px solid var(--line);margin-bottom:16px" />
-                <rich-text :content="currentPageMat.content_md" />
+                <rich-text :content="cleanPageMd(currentPageMat.content_md)" />
                 <div v-if="genq.result" class="ref" style="margin-top:20px">
                   <h5>已生成 {{ genq.result.inserted_questions ?? genq.result.inserted ?? 0 }} 道题（进题库 · {{ subjName(currentPageMat.subject) }}）</h5>
                   <div v-for="(s,i) in (genq.result.sample||[])" :key="i" class="muted">· [{{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
