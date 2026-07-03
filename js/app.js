@@ -1351,17 +1351,17 @@ const App={
     <div class="r-scroll" ref="readerScroll" @click="readerTap" @touchstart.passive="readerTouchStart" @touchend.passive="readerTouchEnd">
       <div class="r-wrap">
         <div class="r-head">
-          <div class="rt">{{ currentPageMat.title }}</div>
+          <div class="rt">{{ pageLabel(currentPageMat) }}</div>
           <div class="rs">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
           <div v-if="currentPageMat.summary" class="rsum">{{ currentPageMat.summary }}</div>
         </div>
         <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;height:auto;display:block;margin:0 auto 18px;border-radius:10px;border:1px solid var(--rline);background:#fff;padding:6px" />
-        <rich-text :content="currentPageMat.content_md" :key="currentPageMat.id" />
+        <rich-text :content="cleanPageMd(currentPageMat.content_md)" :key="currentPageMat.id" />
       </div>
     </div>
     <div class="r-top">
       <button class="ricon" @click="readerClose" title="退出阅读">‹ 退出</button>
-      <div class="rttl">{{ currentBook.title }}</div>
+      <div class="rttl">{{ pageLabel(currentPageMat) }}</div>
       <button class="ricon" @click="reader.tocOpen=true" title="目录">☰</button>
       <button class="ricon" @click="reader.panel=!reader.panel; reader.barsHidden=false" title="字号 / 主题">Aa</button>
     </div>
