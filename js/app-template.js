@@ -8,14 +8,14 @@ const APP_TEMPLATE = `
   </div>
   <div class="tabs">
     <button class="tab" :class="{active:view==='practice'}" @click="go('practice')">Home</button>
-    <button class="tab" :class="{active:view==='books'}" @click="view='books'">Books</button>
+    <button class="tab" :class="{active:view==='books'}" @click=\"go('books')\">Books</button>
     <button class="tab" :class="{active:view==='wrong'}" @click="go('wrong')">Review<span v-if="wrongTotal" class="badge">{{ wrongTotal }}</span></button>
     <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">Saved</button>
-    <button class="tab" :class="{active:view==='mock'}" @click="view='mock'">Test</button>
+    <button class="tab" :class="{active:view==='mock'}" @click=\"go('mock')\">Test</button>
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
-    <button class="tab" :class="{active:view==='ingest'}" @click="view='ingest'">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click="view='settings'">Settings</button>
+    <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings</button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -122,7 +122,7 @@ const APP_TEMPLATE = `
             <div class="big">∅</div><p>没有匹配的题目。请调整筛选条件，或先导入题目。</p>
             <div class="row" style="justify-content:center;margin-top:14px">
               <button class="btn subtle" @click="startSession">重新加载</button>
-              <button class="btn" @click="view='ingest'">前往导入</button>
+              <button class="btn" @click=\"go('ingest')\">前往导入</button>
             </div>
           </template>
         </div>
@@ -209,7 +209,7 @@ const APP_TEMPLATE = `
       <template v-else-if="!materialBooks.length">
         <div class="empty">
           <p>还没有教材资料。去「导入」粘贴教材正文或上传教材 PDF，整理好的知识点会显示在这里。</p>
-          <button class="btn" @click="view='ingest'">去导入教材</button>
+          <button class="btn" @click=\"go('ingest')\">去导入教材</button>
         </div>
       </template>
       <template v-else>
@@ -418,7 +418,7 @@ const APP_TEMPLATE = `
           <div class="stat"><div class="n" style="color:var(--bad)">{{ statTotals.wrongOpen }}</div><div class="l">待复习</div></div>
           <div class="stat"><div class="n" style="color:var(--ok)">{{ statTotals.mastered }}</div><div class="l">已掌握</div></div>
         </div>
-        <div v-if="!statTotals.totalQ" class="empty"><p>暂无题目。请到导入页面添加题目。</p><button class="btn" @click="view='ingest'">前往导入</button></div>
+        <div v-if="!statTotals.totalQ" class="empty"><p>暂无题目。请到导入页面添加题目。</p><button class="btn" @click=\"go('ingest')\">前往导入</button></div>
         <template v-else>
           <h3 style="margin:6px 0 12px">按科目统计正确率</h3>
           <div v-for="r in stats.bySubject" :key="r.subject" class="subj-row">

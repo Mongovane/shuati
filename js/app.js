@@ -106,7 +106,11 @@ go(v){
       if(['practice','wrong','favorite'].includes(v)){
         if(v==='practice'&&!this.meta.subjects.length)this.loadMeta();
         const c=qCache[v];
-        if(c && c.q.length){
+        if(this.sessionView===v && this.queue.length){
+          // 内存里就是本视图的活会话（比任何缓存快照都新，如「错题回顾」直接写入的队列）：
+          // 原地保留当前题目与作答进度，并丢弃已过期的缓存快照
+          this.loading=false; delete qCache[v];
+        } else if(c && c.q.length){
           this.queue=c.q; this.qi=c.i; this.queueTotal=c.t; this.sessionAns=c.a; this.sessionView=v; this.batchDone=c.bo; this.loadedOnce=c.lo; this.loading=false;
           delete qCache[v];
           this.filterLock=true; this.$nextTick(()=>{ this.filterLock=false; });
