@@ -1,7 +1,7 @@
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next'],
+  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, examReveal:Boolean },
+  emits:['answered','favorite','master','note','next','ai-explain','ai-save'],
   data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteDraft:'' }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
@@ -79,6 +79,14 @@ const QuestionCard={
         <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ 错误</button>
       </div>
       <div v-if="q.analysis" class="ref" style="margin-top:10px"><h5>解析</h5><rich-text :content="q.analysis" /></div>
+      <div v-if="canAi || aiText || aiBusy" class="ref" style="margin-top:10px">
+        <h5>AI 解析 <span v-if="aiBusy" class="spin"></span><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
+        <rich-text v-if="aiText" :content="aiText" />
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn subtle" v-if="!aiBusy" @click="$emit('ai-explain')">{{ aiText ? '↻ 重新生成' : '✨ AI 解析本题' }}</button>
+          <button class="btn subtle" v-if="aiText && !aiBusy" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 保存进解析</button>
+        </div>
+      </div>
       <button class="note-toggle" @click="showNote=!showNote">{{ showNote?'隐藏笔记':(q.note?'查看 / 编辑笔记':'+ 添加笔记') }}</button>
       <div v-if="showNote" style="margin-top:8px">
         <textarea v-model="noteDraft" style="min-height:80px" placeholder="记下易错点或记忆口诀…"></textarea>

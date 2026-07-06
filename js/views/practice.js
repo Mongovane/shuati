@@ -69,4 +69,48 @@ async onAnswered(p){ this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak
 async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
 async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
 async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){} }
+
+,
+async aiExplain(){ const q=this.cur; if(!q)return;
+  if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+  if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
+  const ctrl=new AbortController(); this._aiCtrl=ctrl;
+  this.aiX={ id:q.id, text:'', busy:true };
+  try{
+    const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
+      headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
+      body:JSON.stringify({ question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }) });
+    if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
+    const ct=res.headers.get('content-type')||'';
+    if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
+    if(ct.includes('text/event-stream') && res.body){
+      // —— SSE 流式：边到边渲染 ——
+      const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+      while(true){ const {done,value}=await reader.read(); if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+          if(!line.startsWith('data:'))continue; const payload=line.slice(5).trim();
+          if(!payload || payload==='[DONE]')continue;
+          let j=null; try{ j=JSON.parse(payload); }catch(_){ continue; }
+          if(j.error) throw new Error(j.error.message||String(j.error));
+          const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+          if(t && this.aiX.id===q.id) this.aiX.text+=t;
+        } }
+    } else {
+      // —— 一次性 JSON 降级 ——
+      const d=await res.json(); if(d.error)throw new Error(d.error);
+      if(this.aiX.id===q.id) this.aiX.text=d.text||'';
+    }
+    if(this.aiX.id===q.id && !this.aiX.text) throw new Error('模型没有返回内容，可换个模型再试');
+  }catch(e){ if(e.name!=='AbortError' && this.aiX.id===q.id) this.flash('AI 解析失败：'+e.message,true); }
+  if(this.aiX.id===q.id) this.aiX.busy=false;
+  if(this._aiCtrl===ctrl) this._aiCtrl=null;
+},
+async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this.aiX.text)return;
+  const merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();
+  try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],analysis:merged})});
+    q.analysis=merged; this.aiX={id:'',text:'',busy:false}; this.bankDirty=true; this.flash('已保存进本题解析');
+  }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); }
+}
+
 } };
