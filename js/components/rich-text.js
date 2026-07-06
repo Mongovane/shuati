@@ -4,6 +4,9 @@ const RichText={
   computed:{ html(){ if(!this.content)return''; const raw=String(this.content);
     try{
       const math=[]; let src=raw;
+      // AI/教材常用 \[...\] 与 \(...\) 作为公式定界符，但 marked 会把 \[ \, 等当转义符吃掉，
+      // 导致公式以裸文本漏出（如 "\int \frac{x^4}{25+4x^2},dx"）。先归一化成 KaTeX 认的 $ / $$：
+      src=src.replace(/\\\[([\s\S]+?)\\\]/g,(m,t)=>'\n$$ '+t.replace(/\s*\n\s*/g,' ').trim()+' $$\n').replace(/\\\(([\s\S]+?)\\\)/g,(m,t)=>'$'+t.replace(/\s*\n\s*/g,' ').trim()+'$');
       // MinerU 有时把公式当普通文本输出（没有 $ 包裹）→ 把连续的“裸 LaTeX 行”自动包成 $$…$$
       { const L=src.split('\n'); const o=[]; let run=[];
         const isTex=(l)=>{ const t=l.trim(); if(!t)return false; if(/\$/.test(t))return false; const tc=t.replace(/\\text\s*\{[^}]*\}/g,''); if(/[\u4e00-\u9fa5]/.test(tc))return false; if(/^[#>|]/.test(t)||/^!\[/.test(t)||/^<\w/.test(t)||/^\uE000/.test(t))return false; return /\\[a-zA-Z]{2,}|[\^_]\s*\{|\\frac|\\sqrt|\\begin|\\mid|\\left|\\right|\\overrightarrow|\\boldsymbol|\\quad|\\times|\\cdot/.test(t); };

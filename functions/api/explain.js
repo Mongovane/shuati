@@ -27,7 +27,7 @@ export async function onRequestPost({ request, env }) {
   const ans = Array.isArray(q.answer) ? q.answer.join('；') : (q.answer == null ? '' : String(q.answer));
   if (ans.trim()) parts.push('【参考答案】\n' + ans.slice(0, 3000));
 
-  const sys = '你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份详细解析，使用 Markdown，数学公式一律用 $...$ 或 $$...$$（KaTeX 语法）。结构：先用一两句话点明「思路」；然后分步推导（关键步骤要交代依据，如用到的定理/公式）；最后给出「易错点」。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。';
+  const sys = '你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份详细解析，使用 Markdown，数学公式一律用 $...$（行内）或 $$...$$（独立行）作为定界符，严禁使用 \\( \\) 与 \\[ \\]。结构：先用一两句话点明「思路」；然后分步推导（关键步骤要交代依据，如用到的定理/公式）；最后给出「易错点」。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。';
 
   const base = env.AI_BASE_URL.replace(/\/+$/, '');
   const payload = {

@@ -78,8 +78,7 @@ const QuestionCard={
         <button class="btn subtle" :style="self===true?'border-color:var(--ok);color:var(--ok)':''" @click="grade(true)">✓ 正确</button>
         <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ 错误</button>
       </div>
-      <div v-if="q.analysis" class="ref" style="margin-top:10px"><h5>解析</h5><rich-text :content="q.analysis" /></div>
-      <div v-if="canAi || aiText || aiBusy" class="ref" style="margin-top:10px">
+            <div v-if="canAi || aiText || aiBusy" class="ref" style="margin-top:10px">
         <h5>AI 解析 <span v-if="aiBusy" class="spin"></span><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <rich-text v-if="aiText" :content="aiText" />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">

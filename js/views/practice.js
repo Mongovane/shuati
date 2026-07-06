@@ -109,7 +109,7 @@ async aiExplain(){ const q=this.cur; if(!q)return;
 async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this.aiX.text)return;
   const merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();
   try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],analysis:merged})});
-    q.analysis=merged; this.aiX={id:'',text:'',busy:false}; this.bankDirty=true; this.flash('已保存进本题解析');
+    q.analysis=merged; this.bankDirty=true; this.flash('已保存进本题解析（可在 Bank 编辑中查看）');
   }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); }
 }
 
