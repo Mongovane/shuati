@@ -152,9 +152,16 @@ export async function onRequestPost({ request, env }) {
   try {
     if (cleanedQ.length) {
       await ensureQuestionsSchema(env);
-      const sql = `INSERT OR REPLACE INTO questions
+      // UPSERT 而非 OR REPLACE：保留 rowid/created_at 与关联的 progress 学习进度
+      // （OR REPLACE = 先删后插，外键级联会顺带清掉该题的错题/收藏记录），且能正确触发 FTS 索引更新
+      const sql = `INSERT INTO questions
         (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags, page)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET
+          subject=excluded.subject, chapter=excluded.chapter, type=excluded.type,
+          difficulty=excluded.difficulty, source=excluded.source, passage=excluded.passage,
+          stem=excluded.stem, options=excluded.options, answer=excluded.answer,
+          analysis=excluded.analysis, tags=excluded.tags, page=excluded.page`;
       await env.DB.batch(cleanedQ.map((q) =>
         env.DB.prepare(sql).bind(
           q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,

@@ -1,4 +1,4 @@
-import { json, checkAuth, rowToQuestion, ensureSrsSchema } from './_utils.js';
+import { json, checkAuth, rowToQuestion, ensureSrsSchema, ensureFts, ftsQuote } from './_utils.js';
 
 export async function onRequestGet({ request, env }) {
   const auth = await checkAuth(request, env);
@@ -37,7 +37,6 @@ export async function onRequestGet({ request, env }) {
   if (subject && subject !== 'all') { where.push('q.subject = ?'); binds.push(subject); }
   if (chapter) { where.push('q.chapter = ?'); binds.push(chapter); }
   if (type) { where.push('q.type = ?'); binds.push(type); }
-  if (search) { where.push('(q.stem LIKE ? OR q.chapter LIKE ?)'); binds.push(`%${search}%`, `%${search}%`); }
 
   if (mode === 'wrong') where.push('pr.wrong_count > 0 AND IFNULL(pr.mastered, 0) = 0');
   else if (mode === 'favorite') where.push('IFNULL(pr.favorited, 0) = 1');
@@ -45,14 +44,29 @@ export async function onRequestGet({ request, env }) {
   else if (mode === 'unseen') where.push('pr.question_id IS NULL');
   else if (mode === 'due') where.push('IFNULL(pr.mastered, 0) = 0 AND pr.due_at IS NOT NULL AND pr.due_at <= unixepoch()');
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  // —— 关键词检索：优先 FTS5 trigram（题量过万时 LIKE 全表扫极费 D1 读配额）——
+  // trigram 只能命中 ≥3 字符的子串；短词、FTS 不可用、或 MATCH 出错时回退 LIKE
+  const kw = (search || '').trim();
+  let ftsTry = false;
+  if (kw) ftsTry = kw.length >= 3 && (await ensureFts(env)) === 'ok';
+  const withSearch = (useFts) => {
+    if (!kw) return { w: where, b: binds };
+    const w = [...where], b = [...binds];
+    if (useFts) { w.push('q.rowid IN (SELECT rowid FROM questions_fts WHERE questions_fts MATCH ?)'); b.push(ftsQuote(kw)); }
+    else { w.push('(q.stem LIKE ? OR q.chapter LIKE ?)'); b.push(`%${kw}%`, `%${kw}%`); }
+    return { w, b };
+  };
+
   const baseSelect = `SELECT q.*, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.due_at, pr.note AS user_note
                       FROM questions q
                       LEFT JOIN progress pr ON pr.question_id = q.id`;
-  const countSql = `SELECT COUNT(*) AS total FROM questions q
-                    LEFT JOIN progress pr ON pr.question_id = q.id ${whereSql}`;
 
-  try {
+  const run = async (useFts) => {
+    const { w, b } = withSearch(useFts);
+    const where = w, binds = b;
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const countSql = `SELECT COUNT(*) AS total FROM questions q
+                    LEFT JOIN progress pr ON pr.question_id = q.id ${whereSql}`;
     let rows, total;
     if (order === 'random' && !where.length) {
       // 全表无筛选时的高效随机：随机取一个 rowid 阈值，从该点起按 rowid 顺序取 limit 条，不足则从头补齐，再打乱。
@@ -88,7 +102,17 @@ export async function onRequestGet({ request, env }) {
       ]);
       rows = list.results; total = cnt?.total ?? rows.length;
     }
-    return json({ items: rows.map(rowToQuestion), total });
+    return { rows, total };
+  };
+
+  try {
+    let out;
+    try { out = await run(ftsTry); }
+    catch (e) {
+      if (!ftsTry) throw e;
+      out = await run(false); // FTS 查询异常（索引损坏等罕见情况）：降级 LIKE 保功能
+    }
+    return json({ items: out.rows.map(rowToQuestion), total: out.total });
   } catch (e) {
     return json({ error: '查询失败：' + e.message }, 500);
   }

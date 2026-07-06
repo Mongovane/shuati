@@ -95,6 +95,49 @@ export async function ensureSrsSchema(env) {
   _srsReady = true;
 }
 
+// —— FTS5 全文检索（trigram 分词，支持中文子串）——
+// 免费额度设计：
+//   · 外部内容表（content='questions'）：索引不重复存正文，只存 trigram posting，省 D1 存储
+//   · 首次搜索时才建表 + rebuild 回填一次（读全表一次，之后由触发器增量维护，不再全表扫）
+//   · 平台不支持 trigram / FTS5 时优雅降级：标记 'no'，调用方回退 LIKE
+// 'unknown' | 'ok' | 'no'
+let _ftsState = 'unknown';
+export async function ensureFts(env) {
+  if (_ftsState !== 'unknown' || !env.DB) return _ftsState;
+  try {
+    const t = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='questions_fts'`
+    ).first();
+    if (!t) {
+      await env.DB.prepare(
+        `CREATE VIRTUAL TABLE questions_fts USING fts5(stem, analysis, chapter,
+           content='questions', content_rowid='rowid', tokenize='trigram')`
+      ).run();
+    }
+    // 触发器幂等创建（表已存在也补齐，防止半初始化状态）
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS trg_qfts_i AFTER INSERT ON questions BEGIN
+      INSERT INTO questions_fts(rowid, stem, analysis, chapter) VALUES (new.rowid, new.stem, new.analysis, new.chapter); END`).run();
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS trg_qfts_d AFTER DELETE ON questions BEGIN
+      INSERT INTO questions_fts(questions_fts, rowid, stem, analysis, chapter) VALUES('delete', old.rowid, old.stem, old.analysis, old.chapter); END`).run();
+    await env.DB.prepare(`CREATE TRIGGER IF NOT EXISTS trg_qfts_u AFTER UPDATE ON questions BEGIN
+      INSERT INTO questions_fts(questions_fts, rowid, stem, analysis, chapter) VALUES('delete', old.rowid, old.stem, old.analysis, old.chapter);
+      INSERT INTO questions_fts(rowid, stem, analysis, chapter) VALUES (new.rowid, new.stem, new.analysis, new.chapter); END`).run();
+    if (!t) {
+      // 一次性回填已有题目（老库升级路径）；之后全靠触发器增量同步
+      await env.DB.prepare(`INSERT INTO questions_fts(questions_fts) VALUES('rebuild')`).run();
+    }
+    _ftsState = 'ok';
+  } catch (_) {
+    _ftsState = 'no'; // FTS5/trigram 不可用：调用方回退 LIKE，功能不受影响
+  }
+  return _ftsState;
+}
+
+// FTS5 关键词安全引用：整词短语匹配，防注入查询语法
+export function ftsQuote(kw) {
+  return '"' + String(kw).replace(/"/g, '""') + '"';
+}
+
 // 把数据库行还原成前端可用的题目对象
 export function rowToQuestion(r) {
   const parse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };

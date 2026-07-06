@@ -130,3 +130,12 @@ CREATE TABLE IF NOT EXISTS auth_fails (
   n  INTEGER DEFAULT 0,
   ts INTEGER
 );
+
+-- 【全文检索 FTS5（trigram，中文子串可搜）—— 由后端自动管理，无需手动执行】
+-- 首次在题库页使用关键词搜索时，后端会自动：
+--   1. CREATE VIRTUAL TABLE questions_fts ... tokenize='trigram'（外部内容表，不重复存正文）
+--   2. 建三个触发器让索引随题目增删改自动同步
+--   3. 执行一次 rebuild 回填已有题目
+-- 若运行环境不支持 FTS5/trigram，会自动回退 LIKE 检索，功能不受影响。
+-- 免费额度参考：索引为一次性构建 + 增量维护；搜索从 LIKE 的全表扫描（万题级=每次上万行读）
+-- 降为只读命中 posting，读配额大幅下降；导入题目时的额外行写入远在每日 10 万写限额之内。
