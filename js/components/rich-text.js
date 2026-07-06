@@ -6,6 +6,12 @@ const RichText={
       const math=[]; let src=raw;
       // AI/教材常用 \[...\] 与 \(...\) 作为公式定界符，但 marked 会把 \[ \, 等当转义符吃掉，
       // 导致公式以裸文本漏出（如 "\int \frac{x^4}{25+4x^2},dx"）。先归一化成 KaTeX 认的 $ / $$：
+      // 代码保护：``` 围栏与 `行内代码` 里的 $$ / \[ / ** 都不是排版语法，整体摘成占位符，
+      // 待全部数学/粗体预处理结束后原样放回（marked 仍能正常渲染代码块）
+      const fences=[]; src=src.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`/g,(m)=>{ fences.push(m); return '\uE100'+(fences.length-1)+'\uE101'; });
+      // 模型最常见的块级公式写法是 $$ 独占一行（$$\n公式\n$$），而提取器按单行配对，
+      // 会把两个 $$ 行各自配成空公式、让中间的 LaTeX 裸奔——先压成单行：
+      src=src.replace(/\$\$[ \t]*\n([\s\S]+?)\n[ \t]*\$\$/g,(m,t)=>'\n$$ '+t.replace(/\s*\n\s*/g,' ').trim()+' $$\n');
       src=src.replace(/\\\[([\s\S]+?)\\\]/g,(m,t)=>'\n$$ '+t.replace(/\s*\n\s*/g,' ').trim()+' $$\n').replace(/\\\(([\s\S]+?)\\\)/g,(m,t)=>'$'+t.replace(/\s*\n\s*/g,' ').trim()+'$');
       // 粗体加固：模型可能写出紧贴中文标点/序号的 **……**，个别 marked 版本按侧翼规则拒绝配对导致 ** 漏出。
       // 在数学占位之后、marked 之前做确定性转换；跳过 ``` 围栏与 `行内代码`（避免破坏 C 代码里的 **p）。
@@ -34,6 +40,7 @@ const RichText={
       src=src.replace(/^[ \t>]{0,4}(\d{1,3})[.．、][ \t]+(.+)$/gm,(m,n,rest)=>'<div class="prob"><span class="pn">'+n+'.</span>'+rest+'</div>');
       // 形如「图8-1 / 表 8-2」的独立文本，渲成居中图注
       src=src.replace(/^[ \t]*((?:图|表)\s?\d+(?:[-－.]\d+)*)\s*$/gm,(m,c)=>'<p class="figcap">'+c+'</p>');
+      src=src.replace(/\uE100(\d+)\uE101/g,(m,i)=>fences[+i]!==undefined?fences[+i]:m); // 放回代码
       let out=marked.parse(src);
       // XSS 防线：题目/教材可能来自网上的第三方 JSON，先消毒 marked 产物；
       // KaTeX 的占位符是私有区字符，能安全穿过消毒；KaTeX 本身输出为转义后的安全 HTML，在消毒后注入。
