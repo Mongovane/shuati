@@ -57,8 +57,14 @@ CREATE TABLE IF NOT EXISTS progress (
 CREATE INDEX IF NOT EXISTS idx_pr_mastered  ON progress(mastered);
 CREATE INDEX IF NOT EXISTS idx_pr_favorited ON progress(favorited);
 CREATE INDEX IF NOT EXISTS idx_pr_wrong     ON progress(wrong_count);
-CREATE INDEX IF NOT EXISTS idx_pr_due       ON progress(due_at);
--- 注：老库升级不需要手动 ALTER——后端会在首次访问时自动补上 due_at/interval_days/ease 三列。
+-- 注意：idx_pr_due（ON progress(due_at)）不在本脚本里——老库的 progress 表还没有 due_at 列，
+-- 在这里建索引会让整个脚本中断。该索引与 due_at/interval_days/ease 三列均由后端在
+-- 首次 API 请求时自动补齐（functions/api/_utils.js 的 ensureSrsSchema），新库老库都无需手动处理。
+-- 若想手动补（可选，老库一次性）：
+--   ALTER TABLE progress ADD COLUMN due_at INTEGER;
+--   ALTER TABLE progress ADD COLUMN interval_days REAL DEFAULT 0;
+--   ALTER TABLE progress ADD COLUMN ease REAL DEFAULT 2.5;
+--   CREATE INDEX IF NOT EXISTS idx_pr_due ON progress(due_at);
 
 -- 模拟考成绩记录（用于追踪进步曲线）
 CREATE TABLE IF NOT EXISTS mock_results (
