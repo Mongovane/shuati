@@ -13,7 +13,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">Saved</button>
     <button class="tab" :class="{active:view==='mock'}" @click="view='mock'">Test</button>
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
-    <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">题库</button>
+    <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click="view='ingest'">Import</button>
     <button class="tab" :class="{active:view==='settings'}" @click="view='settings'">Settings</button>
   </div></div>
@@ -345,6 +345,7 @@ const APP_TEMPLATE = `
         <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
         <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
         <button class="btn subtle" v-if="bank.items.length" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）">🪄 智能归类(本页)</button>
+        <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表">🔄 刷新</button>
         <button class="btn subtle" v-if="bank.total" @click="bankDedup" title="扫描整个题库，删除题干完全相同的重复题（每组保留一道）">🧹 清理重复</button>
         <template v-if="bank.sel.length">
           <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>

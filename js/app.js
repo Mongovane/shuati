@@ -17,7 +17,7 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'',
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    stats:null, statsDirty:true, statsLoading:false, settFold:{ mineru:true, offline:true, subjects:true },
+    stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ mineru:true, offline:true, subjects:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
@@ -113,7 +113,9 @@ go(v){
         } else { this.startSession(); }
       }
       if(v==='stats' && this.statsDirty) this.loadStats();
-      if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta(); this.loadBank(true); }
+      if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta();
+        // 惰性加载：仅首次进入或数据改动过(bankDirty)才重拉；单纯来回切导航不再刷新（保住滚动/翻页/勾选）
+        if(this.bankDirty){ this.bankDirty=false; this.loadBank(true); } }
     },
 sleep(ms){ return new Promise(r=>setTimeout(r,ms)); },
 typeName(t){ return ({single_choice:'单选',multiple_choice:'多选',true_false:'判断',fill_blank:'填空',short_answer:'简答',code:'代码'})[t]||t; },
