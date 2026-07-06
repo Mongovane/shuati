@@ -135,6 +135,7 @@ onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
 onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
   },
   mounted(){ try{ window.__hideSplash&&window.__hideSplash(); }catch(_){}
+    try{ console.log('[shuati] 前端版本 '+APP_VERSION); }catch(_){}
     document.documentElement.dataset.theme=this.theme; document.title=this.appName;
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('blur', this.onBlur);
