@@ -5,21 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>刷题文档</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='3' width='16' height='18' rx='3' fill='%234b5563'/%3E%3Crect x='7' y='7' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='11' width='10' height='1.6' rx='.8' fill='%23ffffff'/%3E%3Crect x='7' y='15' width='6' height='1.6' rx='.8' fill='%23ffffff'/%3E%3C/svg%3E" />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sacramento&display=block" rel="stylesheet">
 <style>
 html,body{margin:0;background:#F5F6F2}
 [data-theme=dark] body,[data-theme=dark]{background:#10141B}
 #splash{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#F5F6F2;transition:opacity .5s ease,visibility .5s ease}
 [data-theme=dark] #splash{background:#10141B}
 #splash.out{opacity:0;visibility:hidden;pointer-events:none}
-.sp-w{font-family:'Sacramento',cursive;font-size:clamp(56px,14vw,88px);color:#2E45C4;white-space:nowrap;letter-spacing:3px;opacity:0;clip-path:inset(0 100% 0 0);animation:spR 1.4s .3s cubic-bezier(.22,.61,.36,1) forwards}
+.sp-w{font-family:'Snell Roundhand','Segoe Script','Brush Script MT','Xingkai SC','STXingkai',cursive;font-size:clamp(56px,14vw,88px);color:#2E45C4;white-space:nowrap;letter-spacing:3px;opacity:0;clip-path:inset(0 100% 0 0);animation:spR 1.4s .3s cubic-bezier(.22,.61,.36,1) forwards}
 [data-theme=dark] .sp-w{color:#6B8AFF}
 @keyframes spR{to{opacity:1;clip-path:inset(0 0 0 0)}}
 </style>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=9">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" media="print" onload="this.media='all'" />
 <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" /></noscript>
 <link rel="manifest" href="manifest.json">
@@ -33,19 +30,25 @@ html,body{margin:0;background:#F5F6F2}
 </head>
 <body>
 <div id="splash"><div class="sp-w">Vane</div></div>
-<script>setTimeout(function(){var s=document.getElementById('splash');if(s)s.classList.add('out')},5000);</script>
+<script>
+(function(){var done=false;function hide(){if(done)return;done=true;var s=document.getElementById('splash');if(s)s.classList.add('out');}
+window.__hideSplash=hide;                 /* app.js mounted 后立即调用 */
+setTimeout(hide,1600);                    /* 兜底：即使应用挂载失败也不久等 */
+})();
+</script>
 <div id="app"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
-<script src="js/constants.js?v=8"></script>
-<script src="js/components/rich-text.js?v=8"></script>
-<script src="js/components/question-card.js?v=8"></script>
-<script src="js/api.js?v=8"></script>
-<script src="js/components/reader.js?v=8"></script>
-<script src="js/app.js?v=8"></script>
+<script src="js/constants.js?v=9"></script>
+<script src="js/components/rich-text.js?v=9"></script>
+<script src="js/components/question-card.js?v=9"></script>
+<script src="js/api.js?v=9"></script>
+<script src="js/components/reader.js?v=9"></script>
+<script src="js/app.js?v=9"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){

@@ -49,7 +49,7 @@ async function loadSubjectList(env) {
 const VALID_KINDS = ['auto', 'questions', 'material'];
 
 export async function onRequestPost({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
 
   let body;

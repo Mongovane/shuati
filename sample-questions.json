@@ -1,0 +1,126 @@
+[
+  {
+    "subject": "computer",
+    "chapter": "C语言-指针",
+    "type": "single_choice",
+    "difficulty": 3,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "设有定义 `int a = 5, *p = &a;`，下列表达式中与 `a` 等价的是（ ）",
+    "options": [
+      { "key": "A", "text": "`p`" },
+      { "key": "B", "text": "`*p`" },
+      { "key": "C", "text": "`&p`" },
+      { "key": "D", "text": "`**p`" }
+    ],
+    "answer": ["B"],
+    "analysis": "`p` 存放的是 `a` 的地址，对指针解引用 `*p` 即取回 `a` 本身的值。`&p` 是指针变量自己的地址，`**p` 对 int* 二次解引用非法。",
+    "tags": ["指针", "解引用"]
+  },
+  {
+    "subject": "computer",
+    "chapter": "数据结构-栈和队列",
+    "type": "multiple_choice",
+    "difficulty": 3,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "关于栈和队列，下列说法正确的是（ ）",
+    "options": [
+      { "key": "A", "text": "栈是后进先出（LIFO）的线性表" },
+      { "key": "B", "text": "队列是先进先出（FIFO）的线性表" },
+      { "key": "C", "text": "栈只能在表尾插入、表头删除" },
+      { "key": "D", "text": "循环队列可以解决顺序队列的\"假溢出\"问题" }
+    ],
+    "answer": ["A", "B", "D"],
+    "analysis": "栈的插入和删除都在同一端（栈顶）进行，C 描述的是队列的操作方式，错误。其余三项均正确。",
+    "tags": ["栈", "队列"]
+  },
+  {
+    "subject": "math",
+    "chapter": "高数-函数与极限",
+    "type": "single_choice",
+    "difficulty": 2,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "极限 $\\lim\\limits_{x \\to 0} \\dfrac{\\sin 3x}{x}$ 的值为（ ）",
+    "options": [
+      { "key": "A", "text": "$0$" },
+      { "key": "B", "text": "$1$" },
+      { "key": "C", "text": "$3$" },
+      { "key": "D", "text": "$\\infty$" }
+    ],
+    "answer": ["C"],
+    "analysis": "由重要极限 $\\lim\\limits_{u\\to 0}\\frac{\\sin u}{u}=1$，令 $u=3x$：$\\frac{\\sin 3x}{x}=3\\cdot\\frac{\\sin 3x}{3x}\\to 3$。",
+    "tags": ["重要极限"]
+  },
+  {
+    "subject": "math",
+    "chapter": "高数-导数与微分",
+    "type": "fill_blank",
+    "difficulty": 2,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "设 $y = x^2 e^x$，则 $y' =$ ______。",
+    "options": [],
+    "answer": ["(x^2+2x)e^x", "x(x+2)e^x", "(2x+x^2)e^x"],
+    "analysis": "乘积求导：$y' = 2x e^x + x^2 e^x = (x^2 + 2x)e^x$。",
+    "tags": ["乘积法则"]
+  },
+  {
+    "subject": "politics",
+    "chapter": "马原-唯物论",
+    "type": "true_false",
+    "difficulty": 2,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "物质的唯一特性是客观实在性。",
+    "options": [],
+    "answer": ["T"],
+    "analysis": "列宁的物质定义指出，物质是标志客观实在的哲学范畴，客观实在性是物质的唯一特性。",
+    "tags": ["物质观"]
+  },
+  {
+    "subject": "politics",
+    "chapter": "马原-辩证法",
+    "type": "short_answer",
+    "difficulty": 3,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "简述量变和质变的辩证关系。",
+    "options": [],
+    "answer": ["①量变是质变的必要准备，质变是量变的必然结果；②质变为新的量变开辟道路，事物在新质的基础上开始新的量变；③量变和质变相互渗透：总的量变过程中有部分质变，质变过程中有量的扩张。方法论：重视量的积累，坚持适度原则，抓住时机促成飞跃。"],
+    "analysis": "答题要点：必要准备/必然结果、相互转化、相互渗透，最后落到方法论意义。",
+    "tags": ["量变质变"]
+  },
+  {
+    "subject": "english",
+    "chapter": "英语-词汇语法",
+    "type": "single_choice",
+    "difficulty": 2,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "Not until the meeting was over ______ the good news.",
+    "options": [
+      { "key": "A", "text": "he heard" },
+      { "key": "B", "text": "did he hear" },
+      { "key": "C", "text": "he did hear" },
+      { "key": "D", "text": "heard he" }
+    ],
+    "answer": ["B"],
+    "analysis": "Not until 位于句首时，主句要部分倒装：not until + 从句 + 助动词 + 主语 + 动词原形，故选 B。",
+    "tags": ["倒装句"]
+  },
+  {
+    "subject": "computer",
+    "chapter": "C语言-循环结构",
+    "type": "code",
+    "difficulty": 3,
+    "source": "示例题库",
+    "passage": "",
+    "stem": "编写 C 程序：输入一个正整数 n，输出 1~n 中所有能被 3 整除但不能被 5 整除的数。",
+    "options": [],
+    "answer": ["```c\n#include <stdio.h>\nint main(void) {\n    int n, i;\n    scanf(\"%d\", &n);\n    for (i = 1; i <= n; i++) {\n        if (i % 3 == 0 && i % 5 != 0)\n            printf(\"%d \", i);\n    }\n    return 0;\n}\n```"],
+    "analysis": "核心是循环 + 复合条件判断：`i % 3 == 0 && i % 5 != 0`。注意逻辑与 && 的短路求值。",
+    "tags": ["循环", "条件判断"]
+  }
+]

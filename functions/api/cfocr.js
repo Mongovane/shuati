@@ -41,7 +41,7 @@ function cleanAIOutput(text) {
 }
 
 export async function onRequestGet({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   await ensureUsage(env);
   const used = await usedToday(env);
@@ -49,7 +49,7 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   if (!env.AI) return json({ error: '服务端未绑定 Workers AI' }, 500);
   await ensureUsage(env);

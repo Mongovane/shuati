@@ -37,17 +37,20 @@
 
 ```
 .
-├── public/
-│   ├── index.html            # 前端单页应用（刷题 / 教材阅读 / 导入界面）
-│   └── sample-questions.json # 示例题库（覆盖全科目/题型，可零成本导入测试）
+├── index.html                # 前端单页应用入口（静态文件都在仓库根目录）
+├── sample-questions.json     # 示例题库（覆盖全科目/题型，可零成本导入测试）
+├── js/                       # 前端逻辑（app.js 主应用 / api.js 请求与离线层 / components/ 组件）
+├── css/style.css             # 样式
+├── sw.js / manifest.json     # PWA：离线外壳缓存 / 安装到主屏幕
 ├── functions/api/
-│   ├── _utils.js             # 公共工具（鉴权、JSON 响应、行转换）
+│   ├── _utils.js             # 公共工具（鉴权+限速、JSON 响应、行转换、懒迁移）
 │   ├── process.js            # POST 录题：AI 智能导入（自动分辨题库/教材）或直接导入 JSON
 │   ├── materials.js          # GET/POST 教材资料（教材阅读用，支持无 AI 直接写入）
-│   ├── questions.js          # GET 取题（按科目/章节/题型/模式筛选）
-│   ├── progress.js           # 答题记录 / 错题 / 收藏 / 笔记 / 模拟考成绩 / 统计
+│   ├── questions.js          # GET 取题（按科目/章节/题型/模式筛选，支持 ids= 精确取题）
+│   ├── progress.js           # 答题记录（含 SRS 间隔重复）/ 模拟考 / 统计 / 热力图
+│   ├── export.js             # GET 一键导出全部数据备份（JSON）
 │   └── config.js             # GET 读取 AI 模型 / 是否配置 AI 等前端所需配置
-├── schema.sql                # D1 建表脚本（questions / progress / mock_results / materials）
+├── schema.sql                # D1 建表脚本（questions / progress / mock_results / materials …）
 └── wrangler.toml             # 仅 CLI 部署时需要
 ```
 
@@ -71,7 +74,7 @@
 构建设置：
 - Framework preset：**None**
 - Build command：**留空**
-- Build output directory：**`public`**
+- Build output directory：**`/`（仓库根目录，本仓库的 index.html 就在根目录）**
 
 点 **Save and Deploy**。
 
@@ -139,7 +142,7 @@
 | short_answer | `["参考答案文本（可含 Markdown/LaTeX）"]` | 对照参考答案自评 |
 | code | `["```c\n参考代码\n```"]` | 对照参考答案自评 |
 
-完整示例见 `public/sample-questions.json`。
+完整示例见仓库根目录的 `sample-questions.json`（「导入」页也有「载入示例题库」按钮直接填充）。
 
 ### 方式 C：上传 PDF（在浏览器解析）
 「导入 → PDF 文本」选一个 PDF，**解析在你浏览器里完成**（按需从 CDN 加载 pdf.js）。有三个操作：
@@ -163,10 +166,13 @@
 
 ## 六、功能一览
 
-- **刷题**：按科目 / 章节 / 题型 / 范围（全部、未做、错题、收藏）筛选，随机或顺序出题。
+- **刷题**：按科目 / 章节 / 题型 / 范围（全部、未做、**今日待复习**、错题、收藏）筛选，随机或顺序出题。
+- **间隔重复（SRS）**：内置简化 SM-2 调度——答对间隔按 1 天 → 3 天 → ×ease 拉长（封顶一年），答错 10 分钟后回炉；「今日待复习」只出到期的题，统计页显示各科到期数。
+- **刷题热力图**：统计页展示近 20 周每日作答量（GitHub 风格），长线备考看得见坚持。
+- **数据备份**：设置页一键导出全部数据（题库/进度/教材/模考）为 JSON；题库部分可直接回贴「导入 JSON」恢复。
 - **错题本**：答错自动收录，复习时若已弄懂可「标记已掌握」移出。
 - **收藏**：题目右上角 ★ 收藏，单独成册。
-- **模拟考**：选科目、题量、时长，限时作答，倒计时结束自动交卷；客观题自动判分并给出分数图章，错题自动进错题本；可勾选「仅客观题」获得完全自动判分的模拟卷。
+- **模拟考**：选科目、题量、时长，限时作答，倒计时结束自动交卷；客观题自动判分并给出分数图章，错题自动进错题本；可勾选「仅客观题」获得完全自动判分的模拟卷。每次模考记录**逐题明细**，统计页可对任意一次历史模考「错题回顾」一键重刷当时做错的题。
 - **统计**：各科正确率、已做 / 待复习 / 已掌握数量、最近模拟考成绩曲线。
 - **教材阅读（Books）**：展示由「导入」整理出的教材笔记，按科目归类；支持 AI 整理或无 AI 本地转化两种来源；每页可一键生成配套练习题。目录在桌面端为可收起的左侧侧栏、手机端为左滑抽屉（点遮罩/条目自动关闭）。
 - **题库总览**：导航「题库」页可查看全部题目，支持按科目 / 题型筛选、关键词搜索题干、勾选批量删除 / 批量改科目、单题「编辑」弹窗（改科目 / 题型 / 题干 / 解析，带公式实时预览），以及「🪄 智能归类」一键按题干内容纠正科目。
@@ -186,13 +192,14 @@
 4. **英语（english）**：拉丁字母占比 ≥55%、中文 ≤15%，且含常见英文虚词（the/of/to/and/is/are…）的整段英文题。
 
 > 教材 / PDF / MinerU 导入设默认科目时，先按**书名/文件名**判断（高数、英语、政治、计算机等关键词），名称判断不出时再看正文内容。
-> 这些规则在前后端各有一份：服务端 `functions/api/process.js` 的 `guessSubjectFromText()`、前端 `public/index.html` 的 `classifySubject()`。新增科目或调整关键词时两处需同步。
+> 这些规则在前后端各有一份：服务端 `functions/api/process.js` 的 `guessSubjectFromText()`、前端 `js/app.js` 的 `classifySubject()`。新增科目或调整关键词时两处需同步。
 
 ---
 
 ## 七、安全须知
 
-- 所有 `/api/*` 接口都要求 `APP_TOKEN`，别人即使拿到你的网址也无法读题或触发 AI 花钱。
+- 所有 `/api/*` 接口都要求 `APP_TOKEN`，别人即使拿到你的网址也无法读题或触发 AI 花钱。口令比较为恒定时间，且同一 IP 15 分钟内错 20 次会被暂时封禁（429），防止爆破。
+- 题目/教材渲染前经 DOMPurify 消毒，导入网上来路不明的题库 JSON 也不会被夹带脚本（XSS）。
 - `AI_API_KEY` 只作为 Cloudflare 加密 Secret 存在，前端、浏览器、Git 仓库里都没有它。
 - `APP_TOKEN` 只保存在你本机浏览器的 localStorage，不会上传。
 - 建议 GitHub 仓库设为私有；`wrangler.toml` 里不要填真实密钥（密钥一律用 `wrangler pages secret put`）。
@@ -201,9 +208,9 @@
 
 ## 八、国内访问与可选增强
 
-- **CDN**：前端依赖（Vue / KaTeX / highlight.js / marked / 以及上传 PDF 时按需加载的 pdf.js）走 `cdnjs.cloudflare.com`（Cloudflare 自家 CDN，国内多数网络可达）；字体用系统字体，无需谷歌字体。若某些网络下加载偏慢，可把这几个库文件下载进 `public/`，再把 `index.html` 顶部的 `<script>`/`<link>`（及 `ensurePdfjs` 里的 pdf.js 地址）改成本地相对路径自托管。
+- **CDN**：前端依赖（Vue / KaTeX / highlight.js / marked / DOMPurify / 以及上传 PDF 时按需加载的 pdf.js）走 `cdnjs.cloudflare.com`（Cloudflare 自家 CDN，国内多数网络可达）；字体用系统字体，无需谷歌字体。若某些网络下加载偏慢，可把这几个库文件下载进 `public/`，再把 `index.html` 顶部的 `<script>`/`<link>`（及 `ensurePdfjs` 里的 pdf.js 地址）改成本地相对路径自托管。
 - **AI Gateway（可选）**：可在中转站之前再套一层 [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/)，获得调用缓存（相同原文不重复花钱）和用量分析，把 `AI_BASE_URL` 换成 Gateway 给的地址即可。
-- **命令行部署（替代方案）**：填好 `wrangler.toml` 里的 `database_id`，执行 `wrangler pages secret put AI_API_KEY`、`wrangler pages secret put APP_TOKEN`，再 `wrangler pages deploy public`。
+- **命令行部署（替代方案）**：填好 `wrangler.toml` 里的 `database_id`，执行 `wrangler pages secret put AI_API_KEY`、`wrangler pages secret put APP_TOKEN`，再 `wrangler pages deploy .`（静态文件在仓库根目录）。
 
 ---
 

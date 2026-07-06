@@ -21,9 +21,12 @@ const RichText={
       // 形如「图8-1 / 表 8-2」的独立文本，渲成居中图注
       src=src.replace(/^[ \t]*((?:图|表)\s?\d+(?:[-－.]\d+)*)\s*$/gm,(m,c)=>'<p class="figcap">'+c+'</p>');
       let out=marked.parse(src);
+      // XSS 防线：题目/教材可能来自网上的第三方 JSON，先消毒 marked 产物；
+      // KaTeX 的占位符是私有区字符，能安全穿过消毒；KaTeX 本身输出为转义后的安全 HTML，在消毒后注入。
+      if(window.DOMPurify) out=DOMPurify.sanitize(out,{USE_PROFILES:{html:true}});
       out=out.replace(/\uE000(\d+)\uE001/g,(m,i)=>{ const it=math[+i]; if(!it)return ''; if(window.katex){ try{ return window.katex.renderToString(it.tex,{displayMode:it.display,throwOnError:false,strict:false}); }catch(e){ return '<code>'+it.tex.replace(/</g,'&lt;')+'</code>'; } } return (it.display?'$$':'$')+it.tex+(it.display?'$$':'$'); });
       return out;
-    }catch(e){ try{return marked.parse(raw);}catch(_){return raw;} }
+    }catch(e){ try{ const fb=marked.parse(raw); return window.DOMPurify?DOMPurify.sanitize(fb,{USE_PROFILES:{html:true}}):fb; }catch(_){return raw;} }
   } },
   mounted(){ this.enhance(); },
   updated(){ this.enhance(); },

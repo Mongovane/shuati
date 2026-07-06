@@ -1,5 +1,5 @@
 -- ============================================================
- Cloudflare D1 完整建表 + 索引脚本
+-- Cloudflare D1 完整建表 + 索引脚本
 -- 这是唯一需要执行的数据库脚本，跑它就得到全部表和全部索引。
 -- 执行（新库或旧库都安全，全部 IF NOT EXISTS，不会动已有数据）：
 --   wrangler d1 execute <你的库名> --file=./schema.sql --remote
@@ -48,12 +48,17 @@ CREATE TABLE IF NOT EXISTS progress (
   favorited    INTEGER DEFAULT 0,               -- 是否收藏
   mastered     INTEGER DEFAULT 0,               -- 是否标记为「已掌握」（移出错题本）
   note         TEXT,                            -- 个人笔记
+  due_at       INTEGER,                         -- SRS：下次到期复习时间（unix 秒）
+  interval_days REAL DEFAULT 0,                 -- SRS：当前间隔（天）
+  ease         REAL DEFAULT 2.5,                -- SRS：难度系数（1.3~3.0）
   updated_at   INTEGER DEFAULT (unixepoch()),
   FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_pr_mastered  ON progress(mastered);
 CREATE INDEX IF NOT EXISTS idx_pr_favorited ON progress(favorited);
 CREATE INDEX IF NOT EXISTS idx_pr_wrong     ON progress(wrong_count);
+CREATE INDEX IF NOT EXISTS idx_pr_due       ON progress(due_at);
+-- 注：老库升级不需要手动 ALTER——后端会在首次访问时自动补上 due_at/interval_days/ease 三列。
 
 -- 模拟考成绩记录（用于追踪进步曲线）
 CREATE TABLE IF NOT EXISTS mock_results (
@@ -94,4 +99,28 @@ CREATE TABLE IF NOT EXISTS pdfs (
 CREATE TABLE IF NOT EXISTS ai_usage (
   day    TEXT PRIMARY KEY,
   pages  INTEGER DEFAULT 0
+);
+
+-- 每次答题的流水（统计热力图 / 每日刷题量用）
+CREATE TABLE IF NOT EXISTS answer_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  question_id TEXT,
+  is_correct  INTEGER,
+  ts          INTEGER DEFAULT (unixepoch())
+);
+
+-- 模拟考逐题作答明细（错题回顾用；is_correct 为 NULL 表示主观题未判分）
+CREATE TABLE IF NOT EXISTS mock_answers (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  mock_id     INTEGER,
+  question_id TEXT,
+  is_correct  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_ma_mock ON mock_answers(mock_id);
+
+-- 访问口令失败限速（同 IP 15 分钟 20 次），由后端自动维护
+CREATE TABLE IF NOT EXISTS auth_fails (
+  ip TEXT PRIMARY KEY,
+  n  INTEGER DEFAULT 0,
+  ts INTEGER
 );

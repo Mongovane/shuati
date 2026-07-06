@@ -36,7 +36,7 @@ async function ensureMaterialsTable(env) {
 }
 
 export async function onRequestGet({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   await ensureMaterialsTable(env);
   const p = new URL(request.url).searchParams;
@@ -56,7 +56,7 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   await ensureMaterialsTable(env);
   let b;
@@ -83,7 +83,7 @@ export async function onRequestPost({ request, env }) {
 
 // DELETE：按 id 批量删除教材页。body: { ids: ["mat-...","..."] }
 export async function onRequestDelete({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   await ensureMaterialsTable(env);
   let b;

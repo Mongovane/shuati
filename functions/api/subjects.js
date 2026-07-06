@@ -27,7 +27,7 @@ async function ensure(env) {
 const normCode = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
 
 export async function onRequestGet({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   try {
     await ensure(env);
@@ -39,7 +39,7 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
@@ -61,7 +61,7 @@ export async function onRequestPost({ request, env }) {
 }
 
 export async function onRequestPatch({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
@@ -84,7 +84,7 @@ export async function onRequestPatch({ request, env }) {
 }
 
 export async function onRequestDelete({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }

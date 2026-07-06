@@ -11,7 +11,7 @@ const PROMPT = [
 ].join('\n');
 
 export async function onRequestPost({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
 
   let body;
@@ -25,8 +25,13 @@ export async function onRequestPost({ request, env }) {
   const ovKey = (body && typeof body.api_key === 'string' && body.api_key.trim()) ? body.api_key.trim() : '';
   const ovModel = (body && typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : '';
 
+  // 安全：提供自定义 base_url 时必须同时自带该站的 api_key——
+  // 绝不把服务端的 AI_API_KEY 发往非服务端配置的地址（防止持有 APP_TOKEN 者借此套取密钥）
+  if (ovBase && !ovKey) {
+    return json({ error: '使用自定义 Base URL 时必须同时填写该站的 API Key（不会使用服务端密钥）' }, 400);
+  }
   const baseRaw = ovBase || env.AI_BASE_URL;
-  const apiKey = ovKey || env.AI_API_KEY;
+  const apiKey = ovBase ? ovKey : (ovKey || env.AI_API_KEY);
   if (!baseRaw || !apiKey) {
     return json({ error: '未配置中转站：请在下方「OCR 模型设置」填写 Base URL 与 API Key，或在服务端配置 AI_BASE_URL / AI_API_KEY。' }, 500);
   }

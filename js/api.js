@@ -134,6 +134,7 @@ const ApiMixin = {
           if (mode === 'wrong' && !(w > 0 && !x.mastered)) return false;
           if (mode === 'favorite' && !x.favorited) return false;
           if (mode === 'mastered' && !x.mastered) return false;
+          if (mode === 'due' && !(x.due_at && x.due_at <= Math.floor(Date.now()/1000) && !x.mastered)) return false;
           if (kw && !String(x.stem || '').includes(kw)) return false;
           return true;
         });

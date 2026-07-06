@@ -41,6 +41,7 @@ const App={
     genq:{ busy:false, result:null },
     mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
     toast:null, toastTimer:null,
+    exporting:false,
   }; },
   computed:{
     materialBooks(){ const map=new Map(); for(const m of (this.materials.items||[])){ const key=this.bookKeyOf(m); if(!map.has(key))map.set(key,{key,subject:m.subject,title:this.bookTitleOf(m),pages:[]}); map.get(key).pages.push(m); } const out=[]; for(const b of map.values()){ const byPage=new Map(); const noPage=[]; for(const m of b.pages){ const pg=Number(m.page)||0; if(pg>0){ const ex=byPage.get(pg); if(!ex||(m.created_at||0)>=(ex.created_at||0))byPage.set(pg,m); } else noPage.push(m); } let pages=[...byPage.values()].sort((a,b)=>(a.page||0)-(b.page||0)); pages=pages.concat(noPage.sort((a,b)=>(a.created_at||0)-(b.created_at||0))); b.pages=pages; b.subject=pages[0]?.subject||b.subject; out.push(b); } return out; },
@@ -64,6 +65,14 @@ const App={
       for(const r of this.stats.bySubject){ z.totalQ+=r.total_q||0; z.seen+=r.seen||0; z.wrongOpen+=r.wrong_open||0; z.mastered+=r.mastered||0; z.fav+=r.favorited||0; z.right+=r.right_sum||0; z.wrong+=r.wrong_sum||0; } return z; },
     mockResult(){ const v=Object.values(this.mock.answers); return { graded:v.filter(x=>x!==null).length, correct:v.filter(x=>x===true).length, total:this.mock.questions.length }; },
     mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.correct/t*100); },
+    heatCells(){ const map={}; for(const h of ((this.stats&&this.stats.heat)||[]))map[h.d]=h;
+      const out=[]; const today=new Date(); today.setHours(0,0,0,0);
+      const start=new Date(today); start.setDate(start.getDate()-(139+((today.getDay()+6)%7))); /* 对齐到周一，共 20 列 */
+      for(let i=0;i<140;i++){ const d=new Date(start); d.setDate(start.getDate()+i); if(d>today)break;
+        const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        const h=map[key]; out.push({key,n:h?h.n:0,r:h?(h.r||0):0}); }
+      return out; },
+    heatTotal(){ return this.heatCells.reduce((s,c)=>s+c.n,0); },
   },
   watch:{
     theme(v){ document.documentElement.dataset.theme=v; localStorage.setItem('zb_theme',v); },
@@ -588,6 +597,25 @@ const App={
         this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(true); this.statsDirty=true; this.loadMaterials();
       }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
       this.ingest.pdf.busy=false; },
+    async reviewMock(m){ if(!m||!m.id){ this.flash('这次记录没有逐题明细（旧版本考的）',true); return; } try{
+        const d=await this.api('/api/progress?mock_id='+m.id);
+        const wrong=(d.items||[]).filter(x=>x.is_correct===0).map(x=>x.question_id).filter(Boolean);
+        if(!wrong.length){ this.flash('这次模考没有错题 🎉'); return; }
+        const qd=await this.api('/api/questions?ids='+encodeURIComponent(wrong.join(','))+'&limit=200&order=seq');
+        if(!qd.items||!qd.items.length){ this.flash('错题已被删除或找不到了',true); return; }
+        this.queue=qd.items; this.qi=0; this.queueTotal=qd.items.length; this.batchDone=false; this.loadedOnce=true; this.sessionAns={}; this.sessionStart=Date.now(); this.streak=0; this.view='practice'; this.filterLock=true;
+        this.flash('已载入该次模考的 '+qd.items.length+' 道错题');
+      }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } },
+    async exportBackup(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.exporting=true; try{
+        const res=await fetch('/api/export',{headers:{authorization:'Bearer '+this.token}});
+        if(res.status===401){ this.flash('访问码无效',true); this.exporting=false; return; }
+        if(!res.ok)throw new Error('导出失败 '+res.status);
+        const blob=await res.blob(); const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob); a.download='shuati-backup-'+new Date().toISOString().slice(0,10)+'.json';
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+        this.flash('已导出备份（含题库/进度/教材/模考）');
+      }catch(e){ this.flash(e.message,true); } this.exporting=false; },
+    heatColor(n){ if(!n)return''; if(n>=60)return'l4'; if(n>=30)return'l3'; if(n>=10)return'l2'; return'l1'; },
     async loadStats(){ if(!this.token)return; this.statsLoading=true; try{ this.stats=await this.api('/api/progress'); this.statsDirty=false; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.statsLoading=false; },
     rate(r){ const t=(r.right_sum||0)+(r.wrong_sum||0); return t?Math.round((r.right_sum||0)/t*100):0; },
     async startMock(){ if(!this.token)return; this.mock.finished=false; this.mock.answers={}; this.loading=true;
@@ -608,9 +636,10 @@ const App={
     async submitMock(){ clearInterval(this.mock.timer); this.mock.finished=true; this.mock.started=false; await this.$nextTick();
       const cards=this.$refs.mockCards||[]; const ans={};
       for(const c of cards){ ans[c.q.id]= c.graded?c.finalCorrect:null; } this.mock.answers=ans;
-      let correct=0;
-      for(const c of cards){ if(c.graded){ if(c.finalCorrect)correct++; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:c.q.id,is_correct:c.finalCorrect})}); }catch(e){} } }
-      try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'mock',subject:this.mock.subject,total:this.mock.questions.length,correct,duration_seconds:this.mock.elapsed})}); }catch(e){}
+      let correct=0; const details=[];
+      for(const c of cards){ if(c.graded){ if(c.finalCorrect)correct++; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:c.q.id,is_correct:c.finalCorrect})}); }catch(e){} }
+        details.push({question_id:c.q.id,is_correct:c.graded?c.finalCorrect:null}); }
+      try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'mock',subject:this.mock.subject,total:this.mock.questions.length,correct,duration_seconds:this.mock.elapsed,details})}); }catch(e){}
       window.scrollTo({top:0,behavior:'smooth'});
     },
     async onMockAnswer(p){ this.mock.answers[p.id]=p.correct; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
@@ -625,7 +654,8 @@ const App={
     onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
     onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; },
   },
-  mounted(){ document.documentElement.dataset.theme=this.theme; document.title=this.appName;
+  mounted(){ try{ window.__hideSplash&&window.__hideSplash(); }catch(_){}
+    document.documentElement.dataset.theme=this.theme; document.title=this.appName;
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('focus', this.onFocus);
@@ -696,6 +726,7 @@ const App={
           <select v-model="f._mode" @change="onFilter">
             <option value="all">全部题目</option>
             <option value="unseen">仅未做</option>
+            <option value="due">今日待复习</option>
             <option value="wrong">仅错题</option>
             <option value="favorite">仅收藏</option>
           </select></div>
@@ -761,6 +792,10 @@ const App={
           <template v-else-if="view==='favorite'">
             <div class="big">☆</div><p>暂无收藏题。刷题时点题目上的 ★ 可收藏。</p>
             <div class="row" style="justify-content:center;margin-top:14px"><button class="btn" @click="go('practice')">去刷题</button></div>
+          </template>
+          <template v-else-if="f._mode==='due'">
+            <div class="big">🌱</div><p>今天没有到期要复习的题，休息一下或去刷新题。</p>
+            <div class="row" style="justify-content:center;margin-top:14px"><button class="btn subtle" @click="f._mode='all'; startSession()">刷新题</button></div>
           </template>
           <template v-else-if="f._mode==='mastered'">
             <div class="big">∅</div><p>还没有标记为「已掌握」的题。</p>
@@ -1071,12 +1106,21 @@ const App={
           <div v-for="r in stats.bySubject" :key="r.subject" class="subj-row">
             <div class="top"><span>{{ subjName(r.subject) }}</span><span class="muted">{{ rate(r) }}% · 正确 {{ r.right_sum||0 }} / 已答 {{ (r.right_sum||0)+(r.wrong_sum||0) }}</span></div>
             <div class="bar"><span :style="{width:rate(r)+'%', background: rate(r)>=60?'var(--ok)':'var(--bad)'}"></span></div>
-            <div class="muted" style="margin-top:6px">总数 {{ r.total_q }} · 待复习 {{ r.wrong_open||0 }} · 收藏 {{ r.favorited||0 }}</div>
+            <div class="muted" style="margin-top:6px">总数 {{ r.total_q }} · 错题 {{ r.wrong_open||0 }} · <b :style="r.due?'color:var(--bad)':''">今日到期 {{ r.due||0 }}</b> · 收藏 {{ r.favorited||0 }}</div>
           </div>
+          <template v-if="heatCells.length">
+            <h3 style="margin:22px 0 10px">刷题热力图 <span class="muted" style="font-weight:400;font-size:13px">近 20 周 · 共 {{ heatTotal }} 次作答</span></h3>
+            <div class="heat-grid">
+              <div v-for="c in heatCells" :key="c.key" class="heat-cell" :class="heatColor(c.n)" :title="c.key+'：'+c.n+' 题（对 '+c.r+'）'"></div>
+            </div>
+          </template>
           <template v-if="stats.mocks && stats.mocks.length">
             <h3 style="margin:22px 0 12px">近期测试</h3>
             <div v-for="(m,i) in stats.mocks" :key="i" class="subj-row">
-              <div class="top"><span>{{ subjName(m.subject) }} · {{ m.correct }}/{{ m.total }}</span><span class="muted">{{ fmtTime(m.duration_seconds) }}</span></div>
+              <div class="top"><span>{{ subjName(m.subject) }} · {{ m.correct }}/{{ m.total }}</span>
+                <span class="muted">{{ fmtTime(m.duration_seconds) }}
+                  <button class="btn subtle" style="margin-left:8px;padding:2px 10px;font-size:12px" @click="reviewMock(m)">错题回顾</button>
+                </span></div>
               <div class="bar"><span :style="{width:(m.total?Math.round(m.correct/m.total*100):0)+'%', background:(m.total&&m.correct/m.total>=0.6)?'var(--ok)':'var(--bad)'}"></span></div>
             </div>
           </template>
@@ -1298,6 +1342,7 @@ const App={
         <div class="hint" style="margin-bottom:14px">把全部题目和教材一次性下载到本机，之后<b>彻底断网也能刷全部题、翻全部书、用筛选</b>。离线作答会排队，联网后自动补传。建议先「添加到主屏幕」装成 App 再用。</div>
         <div class="row" style="gap:12px;align-items:center">
           <button class="btn" :disabled="offlineSyncing || offline" @click="offlineSync"><span v-if="offlineSyncing" class="spin"></span>{{ offlineSyncing ? '下载中…' : '下载全部供离线使用' }}</button>
+          <button class="btn subtle" :disabled="exporting || offline" @click="exportBackup"><span v-if="exporting" class="spin"></span>{{ exporting ? '导出中…' : '导出数据备份 (JSON)' }}</button>
           <span v-if="offlineSyncing" class="muted">{{ offlineSyncMsg }}</span>
           <span v-else-if="offlineSynced" class="muted">已缓存 {{ offlineSynced.q }} 题 · {{ offlineSynced.m }} 页教材 · {{ new Date(offlineSynced.at).toLocaleString() }}</span>
           <span v-else class="muted">尚未下载离线包</span>

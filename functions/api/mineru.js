@@ -13,7 +13,7 @@ function pick(obj, keys) { for (const k of keys) { if (obj && obj[k] != null) re
 
 export async function onRequest(context) {
   const { request, env } = context;
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
 
   const url = new URL(request.url);

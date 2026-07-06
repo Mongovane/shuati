@@ -18,7 +18,7 @@ function noBucket() {
 
 // GET ?list=1 → 列出已保存的 PDF；GET ?id=xxx → 下载该 PDF（流式返回）
 export async function onRequestGet({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   if (!env.PDF_BUCKET) return noBucket();
   await ensureTable(env);
@@ -48,7 +48,7 @@ export async function onRequestGet({ request, env }) {
 
 // PUT（body 为 PDF 字节，?title=&subject= 带元信息）→ 存入 R2 + 元信息入 D1
 export async function onRequestPut({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   if (!env.PDF_BUCKET) return noBucket();
   await ensureTable(env);
@@ -74,7 +74,7 @@ export async function onRequestPut({ request, env }) {
 
 // DELETE ?id=xxx → 删 R2 对象 + D1 记录
 export async function onRequestDelete({ request, env }) {
-  const auth = checkAuth(request, env);
+  const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
   if (!env.PDF_BUCKET) return noBucket();
   await ensureTable(env);
