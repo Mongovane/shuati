@@ -27,14 +27,31 @@ export async function onRequestPost({ request, env }) {
   const ans = Array.isArray(q.answer) ? q.answer.join('；') : (q.answer == null ? '' : String(q.answer));
   if (ans.trim()) parts.push('【参考答案】\n' + ans.slice(0, 3000));
 
-  const sys = '你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份详细解析，使用 Markdown，数学公式一律用 $...$（行内）或 $$...$$（独立行）作为定界符，严禁使用 \\( \\) 与 \\[ \\]。结构：先用一两句话点明「思路」；然后分步推导（关键步骤要交代依据，如用到的定理/公式）；最后给出「易错点」。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。';
+  // —— 追问模式：ask 存在时，在「题目 + 已生成解析」上下文里继续多轮问答 ——
+  const ask = String(b.ask || '').trim().slice(0, 2000);
+  const priorAnalysis = String(b.analysis || '').slice(0, 6000);
+  const history = Array.isArray(b.history) ? b.history.slice(-8).map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: String(m.content || '').slice(0, 4000),
+  })) : [];
+
+  const fmtRule = '数学公式一律用 $...$（行内）或 $$...$$（独立行）作为定界符，严禁使用 \\( \\) 与 \\[ \\]。';
+  const sys = ask
+    ? ('你是一位耐心且严谨的大学课程解题老师，正在就同一道题回答学生的追问。基于题目与先前给出的解析作答，聚焦学生问的点，简洁清楚；使用 Markdown，' + fmtRule + '中文回答，直接开始。')
+    : ('你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份详细解析，使用 Markdown，' + fmtRule + '结构：先用一两句话点明「思路」；然后分步推导（关键步骤要交代依据，如用到的定理/公式）；最后给出「易错点」。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。');
 
   const base = env.AI_BASE_URL.replace(/\/+$/, '');
+  const messages = [ { role: 'system', content: sys }, { role: 'user', content: parts.join('\n\n') } ];
+  if (ask) {
+    if (priorAnalysis) messages.push({ role: 'assistant', content: priorAnalysis }); // 已生成的解析作为上一轮回答
+    messages.push(...history);                                                        // 之前的追问轮次
+    messages.push({ role: 'user', content: ask });                                    // 本次追问
+  }
   const payload = {
     model: env.AI_MODEL || 'gpt-4o',
-    messages: [ { role: 'system', content: sys }, { role: 'user', content: parts.join('\n\n') } ],
+    messages,
     temperature: 0.3,
-    max_tokens: 1600,
+    max_tokens: ask ? 1000 : 1600,
   };
   const call = (stream) => fetch(`${base}/chat/completions`, {
     method: 'POST',

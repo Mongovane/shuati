@@ -1,8 +1,8 @@
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next','ai-explain','ai-save'],
-  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteDraft:'' }; },
+  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, examReveal:Boolean },
+  emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask'],
+  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteDraft:'', askInput:'' }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
@@ -23,6 +23,7 @@ const QuestionCard={
   watch:{ q(){ this.reset(); } },
   mounted(){ this.reset(); },
   methods:{
+    doAsk(){ const t=this.askInput.trim(); if(!t||this.aiAsking)return; this.$emit('ai-ask',t); this.askInput=''; },
     reset(){ this.sel=[]; this.blanks=''; this.text=''; this.localRevealed=false; this.self=null; this.showNote=false; this.noteDraft=this.q.note||''; },
     pick(k){ if(this.revealed)return; if(this.isMulti){ const i=this.sel.indexOf(k); i>=0?this.sel.splice(i,1):this.sel.push(k); } else this.sel=[k]; },
     pickTF(v){ if(this.revealed)return; this.sel=[v]; },
@@ -85,6 +86,17 @@ const QuestionCard={
           <button class="btn subtle" v-if="!aiBusy" @click="$emit('ai-explain')">{{ aiText ? '↻ 重新生成' : '✨ AI 解析本题' }}</button>
           <button class="btn subtle" v-if="aiText && !aiBusy" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 保存进解析</button>
         </div>
+        <template v-if="aiText && !aiBusy">
+          <div v-for="(c,i) in aiChat" :key="'aq'+i" style="margin-top:10px;border-top:1px dashed var(--line,rgba(0,0,0,.12));padding-top:8px">
+            <div class="muted" style="font-size:13px">🙋 {{ c.q }}</div>
+            <rich-text v-if="c.a" :content="c.a" />
+            <span v-else class="spin"></span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <input v-model="askInput" :disabled="aiAsking" placeholder="对解析还有疑问？继续追问（Enter 发送）…" style="flex:1;min-width:0" @keyup.enter="doAsk" />
+            <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
+          </div>
+        </template>
       </div>
       <button class="note-toggle" @click="showNote=!showNote">{{ showNote?'隐藏笔记':(q.note?'查看 / 编辑笔记':'+ 添加笔记') }}</button>
       <div v-if="showNote" style="margin-top:8px">

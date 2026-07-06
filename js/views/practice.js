@@ -75,7 +75,7 @@ async aiExplain(){ const q=this.cur; if(!q)return;
   if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
   if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
-  this.aiX={ id:q.id, text:'', busy:true };
+  this.aiX={ id:q.id, text:'', busy:true, chat:[], asking:false };
   try{
     const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
       headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
@@ -107,10 +107,51 @@ async aiExplain(){ const q=this.cur; if(!q)return;
   if(this._aiCtrl===ctrl) this._aiCtrl=null;
 },
 async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this.aiX.text)return;
-  const merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();
+  let merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();
+  const chat=(this.aiX.chat||[]).filter(c=>c.a&&!c.a.startsWith('_回答失败'));
+  if(chat.length){ merged+='\n\n**追问记录**\n\n'+chat.map(c=>'> 🙋 '+c.q+'\n\n'+c.a.trim()).join('\n\n'); }
   try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],analysis:merged})});
     q.analysis=merged; this.bankDirty=true; this.flash('已保存进本题解析（可在 Bank 编辑中查看）');
   }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); }
+}
+
+
+,
+async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)return;
+  if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+  if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
+  const ctrl=new AbortController(); this._aiCtrl=ctrl;
+  if(!Array.isArray(this.aiX.chat))this.aiX.chat=[];
+  const entry={ q:text, a:'' }; this.aiX.chat.push(entry); this.aiX.asking=true;
+  const history=[]; for(const c of this.aiX.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a)history.push({role:'assistant',content:c.a}); }
+  try{
+    const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
+      headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
+      body:JSON.stringify({ question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
+        analysis:this.aiX.text.slice(0,6000), history, ask:text }) });
+    if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
+    const ct=res.headers.get('content-type')||'';
+    if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
+    if(ct.includes('text/event-stream') && res.body){
+      const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+      while(true){ const {done,value}=await reader.read(); if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+          if(!line.startsWith('data:'))continue; const payload=line.slice(5).trim();
+          if(!payload || payload==='[DONE]')continue;
+          let j=null; try{ j=JSON.parse(payload); }catch(_){ continue; }
+          if(j.error) throw new Error(j.error.message||String(j.error));
+          const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+          if(t && this.aiX.id===q.id) entry.a+=t;
+        } }
+    } else {
+      const d=await res.json(); if(d.error)throw new Error(d.error);
+      if(this.aiX.id===q.id) entry.a=d.text||'';
+    }
+    if(this.aiX.id===q.id && !entry.a){ entry.a='_（模型没有返回内容）_'; }
+  }catch(e){ if(e.name!=='AbortError'){ entry.a=entry.a||('_回答失败：'+e.message+'_'); if(this.aiX.id===q.id)this.flash('追问失败：'+e.message,true); } }
+  if(this.aiX.id===q.id) this.aiX.asking=false;
+  if(this._aiCtrl===ctrl) this._aiCtrl=null;
 }
 
 } };
