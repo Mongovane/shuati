@@ -435,3 +435,23 @@ a{color:var(--accent)}
 .seg-on .rich :is(p,li,blockquote,table,h1,h2,h3,h4,h5,h6,.code-wrap,.katex-display):hover{background:rgba(79,70,229,.06)}
 .seg-on .rich .seg-sel{outline:2px solid var(--accent,#4f46e5);background:rgba(79,70,229,.10)}
 [data-theme=dark] .seg-on .rich .seg-sel{background:rgba(129,140,248,.16)}
+
+/* —— iOS：触屏设备输入字号 ≥16px，聚焦不再自动放大 —— */
+@media (pointer:coarse){
+  input,select,textarea,.inp{font-size:16px !important}
+}
+
+/* —— 阅读器：选段悬浮条 + 问 AI 抽屉 —— */
+.r-segbar{position:fixed;left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:55}
+.r-ai{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--card-bg,#fff);color:inherit;border-radius:16px 16px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.28);transform:translateY(105%);transition:transform .25s ease;max-height:72vh;display:flex;flex-direction:column;padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+.r-ai.open{transform:none}
+.rai-h{display:flex;align-items:center;gap:8px;font-size:15px}
+.rai-quote{margin-top:8px;padding:6px 10px;border-left:3px solid var(--accent,#4f46e5);background:rgba(79,70,229,.07);border-radius:6px;font-size:12.5px;color:var(--muted,#666);word-break:break-all}
+.rai-list{overflow:auto;flex:1;min-height:60px;margin-top:8px;-webkit-overflow-scrolling:touch}
+.rai-item{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line,rgba(0,0,0,.1))}
+.rai-item:first-child{border-top:0;margin-top:0;padding-top:0}
+.rai-q{font-size:13px;color:var(--muted,#666)}
+.rai-in{display:flex;gap:8px;margin-top:10px}
+.rai-in input{flex:1;min-width:0;height:42px;border-radius:10px;border:1px solid var(--line,rgba(0,0,0,.15));padding:0 12px;background:var(--surface,transparent);color:inherit}
+[data-theme=dark] .r-ai{background:#1e2430}
+.reader.t-night .r-ai{background:#171c26;color:#cfd6e4}

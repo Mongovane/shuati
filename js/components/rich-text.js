@@ -1,3 +1,15 @@
+// —— 选段：块级元素 → Markdown 源码（公式还原 $/$$，代码还原围栏）——
+if(typeof window!=='undefined' && !window.__segText){
+  window.__segText=function(el){
+    if(el.classList.contains('code-wrap')){ const cd=el.querySelector('pre code, pre'); return '```\n'+(cd?cd.textContent.replace(/\n$/,''):'')+'\n```'; }
+    if(el.classList.contains('katex-display')){ const a=el.querySelector('annotation'); return a?('$$'+a.textContent+'$$'):el.textContent.trim(); }
+    const clone=el.cloneNode(true);
+    clone.querySelectorAll('.code-copy').forEach(b=>b.remove());
+    clone.querySelectorAll('.katex-display').forEach(k=>{ const a=k.querySelector('annotation'); k.replaceWith(clone.ownerDocument.createTextNode(a?(' $$'+a.textContent+'$$ '):k.textContent)); });
+    clone.querySelectorAll('.katex').forEach(k=>{ const a=k.querySelector('annotation'); k.replaceWith(clone.ownerDocument.createTextNode(a?('$'+a.textContent+'$'):k.textContent)); });
+    return clone.textContent.replace(/[ \t]+/g,' ').trim();
+  };
+}
 // —— 代码块复制：全局事件委托（v-html 内容无法绑定 Vue 事件）——
 if(typeof document!=='undefined' && !window.__codeCopyBound){
   window.__codeCopyBound=true;

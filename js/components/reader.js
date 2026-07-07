@@ -1,9 +1,63 @@
 // 教材沉浸式阅读器（番茄/七猫风格）逻辑（Vue mixin）
 const ReaderMixin = {
   data(){ return {
-    reader:{ open:false, fontSize:19, lineGap:1.9, theme:'paper', serif:false, barsHidden:false, panel:false, tocOpen:false },
+    reader:{ open:false, fontSize:19, lineGap:1.9, theme:'paper', serif:false, barsHidden:false, panel:false, tocOpen:false, segMode:false, segCount:0 },
+    rdAi:{ open:false, input:'', asking:false, chat:[], quote:'' },
   }; },
   methods: {
+    // —— 选段模式（教材阅读页）——
+    readerSegToggle(){ this.reader.segMode=!this.reader.segMode; this.reader.barsHidden=false; if(!this.reader.segMode)this.readerSegClear(); },
+    readerSegClear(){ const b=this.$refs.rdBox; if(b)b.querySelectorAll('.seg-sel').forEach(el=>el.classList.remove('seg-sel')); this.reader.segCount=0; },
+    readerSegClick(e){ if(!this.reader.segMode)return; if(e.target.closest('button,a,input,textarea'))return;
+      const box=this.$refs.rdBox; if(!box)return;
+      const blk=e.target.closest('.code-wrap,.katex-display,li,pre,blockquote,table,h1,h2,h3,h4,h5,h6,p');
+      if(!blk||!box.contains(blk))return;
+      e.preventDefault(); e.stopPropagation();
+      blk.classList.toggle('seg-sel'); this.reader.segCount=box.querySelectorAll('.seg-sel').length; },
+    readerSegTexts(){ const box=this.$refs.rdBox; if(!box)return [];
+      return Array.from(box.querySelectorAll('.seg-sel')).filter(el=>!el.parentElement.closest('.seg-sel')).map(el=>window.__segText(el)).filter(Boolean); },
+    async readerSegCopy(){ const parts=this.readerSegTexts(); if(!parts.length)return; const txt=parts.join('\n\n');
+      try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(txt); }
+        else{ const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        this.flash('已复制 '+parts.length+' 块'); }catch(_){}
+      this.readerSegToggle(); },
+    // —— 阅读页问 AI（底部抽屉，选段可作引用）——
+    readerAskAI(){ const parts=this.readerSegTexts(); if(parts.length)this.rdAi.quote=parts.join(' ').slice(0,3000);
+      if(this.reader.segMode)this.readerSegToggle();
+      this.rdAi.open=true; this.reader.barsHidden=false;
+      this.$nextTick(()=>{ const el=this.$refs.rdAiInp; if(el){ el.focus(); const n=el.value.length; try{ el.setSelectionRange(n,n); }catch(_){} } }); },
+    async rdAiSend(){ const q=(this.rdAi.input||'').trim(); if(!q||this.rdAi.asking)return;
+      if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      const mat=this.currentPageMat; if(!mat)return;
+      if(this._rdCtrl){ try{ this._rdCtrl.abort(); }catch(_){} }
+      const ctrl=new AbortController(); this._rdCtrl=ctrl;
+      const entry={ q, a:'' }; this.rdAi.chat.push(entry); this.rdAi.asking=true; this.rdAi.input='';
+      const history=[]; for(const c of this.rdAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a)history.push({role:'assistant',content:c.a}); }
+      try{
+        const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
+          headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
+          body:JSON.stringify({ ...this.aiOv(false), mode:'reading',
+            question:{ stem:this.rdAi.quote||'（未选段，就整页材料提问）', passage:String(this.cleanPageMd(mat.content_md)||'').slice(0,4000), type:'short_answer', subject:mat.subject },
+            analysis:'', history, ask:q }) });
+        if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.readerClose(); this.go('settings'); throw new Error('访问码无效'); }
+        const ct=res.headers.get('content-type')||'';
+        if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
+        if(ct.includes('text/event-stream') && res.body){
+          const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+          while(true){ const {done,value}=await reader.read(); if(done)break;
+            buf+=dec.decode(value,{stream:true});
+            let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+              if(!line.startsWith('data:'))continue; const payload=line.slice(5).trim();
+              if(!payload || payload==='[DONE]')continue;
+              let j=null; try{ j=JSON.parse(payload); }catch(_){ continue; }
+              if(j.error) throw new Error(j.error.message||String(j.error));
+              const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+              if(t) entry.a+=t;
+            } }
+        } else { const d=await res.json(); if(d.error)throw new Error(d.error); entry.a=d.text||''; }
+        if(!entry.a) entry.a='_（模型没有返回内容）_';
+      }catch(e){ if(e.name!=='AbortError'){ entry.a=entry.a||('_回答失败：'+e.message+'_'); this.flash('提问失败：'+e.message,true); } }
+      this.rdAi.asking=false; if(this._rdCtrl===ctrl)this._rdCtrl=null; },
     // —— 沉浸式阅读器（番茄/七猫风格）——
     readerLoadCfg(){ try{ const c=JSON.parse(localStorage.getItem('zb_reader')||'null'); if(c&&typeof c==='object'){ this.reader.fontSize=Math.min(30,Math.max(15,parseInt(c.fontSize,10)||19)); this.reader.lineGap=[1.6,1.9,2.3].includes(c.lineGap)?c.lineGap:1.9; this.reader.theme=['paper','sepia','green','night'].includes(c.theme)?c.theme:'paper'; this.reader.serif=!!c.serif; } }catch(_){ } },
     readerSaveCfg(){ try{ localStorage.setItem('zb_reader', JSON.stringify({fontSize:this.reader.fontSize,lineGap:this.reader.lineGap,theme:this.reader.theme,serif:this.reader.serif})); }catch(_){ } },
@@ -19,7 +73,7 @@ const ReaderMixin = {
     readerPrev(){ if(this.bookIdx<=0)return; this.bookPrev(); this.reader.panel=false; this.readerSavePos(); this.$nextTick(()=>this.readerScrollTop()); },
     readerNext(){ const b=this.currentBook; if(!b||this.bookIdx>=b.pages.length-1)return; this.bookNext(); this.reader.panel=false; this.readerSavePos(); this.$nextTick(()=>this.readerScrollTop()); },
     readerGoto(i){ this.bookGoto(i); this.reader.tocOpen=false; this.readerSavePos(); this.$nextTick(()=>this.readerScrollTop()); },
-    readerTap(e){ if(this.reader.tocOpen){ this.reader.tocOpen=false; return; } if(this.reader.panel){ this.reader.panel=false; return; } try{ const sel=window.getSelection&&window.getSelection().toString(); if(sel&&sel.length)return; }catch(_){ } if(e.target&&e.target.closest&&e.target.closest('a,button,input,textarea,select,.katex,img,pre,code'))return; const w=window.innerWidth||360; const x=(e.clientX!=null)?e.clientX:w/2; if(x<w*0.3)this.readerPrev(); else if(x>w*0.7)this.readerNext(); else this.readerToggleBars(); },
+    readerTap(e){ if(this.reader.segMode)return; if(this.reader.tocOpen){ this.reader.tocOpen=false; return; } if(this.reader.panel){ this.reader.panel=false; return; } try{ const sel=window.getSelection&&window.getSelection().toString(); if(sel&&sel.length)return; }catch(_){ } if(e.target&&e.target.closest&&e.target.closest('a,button,input,textarea,select,.katex,img,pre,code'))return; const w=window.innerWidth||360; const x=(e.clientX!=null)?e.clientX:w/2; if(x<w*0.3)this.readerPrev(); else if(x>w*0.7)this.readerNext(); else this.readerToggleBars(); },
     readerTouchStart(e){ const t=e.touches&&e.touches[0]; this._rsx=t?t.clientX:0; this._rsy=t?t.clientY:0; this._rst=Date.now(); },
     readerTouchEnd(e){ const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; const dx=t.clientX-(this._rsx||0), dy=t.clientY-(this._rsy||0), dt=Date.now()-(this._rst||0); if(dt<600 && Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.6){ if(dx<0)this.readerNext(); else this.readerPrev(); } },
   }

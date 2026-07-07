@@ -68,6 +68,7 @@ const App={
     mockResult(){ const v=Object.values(this.mock.answers); return { graded:v.filter(x=>x!==null).length, correct:v.filter(x=>x===true).length, total:this.mock.questions.length }; },
     curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id) ? this.aiX.text : ''; },
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.chat||[]) : []; },
+    readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     curAiModel(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.model||'') : ''; },
     mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.correct/t*100); },
     heatCells(){ const map={}; for(const h of ((this.stats&&this.stats.heat)||[]))map[h.d]=h;

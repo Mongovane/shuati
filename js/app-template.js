@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v27</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v28</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -734,13 +734,15 @@ const APP_TEMPLATE = `
           <div v-if="currentPageMat.summary" class="rsum">{{ currentPageMat.summary }}</div>
         </div>
         <img v-if="currentPageMat.page_image" :src="currentPageMat.page_image" style="max-width:100%;height:auto;display:block;margin:0 auto 18px;border-radius:10px;border:1px solid var(--rline);background:#fff;padding:6px" />
-        <rich-text :content="cleanPageMd(currentPageMat.content_md)" :key="currentPageMat.id" />
+        <div ref="rdBox" :class="{'seg-on':reader.segMode}" @click="readerSegClick"><rich-text :content="cleanPageMd(currentPageMat.content_md)" :key="currentPageMat.id" /></div>
       </div>
     </div>
     <div class="r-top">
       <button class="ricon" @click="readerClose" title="退出阅读">‹ 退出</button>
       <div class="rttl">{{ pageLabel(currentPageMat) }}</div>
       <button class="ricon" @click="reader.tocOpen=true" title="目录">☰</button>
+      <button class="ricon" :style="reader.segMode?'color:var(--accent,#4f46e5)':''" @click="readerSegToggle" title="选段：点选段落/公式后合并复制或问 AI">📝</button>
+      <button class="ricon" v-if="readerCanAi" @click="readerAskAI" title="就本页内容问 AI">✨</button>
       <button class="ricon" @click="reader.panel=!reader.panel; reader.barsHidden=false" title="字号 / 主题">Aa</button>
     </div>
     <div class="r-bot">
@@ -748,6 +750,31 @@ const APP_TEMPLATE = `
       <div class="rrow">
         <button class="rbtn" :disabled="bookIdx<=0" @click="readerPrev">← 上一篇</button>
         <button class="rbtn" :disabled="bookIdx>=currentBook.pages.length-1" @click="readerNext">下一篇 →</button>
+      </div>
+    </div>
+    <div v-if="reader.segMode" class="seg-bar r-segbar">
+      <span class="muted" style="font-size:12px">{{ reader.segCount? '已选 '+reader.segCount+' 块' : '点选虚线块（段落 / 公式 / 代码）' }}</span>
+      <span style="flex:1"></span>
+      <button class="rbtn" :disabled="!reader.segCount" @click="readerSegCopy">合并复制</button>
+      <button class="rbtn" v-if="readerCanAi" :disabled="!reader.segCount" @click="readerAskAI">✨ 问 AI</button>
+      <button class="rbtn" @click="readerSegToggle">✕</button>
+    </div>
+    <div v-if="rdAi.open" class="r-panel-backdrop" @click="rdAi.open=false"></div>
+    <div class="r-ai" :class="{open:rdAi.open}">
+      <div class="rai-h"><b>✨ 问 AI · 本页</b><span style="flex:1"></span>
+        <button class="ricon" v-if="rdAi.chat.length||rdAi.quote" @click="rdAi.chat=[]; rdAi.quote=''" title="清空对话与引用">🗑</button>
+        <button class="ricon" @click="rdAi.open=false">✕</button></div>
+      <div v-if="rdAi.quote" class="rai-quote">已引用选段：{{ rdAi.quote.slice(0,120) }}{{ rdAi.quote.length>120?'…':'' }}</div>
+      <div class="rai-list">
+        <div v-for="(c,i) in rdAi.chat" :key="'rai'+i" class="rai-item">
+          <div class="rai-q">🙋 {{ c.q }}</div>
+          <rich-text v-if="c.a" :content="c.a" /><span v-else class="spin"></span>
+        </div>
+        <div v-if="!rdAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页内容或选段提问，例如：这段在讲什么？这个公式怎么来的？</div>
+      </div>
+      <div class="rai-in">
+        <input ref="rdAiInp" v-model="rdAi.input" :disabled="rdAi.asking" placeholder="就本页 / 选段提问（Enter 发送）…" @keyup.enter="rdAiSend" />
+        <button class="rbtn" :disabled="rdAi.asking||!rdAi.input.trim()" @click="rdAiSend"><span v-if="rdAi.asking" class="spin"></span>{{ rdAi.asking?'回答中':'发送' }}</button>
       </div>
     </div>
     <div v-if="reader.panel" class="r-panel-backdrop" @click="reader.panel=false"></div>

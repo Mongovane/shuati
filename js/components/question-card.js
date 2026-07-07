@@ -44,7 +44,10 @@ const QuestionCard={
       return Array.from(box.querySelectorAll('.seg-sel')).filter(el=>!el.parentElement.closest('.seg-sel')).map(el=>this._segText(el)).filter(Boolean); },
     async segCopy(){ const parts=this.segTexts(); if(!parts.length)return; await this.copyText(parts.join('\n\n'),'seg'); this.segMode=false; this._segClear(); },
     segQuote(){ const parts=this.segTexts(); if(!parts.length)return;
-      this.askInput=('关于这段：'+parts.join(' ')+' —— ').slice(0,1800); this.segMode=false; this._segClear(); },
+      this.askInput=('关于这段：'+parts.join(' ')+' —— ').slice(0,1800); this.segMode=false; this._segClear();
+      this.$nextTick(()=>{ const el=this.$refs.askInp; if(!el)return; el.focus();
+        const n=el.value.length; try{ el.setSelectionRange(n,n); }catch(_){}
+        el.scrollLeft=el.scrollWidth; }); },
     async copyText(txt,key){ try{
         if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(txt); }
         else { const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
@@ -126,7 +129,7 @@ const QuestionCard={
             <span v-else class="spin"></span>
           </div>
           <div style="display:flex;gap:8px;margin-top:10px">
-            <input v-model="askInput" :disabled="aiAsking" placeholder="对解析还有疑问？继续追问（可直接复制上方公式粘贴，会自动还原为 $ 公式源码；Enter 发送）…" style="flex:1;min-width:0" @keyup.enter="doAsk" />
+            <input ref="askInp" v-model="askInput" :disabled="aiAsking" placeholder="对解析还有疑问？继续追问（可直接复制上方公式粘贴，会自动还原为 $ 公式源码；Enter 发送）…" style="flex:1;min-width:0" @keyup.enter="doAsk" />
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
           </div>
         </template>
