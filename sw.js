@@ -4,26 +4,26 @@
    - CDN 静态资源（Vue / marked / highlight.js / KaTeX 的 CSS·JS·字体）：缓存优先 → 只下一次，之后离线可用
    - /api/*：始终走网络（题目/统计等动态数据、带鉴权，不缓存）
    改了应用文件想强制刷新预缓存时，把下面 VERSION 加一即可（联网时其实已自动拿最新）。 */
-const VERSION = 'v28';
+const VERSION = 'v29';
 const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
   './', './index.html', './manifest.json',
-  './css/style.css?v=28',
-  './js/constants.js?v=28',
-  './js/components/rich-text.js?v=28',
-  './js/components/question-card.js?v=28',
-  './js/api.js?v=28',
-  './js/components/reader.js?v=28',
-  './js/views/practice.js?v=28',
-  './js/views/bank.js?v=28',
-  './js/views/mock-stats.js?v=28',
-  './js/views/ingest.js?v=28',
-  './js/views/mineru.js?v=28',
-  './js/views/books.js?v=28',
-  './js/views/settings.js?v=28',
-  './js/app-template.js?v=28',
-  './js/app.js?v=28',
+  './css/style.css?v=29',
+  './js/constants.js?v=29',
+  './js/components/rich-text.js?v=29',
+  './js/components/question-card.js?v=29',
+  './js/api.js?v=29',
+  './js/components/reader.js?v=29',
+  './js/views/practice.js?v=29',
+  './js/views/bank.js?v=29',
+  './js/views/mock-stats.js?v=29',
+  './js/views/ingest.js?v=29',
+  './js/views/mineru.js?v=29',
+  './js/views/books.js?v=29',
+  './js/views/settings.js?v=29',
+  './js/app-template.js?v=29',
+  './js/app.js?v=29',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 

@@ -60,8 +60,11 @@ const RichText={
       src=src.replace(/\\\(([^\n]+?)\\\)/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
       // 去页码/页眉残留：整段只是页码、或常见页眉/页脚装饰的，删掉
       src=src.split(/\n{2,}/).filter(b=>{ const t=b.trim(); if(!t)return false; if(/^[\s·•\.\-—–=*_>]*\d{1,4}[\s·•\.\-—–=*_>]*$/.test(t))return false; if(/^(?:-{3,}|_{3,}|\*{3,})$/.test(t))return true; /* 合法 Markdown 分隔线(<hr>)保留 */ if(/^[-—–=_·•\s]{2,}$/.test(t))return false; return true; }).join('\n\n');
+      // 编号条目（如「1.**标题**：\n解释」软换行粘连）会被 marked 合并成一个巨型段落，
+      // 导致选段只能整块选。给每个行首编号前补空行，让每条（含它自己的解释行）独立成块：
+      src=src.replace(/([^\n])\n(?=\d{1,3}[.．、])/g,'$1\n\n');
       // 题号钉最左 + 悬挂缩进（保留原始编号，不交给 marked 重新编号）
-      src=src.replace(/^[ \t>]{0,4}(\d{1,3})[.．、][ \t]+(.+)$/gm,(m,n,rest)=>'<div class="prob"><span class="pn">'+n+'.</span>'+rest+'</div>');
+      src=src.replace(/^[ \t>]{0,4}(\d{1,3})[.．、][ \t]+(.+)$/gm,(m,n,rest)=>'<div class="prob"><span class="pn">'+n+'.</span>'+rest+'</div>\n');
       // 形如「图8-1 / 表 8-2」的独立文本，渲成居中图注
       src=src.replace(/^[ \t]*((?:图|表)\s?\d+(?:[-－.]\d+)*)\s*$/gm,(m,c)=>'<p class="figcap">'+c+'</p>');
       src=src.replace(/\uE100(\d+)\uE101/g,(m,i)=>fences[+i]!==undefined?fences[+i]:m); // 放回代码

@@ -28,7 +28,7 @@ const QuestionCard={
     _segClear(){ const b=this._segBox(); if(b)b.querySelectorAll('.seg-sel').forEach(el=>el.classList.remove('seg-sel')); this.segCount=0; },
     segClick(e){ if(!this.segMode)return; if(e.target.closest('button,input,textarea,a'))return;
       const box=this._segBox(); if(!box)return;
-      const blk=e.target.closest('.code-wrap,.katex-display,li,pre,blockquote,table,h1,h2,h3,h4,h5,h6,p');
+      const blk=e.target.closest('.code-wrap,.katex-display,.prob,li,pre,blockquote,table,h1,h2,h3,h4,h5,h6,p');
       if(!blk||!box.contains(blk))return;
       e.preventDefault(); blk.classList.toggle('seg-sel');
       this.segCount=box.querySelectorAll('.seg-sel').length; },

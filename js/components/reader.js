@@ -10,7 +10,7 @@ const ReaderMixin = {
     readerSegClear(){ const b=this.$refs.rdBox; if(b)b.querySelectorAll('.seg-sel').forEach(el=>el.classList.remove('seg-sel')); this.reader.segCount=0; },
     readerSegClick(e){ if(!this.reader.segMode)return; if(e.target.closest('button,a,input,textarea'))return;
       const box=this.$refs.rdBox; if(!box)return;
-      const blk=e.target.closest('.code-wrap,.katex-display,li,pre,blockquote,table,h1,h2,h3,h4,h5,h6,p');
+      const blk=e.target.closest('.code-wrap,.katex-display,.prob,li,pre,blockquote,table,h1,h2,h3,h4,h5,h6,p');
       if(!blk||!box.contains(blk))return;
       e.preventDefault(); e.stopPropagation();
       blk.classList.toggle('seg-sel'); this.reader.segCount=box.querySelectorAll('.seg-sel').length; },
