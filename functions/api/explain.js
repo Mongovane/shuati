@@ -70,6 +70,7 @@ export async function onRequestPost({ request, env }) {
             'content-type': 'text/event-stream; charset=utf-8',
             'cache-control': 'no-store',
             'x-accel-buffering': 'no',
+            'x-ai-model': String(payload.model), // 告知前端本次由哪个模型生成
           },
         });
       }
@@ -82,7 +83,7 @@ export async function onRequestPost({ request, env }) {
       }
       const d = await up2.json();
       const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
-      return json({ text });
+      return json({ text, model: payload.model });
     }
     const up = await call(false);
     if (!up.ok) {
@@ -92,7 +93,7 @@ export async function onRequestPost({ request, env }) {
     }
     const d = await up.json();
     const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
-    return json({ text });
+    return json({ text, model: payload.model });
   } catch (e) {
     if (e && e.name === 'AbortError') return json({ error: '已取消' }, 499);
     return json({ error: '连接 AI 中转站失败：' + e.message }, 502);

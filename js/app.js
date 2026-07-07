@@ -17,7 +17,7 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'',
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    aiX:{ id:'', text:'', busy:false, chat:[], asking:false },  // AI 解析：流式内容 + 追问对话（按题 id 归属）
+    aiX:{ id:'', text:'', busy:false, chat:[], asking:false, model:'' },  // AI 解析：流式内容 + 追问对话（按题 id 归属）
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ mineru:true, offline:true, subjects:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
@@ -67,6 +67,7 @@ const App={
     mockResult(){ const v=Object.values(this.mock.answers); return { graded:v.filter(x=>x!==null).length, correct:v.filter(x=>x===true).length, total:this.mock.questions.length }; },
     curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id) ? this.aiX.text : ''; },
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.chat||[]) : []; },
+    curAiModel(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.model||'') : ''; },
     mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.correct/t*100); },
     heatCells(){ const map={}; for(const h of ((this.stats&&this.stats.heat)||[]))map[h.d]=h;
       const out=[]; const today=new Date(); today.setHours(0,0,0,0);

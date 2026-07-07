@@ -75,13 +75,14 @@ async aiExplain(){ const q=this.cur; if(!q)return;
   if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
   if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
-  this.aiX={ id:q.id, text:'', busy:true, chat:[], asking:false };
+  this.aiX={ id:q.id, text:'', busy:true, chat:[], asking:false, model:'' };
   try{
     const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
       headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
       body:JSON.stringify({ question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }) });
     if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     const ct=res.headers.get('content-type')||'';
+    try{ const mdl=res.headers.get('x-ai-model'); if(mdl&&this.aiX.id===q.id)this.aiX.model=mdl; }catch(_){}
     if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
     if(ct.includes('text/event-stream') && res.body){
       // —— SSE 流式：边到边渲染 ——
@@ -99,7 +100,7 @@ async aiExplain(){ const q=this.cur; if(!q)return;
     } else {
       // —— 一次性 JSON 降级 ——
       const d=await res.json(); if(d.error)throw new Error(d.error);
-      if(this.aiX.id===q.id) this.aiX.text=d.text||'';
+      if(this.aiX.id===q.id){ this.aiX.text=d.text||''; if(d.model)this.aiX.model=d.model; }
     }
     if(this.aiX.id===q.id && !this.aiX.text) throw new Error('模型没有返回内容，可换个模型再试');
   }catch(e){ if(e.name!=='AbortError' && this.aiX.id===q.id) this.flash('AI 解析失败：'+e.message,true); }
@@ -131,6 +132,7 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
         analysis:this.aiX.text.slice(0,6000), history, ask:text }) });
     if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     const ct=res.headers.get('content-type')||'';
+    try{ const mdl=res.headers.get('x-ai-model'); if(mdl&&this.aiX.id===q.id)this.aiX.model=mdl; }catch(_){}
     if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
     if(ct.includes('text/event-stream') && res.body){
       const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
@@ -152,6 +154,14 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
   }catch(e){ if(e.name!=='AbortError'){ entry.a=entry.a||('_回答失败：'+e.message+'_'); if(this.aiX.id===q.id)this.flash('追问失败：'+e.message,true); } }
   if(this.aiX.id===q.id) this.aiX.asking=false;
   if(this._aiCtrl===ctrl) this._aiCtrl=null;
+}
+
+
+,
+aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
+  const add='🙋 '+p.q+'\n答：'+p.a.trim();
+  const note=(q.note?String(q.note).trim()+'\n\n':'')+add;
+  this.onNote({ id:q.id, note }); // 复用既有保存链路：本地更新 + POST progress + 提示
 }
 
 } };

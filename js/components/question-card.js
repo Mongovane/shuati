@@ -1,7 +1,7 @@
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask'],
+  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, examReveal:Boolean },
+  emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask','ai-note'],
   data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteDraft:'', askInput:'' }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
@@ -80,7 +80,7 @@ const QuestionCard={
         <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ 错误</button>
       </div>
             <div v-if="canAi || aiText || aiBusy" class="ref" style="margin-top:10px">
-        <h5>AI 解析 <span v-if="aiBusy" class="spin"></span><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
+        <h5>AI 解析 <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <rich-text v-if="aiText" :content="aiText" />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <button class="btn subtle" v-if="!aiBusy" @click="$emit('ai-explain')">{{ aiText ? '↻ 重新生成' : '✨ AI 解析本题' }}</button>
@@ -88,7 +88,8 @@ const QuestionCard={
         </div>
         <template v-if="aiText && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" style="margin-top:10px;border-top:1px dashed var(--line,rgba(0,0,0,.12));padding-top:8px">
-            <div class="muted" style="font-size:13px">🙋 {{ c.q }}</div>
+            <div class="muted" style="font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span>🙋 {{ c.q }}</span>
+              <button v-if="c.a && !aiAsking" class="btn subtle" style="padding:1px 8px;font-size:11px;flex:none" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button></div>
             <rich-text v-if="c.a" :content="c.a" />
             <span v-else class="spin"></span>
           </div>
