@@ -2,7 +2,7 @@ const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask','ai-note'],
-  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'' }; },
+  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0 }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
@@ -23,6 +23,28 @@ const QuestionCard={
   watch:{ q(){ this.reset(); } },
   mounted(){ this.reset(); },
   methods:{
+    segToggle(){ this.segMode=!this.segMode; if(!this.segMode)this._segClear(); },
+    _segBox(){ return this.$refs.aiBox; },
+    _segClear(){ const b=this._segBox(); if(b)b.querySelectorAll('.seg-sel').forEach(el=>el.classList.remove('seg-sel')); this.segCount=0; },
+    segClick(e){ if(!this.segMode)return; if(e.target.closest('button,input,textarea,a'))return;
+      const box=this._segBox(); if(!box)return;
+      const blk=e.target.closest('.code-wrap,.katex-display,li,pre,blockquote,table,h1,h2,h3,h4,h5,h6,p');
+      if(!blk||!box.contains(blk))return;
+      e.preventDefault(); blk.classList.toggle('seg-sel');
+      this.segCount=box.querySelectorAll('.seg-sel').length; },
+    _segText(el){
+      if(el.classList.contains('code-wrap')){ const cd=el.querySelector('pre code, pre'); return '```\n'+(cd?cd.textContent.replace(/\n$/,''):'')+'\n```'; }
+      if(el.classList.contains('katex-display')){ const a=el.querySelector('annotation'); return a?('$$'+a.textContent+'$$'):el.textContent.trim(); }
+      const clone=el.cloneNode(true);
+      clone.querySelectorAll('.code-copy').forEach(b=>b.remove());
+      clone.querySelectorAll('.katex-display').forEach(k=>{ const a=k.querySelector('annotation'); k.replaceWith(clone.ownerDocument.createTextNode(a?(' $$'+a.textContent+'$$ '):k.textContent)); });
+      clone.querySelectorAll('.katex').forEach(k=>{ const a=k.querySelector('annotation'); k.replaceWith(clone.ownerDocument.createTextNode(a?('$'+a.textContent+'$'):k.textContent)); });
+      return clone.textContent.replace(/[ \t]+/g,' ').trim(); },
+    segTexts(){ const box=this._segBox(); if(!box)return [];
+      return Array.from(box.querySelectorAll('.seg-sel')).filter(el=>!el.parentElement.closest('.seg-sel')).map(el=>this._segText(el)).filter(Boolean); },
+    async segCopy(){ const parts=this.segTexts(); if(!parts.length)return; await this.copyText(parts.join('\n\n'),'seg'); this.segMode=false; this._segClear(); },
+    segQuote(){ const parts=this.segTexts(); if(!parts.length)return;
+      this.askInput=('关于这段：'+parts.join(' ')+' —— ').slice(0,1800); this.segMode=false; this._segClear(); },
     async copyText(txt,key){ try{
         if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(txt); }
         else { const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
@@ -84,13 +106,20 @@ const QuestionCard={
         <button class="btn subtle" :style="self===true?'border-color:var(--ok);color:var(--ok)':''" @click="grade(true)">✓ 正确</button>
         <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ 错误</button>
       </div>
-            <div v-if="canAi || aiText || aiBusy" class="ref" style="margin-top:10px">
+            <div v-if="canAi || aiText || aiBusy" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
         <h5>AI 解析 <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <rich-text v-if="aiText" :content="aiText" />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <button class="btn subtle" v-if="!aiBusy" @click="$emit('ai-explain')">{{ aiText ? '↻ 重新生成' : '✨ AI 解析本题' }}</button>
           <button class="btn subtle" v-if="aiText && !aiBusy" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 保存进解析</button>
           <button class="btn subtle" v-if="aiText && !aiBusy" @click="copyText(aiText,'main')" title="复制 Markdown 源码（公式保留 $ 格式）">{{ copied==='main'?'已复制 ✓':'📋 复制' }}</button>
+          <button class="btn subtle" v-if="aiText && !aiBusy" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="进入选段模式：像勾选复选框一样点选段落/公式/代码块，再合并复制或引用到追问">{{ segMode?'✕ 退出选段':'📝 选段' }}</button>
+        </div>
+        <div v-if="segMode" class="seg-bar">
+          <span class="muted" style="font-size:12px">{{ segCount? '已选 '+segCount+' 块' : '点选下方虚线块（段落 / 公式 / 代码 / 列表项）' }}</span>
+          <span style="flex:1"></span>
+          <button class="btn subtle" :disabled="!segCount" @click="segCopy">{{ copied==='seg'?'已复制 ✓':'合并复制' }}</button>
+          <button class="btn subtle" :disabled="!segCount" @click="segQuote">引用到追问</button>
         </div>
         <template v-if="aiText && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" style="margin-top:10px;border-top:1px dashed var(--line,rgba(0,0,0,.12));padding-top:8px">
