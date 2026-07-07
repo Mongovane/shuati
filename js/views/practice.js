@@ -79,7 +79,7 @@ async aiExplain(){ const q=this.cur; if(!q)return;
   try{
     const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
       headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
-      body:JSON.stringify({ question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }) });
+      body:JSON.stringify({ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }) });
     if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     const ct=res.headers.get('content-type')||'';
     try{ const mdl=res.headers.get('x-ai-model'); if(mdl&&this.aiX.id===q.id)this.aiX.model=mdl; }catch(_){}
@@ -94,6 +94,7 @@ async aiExplain(){ const q=this.cur; if(!q)return;
           if(!payload || payload==='[DONE]')continue;
           let j=null; try{ j=JSON.parse(payload); }catch(_){ continue; }
           if(j.error) throw new Error(j.error.message||String(j.error));
+          if(j.model && this.aiX.id===q.id) this.aiX.model=j.model; // SSE 内的 model 为上游真实模型，覆盖头部预告
           const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
           if(t && this.aiX.id===q.id) this.aiX.text+=t;
         } }
@@ -128,7 +129,7 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
   try{
     const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
       headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
-      body:JSON.stringify({ question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
+      body:JSON.stringify({ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
         analysis:this.aiX.text.slice(0,6000), history, ask:text }) });
     if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     const ct=res.headers.get('content-type')||'';
@@ -143,6 +144,7 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
           if(!payload || payload==='[DONE]')continue;
           let j=null; try{ j=JSON.parse(payload); }catch(_){ continue; }
           if(j.error) throw new Error(j.error.message||String(j.error));
+          if(j.model && this.aiX.id===q.id) this.aiX.model=j.model; // SSE 内的 model 为上游真实模型，覆盖头部预告
           const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
           if(t && this.aiX.id===q.id) entry.a+=t;
         } }
@@ -159,8 +161,8 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
 
 ,
 aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
-  const add='🙋 '+p.q+'\n答：'+p.a.trim();
-  const note=(q.note?String(q.note).trim()+'\n\n':'')+add;
+  const add='**🙋 '+p.q.trim()+'**\n\n'+p.a.trim();
+  const note=(q.note?String(q.note).trim()+'\n\n---\n\n':'')+add;
   this.onNote({ id:q.id, note }); // 复用既有保存链路：本地更新 + POST progress + 提示
 }
 

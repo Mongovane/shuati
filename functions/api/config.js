@@ -8,5 +8,6 @@ export async function onRequestGet({ request, env }) {
     ai_vision_model: env.AI_VISION_MODEL || env.AI_MODEL || '',
     has_ai: !!(env.AI_BASE_URL && env.AI_API_KEY),
     has_cf_ai: !!env.AI,
+    has_mineru: !!(env.MINERU_API_KEY || env.MINERU_TOKEN),
   });
 }

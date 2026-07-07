@@ -9,6 +9,8 @@ const ApiMixin = {
       const method = (opts.method || 'GET').toUpperCase();
       const headers = Object.assign({ 'authorization': 'Bearer ' + this.token }, opts.headers || {});
       if (opts.body) headers['content-type'] = 'application/json';
+      // 用户自带 MinerU Token：仅对 /api/mineru 附带（覆盖服务端配置）
+      if (path.startsWith('/api/mineru') && this.mineruCfg && (this.mineruCfg.token || '').trim()) headers['x-mineru-token'] = this.mineruCfg.token.trim();
       let res;
       try {
         res = await fetch(path, { ...opts, headers });

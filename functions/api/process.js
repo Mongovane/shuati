@@ -68,15 +68,28 @@ export async function onRequestPost({ request, env }) {
   let questions = [];
   let materials = [];
 
+  // —— 用户自定义中转站（全局覆盖：与 explain/visionocr 同一套守卫）——
+  const ovBase = String(body.base_url || '').trim().replace(/\/+$/, '');
+  const ovKey = String(body.api_key || '').trim();
+  const ovModel = String(body.model || '').trim();
+  const ovVision = String(body.vision_model || '').trim();
+  if (ovBase && !ovKey) {
+    return json({ error: '使用自定义 Base URL 时必须同时提供该站的 API Key（不会使用服务端密钥）' }, 400);
+  }
+  if (ovBase && !/^https:\/\//i.test(ovBase)) {
+    return json({ error: '自定义 Base URL 必须以 https:// 开头' }, 400);
+  }
+  const ov = { base: ovBase, key: ovKey, model: ovModel, vision: ovVision };
+  const aiReady = !!(ovBase && ovKey) || !!(env.AI_BASE_URL && env.AI_API_KEY);
+  const noAiMsg = '未配置 AI 中转站：服务端未设 AI_BASE_URL/AI_API_KEY，也可在「设置 → AI 中转站」里填入你自己的';
+
   // 路径 A：直接导入已结构化的 JSON 数组（不调用 AI，零成本），始终视为题库
   if (Array.isArray(body.questions) && body.questions.length) {
     questions = body.questions;
   } else if (Array.isArray(body.images) && body.images.length) {
     // 路径 C：图片/扫描页 → 视觉模型识别（含自动分辨）
-    if (!env.AI_BASE_URL || !env.AI_API_KEY) {
-      return json({ error: '服务端未配置 AI_BASE_URL / AI_API_KEY，无法调用 AI 中转站' }, 500);
-    }
-    const aiOut = await callAI(env, { images: body.images.slice(0, 4) }, subject, defChapter, defSource, kind, true);
+    if (!aiReady) return json({ error: noAiMsg }, 400);
+    const aiOut = await callAI(env, ov, { images: body.images.slice(0, 4) }, subject, defChapter, defSource, kind, true);
     if (aiOut.error) return json(aiOut, aiOut.status || 502);
     questions = aiOut.questions || [];
     materials = aiOut.materials || [];
@@ -84,10 +97,8 @@ export async function onRequestPost({ request, env }) {
     // 路径 B：原文文本 → AI 中转站（含自动分辨）
     const rawText = (body.raw_text || '').trim();
     if (!rawText) return json({ error: '请提供 raw_text（原文）/ questions（JSON 数组）/ images（图片）' }, 400);
-    if (!env.AI_BASE_URL || !env.AI_API_KEY) {
-      return json({ error: '服务端未配置 AI_BASE_URL / AI_API_KEY，无法调用 AI 中转站' }, 500);
-    }
-    const aiOut = await callAI(env, { rawText }, subject, defChapter, defSource, kind, false);
+    if (!aiReady) return json({ error: noAiMsg }, 400);
+    const aiOut = await callAI(env, ov, { rawText }, subject, defChapter, defSource, kind, false);
     if (aiOut.error) return json(aiOut, aiOut.status || 502);
     questions = aiOut.questions || [];
     materials = aiOut.materials || [];
@@ -216,9 +227,14 @@ async function ensureMaterialsTable(env) {
 }
 
 // —— 统一的 AI 调用：根据 kind 让模型分辨并返回 {kind, questions, materials} ——
-async function callAI(env, input, subject, chapter, source, kind, vision) {
-  const base = env.AI_BASE_URL.replace(/\/+$/, '');
-  const model = vision ? (env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (env.AI_MODEL || 'gpt-4o');
+async function callAI(env, ov, input, subject, chapter, source, kind, vision) {
+  // 生效配置：自定义 base+key 成对生效；模型解析注意——自定义站时不沿用服务端模型名（可能在该站不存在）
+  const custom = !!(ov && ov.base && ov.key);
+  const base = (custom ? ov.base : env.AI_BASE_URL).replace(/\/+$/, '');
+  const key = custom ? ov.key : ((ov && ov.key) || env.AI_API_KEY);
+  const model = vision
+    ? ((ov && ov.vision) || (custom ? ((ov && ov.model) || 'gpt-4o') : (env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o')))
+    : ((ov && ov.model) || (custom ? 'gpt-4o' : (env.AI_MODEL || 'gpt-4o')));
   const sys = buildSystemPrompt(kind);
   const hint = buildHint(subject, chapter, source, kind);
 
@@ -238,7 +254,7 @@ async function callAI(env, input, subject, chapter, source, kind, vision) {
   try {
     resp = await fetch(`${base}/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY}` },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
       body: JSON.stringify({ model, temperature: 0.1, messages, response_format: { type: 'json_object' } }),
     });
   } catch (e) {

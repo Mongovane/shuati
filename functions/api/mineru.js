@@ -12,9 +12,14 @@ function authHeaders(env) {
 function pick(obj, keys) { for (const k of keys) { if (obj && obj[k] != null) return obj[k]; } return undefined; }
 
 export async function onRequest(context) {
-  const { request, env } = context;
+  let { request, env } = context;
   const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
+
+  // 用户自带 MinerU Token（设置页填写，仅存其本机浏览器）：优先于服务端环境变量，绝不混用。
+  // Token 只会随请求发往固定的 mineru.net 官方接口，无自定义地址，无泄露面。
+  const userMineruTok = (request.headers.get('x-mineru-token') || '').trim();
+  if (userMineruTok) env = { ...env, MINERU_API_KEY: userMineruTok, MINERU_TOKEN: userMineruTok };
 
   const url = new URL(request.url);
   const action = url.searchParams.get('action');
@@ -23,7 +28,7 @@ export async function onRequest(context) {
 
   // 精准解析 API 需要 Token；Agent 轻量 API 与 上传代理 免 Token
   if (!noToken && !tokenOf(env)) {
-    return json({ error: '服务端未配置 MinerU 密钥。精准模式需在 Cloudflare Pages → 环境变量 添加 MINERU_API_KEY（控制台「API 管理 → 创建 Token」生成），然后重新部署。或改用「免 Token 轻量」模式。' }, 500);
+    return json({ error: '未配置 MinerU 密钥：可在本站「设置 → MinerU」粘贴你自己的 API Token（mineru.net → API 管理 → 创建），或由站长在 Cloudflare 环境变量配置 MINERU_API_KEY；也可改用「免 Token 轻量」模式。' }, 400);
   }
 
   try {

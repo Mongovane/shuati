@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v18</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v22</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -68,7 +68,7 @@ const APP_TEMPLATE = `
             <select class="bk-mini" style="margin-left:auto" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="改本题科目（纠正分类）"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
             <button class="bk-del" @click="deleteCurrentQuestion" title="从题库删除本题">删除本题</button>
           </div>
-          <question-card :q="cur" :key="cur.id" :can-ai="ai.hasAI && !offline" :ai-text="curAiText" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" />
+          <question-card :q="cur" :key="cur.id" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" />
           <div class="q-nav-bar">
             <button class="btn subtle" :disabled="qi<=0" @click="prev">← 上一题</button>
             <button class="btn" @click="next">{{ qi>=queue.length-1 ? '换一批 ↻' : '下一题 →' }}</button>
@@ -267,7 +267,7 @@ const APP_TEMPLATE = `
               <select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改本书科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
               <button class="btn" :disabled="bookExtract.busy" @click="localExtractPage" title="用规则解析本页现成的习题+解答，直接入题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>本页抽题入库（不花 AI）</button>
               <button class="btn subtle" :disabled="bookExtract.busy" @click="localExtractBook" title="把整本书的习题一次性抽进题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>整本抽题入库</button>
-              <button class="btn subtle" :disabled="genq.busy || !ai.hasAI" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）"><span v-if="genq.busy" class="spin"></span>AI 出题</button>
+              <button class="btn subtle" :disabled="genq.busy || !(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）"><span v-if="genq.busy" class="spin"></span>AI 出题</button>
               <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
               <button class="bk-del" style="margin-left:auto" @click="deleteCurrentBook">删除本书</button>
             </div>
@@ -538,7 +538,7 @@ const APP_TEMPLATE = `
           <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfAllToMaterialLocal">全部页转教材（共 {{ ingest.pdf.pages }} 页）</button>
           <button v-if="ingest.local.busy" class="btn subtle" @click="ingest.local.stop=true">停止</button>
           <label class="row" style="height:40px;cursor:pointer;gap:6px"><input type="checkbox" v-model="ingest.local.ocr" /> <span class="muted">扫描页用本地 OCR</span></label>
-          <div class="field" v-if="ingest.local.ocr" style="margin:0"><label>OCR 引擎</label><select v-model="ingest.local.engine" @change="ingest.local.engine==='cfai' && loadCfUsage()"><option value="relay" :disabled="!ai.hasAI && !ocrCfg.key">中转站·你的视觉模型（最准）</option><option value="scribe">Scribe.js（免费·较慢）</option><option value="tesseract">tesseract（免费·一般）</option><option value="cfai" :disabled="!ai.hasCfAI">Workers AI（免费额度{{ ai.hasCfAI?'':'·未绑定' }}）</option></select></div>
+          <div class="field" v-if="ingest.local.ocr" style="margin:0"><label>OCR 引擎</label><select v-model="ingest.local.engine" @change="ingest.local.engine==='cfai' && loadCfUsage()"><option value="relay" :disabled="!ai.hasAI && !ocrCfg.key && !(explainCfg.base && explainCfg.key)">中转站·你的视觉模型（最准）</option><option value="scribe">Scribe.js（免费·较慢）</option><option value="tesseract">tesseract（免费·一般）</option><option value="cfai" :disabled="!ai.hasCfAI">Workers AI（免费额度{{ ai.hasCfAI?'':'·未绑定' }}）</option></select></div>
           <template v-if="ingest.local.ocr && ingest.local.engine==='relay'">
             <div class="field" style="margin:0;min-width:260px"><label>视觉模型（须支持看图，如 gpt-4o / qwen-vl-max / gemini-1.5-pro）</label><input class="inp" v-model="ocrCfg.model" @change="saveOcrCfg" placeholder="留空用服务端 AI_VISION_MODEL" /></div>
             <details style="flex-basis:100%;margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:13px">高级：自定义 Base URL / API Key（可选）</summary>
@@ -640,11 +640,12 @@ const APP_TEMPLATE = `
       <div class="card" style="max-width:680px;margin-top:14px">
         <div class="fold-head" @click="settFold.mineru=!settFold.mineru"><span style="font-weight:700;font-size:15px">MinerU 配额与 Token</span><span class="fold-arrow" :class="{open:!settFold.mineru}">▾</span></div>
         <div v-show="!settFold.mineru" class="fold-body" style="margin-top:10px">
-        <div class="hint" style="margin-bottom:14px">用于限制导入页数、避免超出 MinerU 每日额度，并在 Token 快过期时提醒你。用量为<b>本工具本地统计</b>（按提交的页数估算），实际以 MinerU 后台为准；每天 0 点自动归零。</div>
+        <div class="hint" style="margin-bottom:14px">用于限制导入页数、避免超出 MinerU 每日额度，并在 Token 快过期时提醒你。<b>API Token 可自带</b>：填入后「精准模式」用你的 Token（仅存本机浏览器、只发往 mineru.net 官方接口），留空则用服务端配置。用量为<b>本工具本地统计</b>（按提交的页数估算），实际以 MinerU 后台为准；每天 0 点自动归零。</div>
         <div class="row" style="gap:12px;flex-wrap:wrap;margin-bottom:12px">
           <div class="field" style="flex:1;min-width:150px"><label>每日页数上限</label><input class="inp" type="number" min="0" v-model.number="mineruCfg.pageLimit" placeholder="1000" /></div>
           <div class="field" style="flex:1;min-width:150px"><label>每日文件数上限</label><input class="inp" type="number" min="0" v-model.number="mineruCfg.fileLimit" placeholder="5000" /></div>
           <div class="field" style="flex:1;min-width:170px"><label>Token 过期日期（从 MinerU 后台抄）</label><input class="inp" type="date" v-model="mineruCfg.tokenExp" /></div>
+          <div class="field" style="flex:2;min-width:280px"><label>MinerU API Token（留空用服务端{{ ai.hasMineru?"·已配置":"·未配置" }}）</label><input class="inp" type="password" v-model="mineruCfg.token" placeholder="mineru.net → API 管理 → 创建 Token 后粘贴" /></div>
         </div>
         <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">
           <span class="muted">今日已用：<b>{{ mineruUsageView.pages }}</b> / {{ mineruCfg.pageLimit||'∞' }} 页 · <b>{{ mineruUsageView.files }}</b> / {{ mineruCfg.fileLimit||'∞' }} 文件</span>
@@ -655,7 +656,14 @@ const APP_TEMPLATE = `
         </div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div class="fold-head" @click="settFold.offline=!settFold.offline"><span style="font-weight:700;font-size:15px">离线使用（地铁/通勤）</span><span class="fold-arrow" :class="{open:!settFold.offline}">▾</span></div>
+        <div class="fold-head" @click="settFold.offline=!settFold.offline"><h3 style="margin:18px 0 10px">AI 中转站（全局：解析 / 智能导入 / 拍照 / 教材出题）</h3>
+        <div class="toolbar">
+          <div class="field" style="margin:0;min-width:280px"><label>Base URL（留空用服务端）</label><input class="inp" v-model="explainCfg.base" @change="saveExplainCfg" placeholder="https://你的中转站/v1" /></div>
+          <div class="field" style="margin:0;min-width:280px"><label>API Key（自定义 Base 时必填）</label><input class="inp" type="password" v-model="explainCfg.key" @change="saveExplainCfg" placeholder="sk-..." /></div>
+          <div class="field" style="margin:0;min-width:220px"><label>模型（留空用服务端 AI_MODEL）</label><input class="inp" v-model="explainCfg.model" @change="saveExplainCfg" placeholder="gpt-4o / deepseek-v3 …" /></div>
+        </div>
+        <div class="hint" style="margin-top:6px">⚠ 配置仅保存在你本机浏览器（localStorage），对本站所有 AI 功能全局生效（拍照/看图的视觉模型仍取「导入 → OCR 设置」里的视觉模型）。自定义 Base 必须同时填该站的 Key，不会使用服务端密钥；公用电脑勿填，建议用额度受限的子 Key。留空则用服务端配置。</div>
+        <span style="font-weight:700;font-size:15px">离线使用（地铁/通勤）</span><span class="fold-arrow" :class="{open:!settFold.offline}">▾</span></div>
         <div v-show="!settFold.offline" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">把全部题目和教材一次性下载到本机，之后<b>彻底断网也能刷全部题、翻全部书、用筛选</b>。离线作答会排队，联网后自动补传。建议先「添加到主屏幕」装成 App 再用。</div>
         <div class="row" style="gap:12px;align-items:center">

@@ -35,7 +35,7 @@ const RichText={
       src=src.replace(/\$([^\$\n]+?)\$/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
       src=src.replace(/\\\(([^\n]+?)\\\)/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
       // 去页码/页眉残留：整段只是页码、或常见页眉/页脚装饰的，删掉
-      src=src.split(/\n{2,}/).filter(b=>{ const t=b.trim(); if(!t)return false; if(/^[\s·•\.\-—–=*_>]*\d{1,4}[\s·•\.\-—–=*_>]*$/.test(t))return false; if(/^[-—–=_·•\s]{2,}$/.test(t))return false; return true; }).join('\n\n');
+      src=src.split(/\n{2,}/).filter(b=>{ const t=b.trim(); if(!t)return false; if(/^[\s·•\.\-—–=*_>]*\d{1,4}[\s·•\.\-—–=*_>]*$/.test(t))return false; if(/^(?:-{3,}|_{3,}|\*{3,})$/.test(t))return true; /* 合法 Markdown 分隔线(<hr>)保留 */ if(/^[-—–=_·•\s]{2,}$/.test(t))return false; return true; }).join('\n\n');
       // 题号钉最左 + 悬挂缩进（保留原始编号，不交给 marked 重新编号）
       src=src.replace(/^[ \t>]{0,4}(\d{1,3})[.．、][ \t]+(.+)$/gm,(m,n,rest)=>'<div class="prob"><span class="pn">'+n+'.</span>'+rest+'</div>');
       // 形如「图8-1 / 表 8-2」的独立文本，渲成居中图注

@@ -2,7 +2,7 @@ const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask','ai-note'],
-  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteDraft:'', askInput:'' }; },
+  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteEdit:false, noteDraft:'', askInput:'' }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
@@ -99,10 +99,19 @@ const QuestionCard={
           </div>
         </template>
       </div>
-      <button class="note-toggle" @click="showNote=!showNote">{{ showNote?'隐藏笔记':(q.note?'查看 / 编辑笔记':'+ 添加笔记') }}</button>
+      <button class="note-toggle" @click="showNote=!showNote; if(showNote){ noteEdit=!q.note; noteDraft=q.note||''; }">{{ showNote?'隐藏笔记':(q.note?'查看 / 编辑笔记':'+ 添加笔记') }}</button>
       <div v-if="showNote" style="margin-top:8px">
-        <textarea v-model="noteDraft" style="min-height:80px" placeholder="记下易错点或记忆口诀…"></textarea>
-        <button class="btn subtle" style="margin-top:8px" @click="saveNote">保存笔记</button>
+        <template v-if="!noteEdit && q.note">
+          <div class="ref"><rich-text :content="q.note" /></div>
+          <button class="btn subtle" style="margin-top:8px" @click="noteEdit=true; noteDraft=q.note||''">✏️ 编辑笔记</button>
+        </template>
+        <template v-else>
+          <textarea v-model="noteDraft" style="min-height:80px" placeholder="记下易错点或记忆口诀…（支持 Markdown 与 $ 公式）"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn subtle" @click="saveNote(); noteEdit=false">保存笔记</button>
+            <button v-if="q.note" class="btn subtle" @click="noteEdit=false; noteDraft=q.note||''">取消</button>
+          </div>
+        </template>
       </div>
     </template>
     <div class="q-actions" v-if="mode!=='exam'">
