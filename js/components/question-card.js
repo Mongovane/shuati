@@ -115,17 +115,12 @@ const QuestionCard={
           <button class="btn subtle" v-if="aiText && !aiBusy" @click="copyText(aiText,'main')" title="复制 Markdown 源码（公式保留 $ 格式）">{{ copied==='main'?'已复制 ✓':'📋 复制' }}</button>
           <button class="btn subtle" v-if="aiText && !aiBusy" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="进入选段模式：像勾选复选框一样点选段落/公式/代码块，再合并复制或引用到追问">{{ segMode?'✕ 退出选段':'📝 选段' }}</button>
         </div>
-        <div v-if="segMode" class="seg-bar">
-          <span class="muted" style="font-size:12px">{{ segCount? '已选 '+segCount+' 块' : '点选下方虚线块（段落 / 公式 / 代码 / 列表项）' }}</span>
-          <span style="flex:1"></span>
-          <button class="btn subtle" :disabled="!segCount" @click="segCopy">{{ copied==='seg'?'已复制 ✓':'合并复制' }}</button>
-          <button class="btn subtle" :disabled="!segCount" @click="segQuote">引用到追问</button>
-        </div>
         <template v-if="aiText && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" style="margin-top:10px;border-top:1px dashed var(--line,rgba(0,0,0,.12));padding-top:8px">
             <div class="muted" style="font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0">🙋 <rich-text :content="c.q" style="display:inline-block;vertical-align:top;max-width:100%" /></div>
               <span style="flex:none;display:flex;gap:6px">
               <button v-if="c.a && !aiAsking" class="btn subtle" style="padding:1px 8px;font-size:11px" @click="copyText(c.a,'chat'+i)" title="复制这轮回答的 Markdown 源码">{{ copied===('chat'+i)?'已复制 ✓':'📋' }}</button>
+              <button v-if="c.a && !aiAsking" class="btn subtle" style="padding:1px 8px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选这轮回答里的段落/公式，底部操作条合并复制或引用追问">{{ segMode?'✕':'📝 选段' }}</button>
               <button v-if="c.a && !aiAsking" class="btn subtle" style="padding:1px 8px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button></span></div>
             <rich-text v-if="c.a" :content="c.a" />
             <span v-else class="spin"></span>
@@ -135,6 +130,12 @@ const QuestionCard={
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
           </div>
         </template>
+        <div v-if="segMode" class="seg-bar">
+          <span class="muted" style="font-size:12px">{{ segCount? '已选 '+segCount+' 块' : '点选下方虚线块（段落 / 公式 / 代码 / 列表项）' }}</span>
+          <span style="flex:1"></span>
+          <button class="btn subtle" :disabled="!segCount" @click="segCopy">{{ copied==='seg'?'已复制 ✓':'合并复制' }}</button>
+          <button class="btn subtle" :disabled="!segCount" @click="segQuote">引用到追问</button>
+        </div>
       </div>
       <button class="note-toggle" @click="showNote=!showNote; if(showNote){ noteEdit=!q.note; noteDraft=q.note||''; }">{{ showNote?'隐藏笔记':(q.note?'查看 / 编辑笔记':'+ 添加笔记') }}</button>
       <div v-if="showNote" style="margin-top:8px">

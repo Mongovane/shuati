@@ -429,7 +429,8 @@ a{color:var(--accent)}
 [data-theme=dark] .code-wrap .code-copy{background:rgba(30,36,48,.85);border-color:rgba(255,255,255,.18)}
 
 /* —— 选段模式 —— */
-.seg-bar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:6px 8px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:8px;background:var(--surface,rgba(0,0,0,.03))}
+.seg-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:10px;background:var(--card-bg,#fff);position:sticky;bottom:10px;z-index:6;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+[data-theme=dark] .seg-bar{background:#1e2430}
 .seg-on .rich :is(p,li,blockquote,table,h1,h2,h3,h4,h5,h6,.code-wrap,.katex-display){outline:1.5px dashed var(--line,rgba(0,0,0,.25));outline-offset:2px;border-radius:6px;cursor:pointer;transition:background .12s}
 .seg-on .rich :is(p,li,blockquote,table,h1,h2,h3,h4,h5,h6,.code-wrap,.katex-display):hover{background:rgba(79,70,229,.06)}
 .seg-on .rich .seg-sel{outline:2px solid var(--accent,#4f46e5);background:rgba(79,70,229,.10)}
