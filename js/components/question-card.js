@@ -2,7 +2,7 @@ const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask','ai-note'],
-  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteEdit:false, noteDraft:'', askInput:'' }; },
+  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'' }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
@@ -23,6 +23,11 @@ const QuestionCard={
   watch:{ q(){ this.reset(); } },
   mounted(){ this.reset(); },
   methods:{
+    async copyText(txt,key){ try{
+        if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(txt); }
+        else { const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        this.copied=key; setTimeout(()=>{ if(this.copied===key)this.copied=''; },1500);
+      }catch(_){} },
     doAsk(){ const t=this.askInput.trim(); if(!t||this.aiAsking)return; this.$emit('ai-ask',t); this.askInput=''; },
     reset(){ this.sel=[]; this.blanks=''; this.text=''; this.localRevealed=false; this.self=null; this.showNote=false; this.noteDraft=this.q.note||''; },
     pick(k){ if(this.revealed)return; if(this.isMulti){ const i=this.sel.indexOf(k); i>=0?this.sel.splice(i,1):this.sel.push(k); } else this.sel=[k]; },
@@ -85,16 +90,19 @@ const QuestionCard={
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <button class="btn subtle" v-if="!aiBusy" @click="$emit('ai-explain')">{{ aiText ? '↻ 重新生成' : '✨ AI 解析本题' }}</button>
           <button class="btn subtle" v-if="aiText && !aiBusy" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 保存进解析</button>
+          <button class="btn subtle" v-if="aiText && !aiBusy" @click="copyText(aiText,'main')" title="复制 Markdown 源码（公式保留 $ 格式）">{{ copied==='main'?'已复制 ✓':'📋 复制' }}</button>
         </div>
         <template v-if="aiText && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" style="margin-top:10px;border-top:1px dashed var(--line,rgba(0,0,0,.12));padding-top:8px">
-            <div class="muted" style="font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span>🙋 {{ c.q }}</span>
-              <button v-if="c.a && !aiAsking" class="btn subtle" style="padding:1px 8px;font-size:11px;flex:none" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button></div>
+            <div class="muted" style="font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0">🙋 <rich-text :content="c.q" style="display:inline-block;vertical-align:top;max-width:100%" /></div>
+              <span style="flex:none;display:flex;gap:6px">
+              <button v-if="c.a && !aiAsking" class="btn subtle" style="padding:1px 8px;font-size:11px" @click="copyText(c.a,'chat'+i)" title="复制这轮回答的 Markdown 源码">{{ copied===('chat'+i)?'已复制 ✓':'📋' }}</button>
+              <button v-if="c.a && !aiAsking" class="btn subtle" style="padding:1px 8px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button></span></div>
             <rich-text v-if="c.a" :content="c.a" />
             <span v-else class="spin"></span>
           </div>
           <div style="display:flex;gap:8px;margin-top:10px">
-            <input v-model="askInput" :disabled="aiAsking" placeholder="对解析还有疑问？继续追问（Enter 发送）…" style="flex:1;min-width:0" @keyup.enter="doAsk" />
+            <input v-model="askInput" :disabled="aiAsking" placeholder="对解析还有疑问？继续追问（可直接复制上方公式粘贴，会自动还原为 $ 公式源码；Enter 发送）…" style="flex:1;min-width:0" @keyup.enter="doAsk" />
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
           </div>
         </template>

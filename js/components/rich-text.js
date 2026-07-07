@@ -1,3 +1,15 @@
+// —— 代码块复制：全局事件委托（v-html 内容无法绑定 Vue 事件）——
+if(typeof document!=='undefined' && !window.__codeCopyBound){
+  window.__codeCopyBound=true;
+  document.addEventListener('click',function(e){
+    const btn=e.target&&e.target.closest&&e.target.closest('.code-copy'); if(!btn)return;
+    const wrap=btn.closest('.code-wrap'); const code=wrap&&wrap.querySelector('pre code, pre');
+    const text=code?code.textContent:'';
+    const done=()=>{ const old=btn.textContent; btn.textContent='已复制 ✓'; btn.disabled=true; setTimeout(()=>{ btn.textContent=old; btn.disabled=false; },1500); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done).catch(()=>{}); }
+    else { try{ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done(); }catch(_){} }
+  });
+}
 const RichText={
   props:['content'],
   template:`<div class="rich" v-html="html"></div>`,
@@ -46,6 +58,8 @@ const RichText={
       // KaTeX 的占位符是私有区字符，能安全穿过消毒；KaTeX 本身输出为转义后的安全 HTML，在消毒后注入。
       if(window.DOMPurify) out=DOMPurify.sanitize(out,{USE_PROFILES:{html:true}});
       out=out.replace(/\uE000(\d+)\uE001/g,(m,i)=>{ const it=math[+i]; if(!it)return ''; if(window.katex){ try{ return window.katex.renderToString(it.tex,{displayMode:it.display,throwOnError:false,strict:false}); }catch(e){ return '<code>'+it.tex.replace(/</g,'&lt;')+'</code>'; } } return (it.display?'$$':'$')+it.tex+(it.display?'$$':'$'); });
+      // 代码块复制按钮（市面标配）：包一层定位容器 + 注入按钮，点击由下方全局委托处理
+      out=out.replace(/<pre>/g,'<div class="code-wrap"><button type="button" class="code-copy">复制</button><pre>').replace(/<\/pre>/g,'</pre></div>');
       return out;
     }catch(e){ try{ const fb=marked.parse(raw); return window.DOMPurify?DOMPurify.sanitize(fb,{USE_PROFILES:{html:true}}):fb; }catch(_){return raw;} }
   } },
