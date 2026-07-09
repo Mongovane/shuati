@@ -153,7 +153,11 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
       if(this.aiX.id===q.id) entry.a=d.text||'';
     }
     if(this.aiX.id===q.id && !entry.a){ entry.a='_（模型没有返回内容）_'; }
-  }catch(e){ if(e.name!=='AbortError'){ entry.a=entry.a||('_回答失败：'+e.message+'_'); if(this.aiX.id===q.id)this.flash('追问失败：'+e.message,true); } }
+  }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误';
+      if(/429/.test(msg)) msg+='（中转站限流，稍等几秒再重试）';
+      else if(/Failed to fetch|NetworkError/i.test(msg)) msg='网络异常，请检查网络后重试';
+      entry.a='_回答失败：'+msg+'_'; entry.err=true;
+      if(this.aiX.id===q.id)this.flash('追问失败：'+msg,true); } }
   if(this.aiX.id===q.id) this.aiX.asking=false;
   if(this._aiCtrl===ctrl) this._aiCtrl=null;
 }
@@ -164,6 +168,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
   const add='**🙋 '+p.q.trim()+'**\n\n'+p.a.trim();
   const note=(q.note?String(q.note).trim()+'\n\n---\n\n':'')+add;
   this.onNote({ id:q.id, note }); // 复用既有保存链路：本地更新 + POST progress + 提示
+}
+
+
+,
+aiRetryAsk(i){ const list=this.aiX.chat||[]; const c=list[i];
+  if(!c || !c.err || this.aiX.asking) return;
+  const q=c.q; list.splice(i,1);   // 移除失败轮次，原问题重发（历史不包含失败文本）
+  return this.aiAsk(q);
 }
 
 } };

@@ -1,7 +1,7 @@
 const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask','ai-note'],
+  emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask','ai-note','ai-retry'],
   data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0 }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
@@ -122,8 +122,11 @@ const QuestionCard={
             <div class="chat-bub chat-q"><div class="chat-tag">🙋 你</div><rich-text :content="c.q" /></div>
             <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
               <div v-if="!aiAsking" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
-                <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选段落/公式，底部操作条合并复制或引用追问">{{ segMode?'✕ 退出':'📝 选段' }}</button>
-                <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button>
+                <template v-if="!c.err">
+                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选段落/公式，底部操作条合并复制或引用追问">{{ segMode?'✕ 退出':'📝 选段' }}</button>
+                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button>
+                </template>
+                <button v-else class="btn subtle" style="padding:2px 10px;font-size:11px;border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)" @click="$emit('ai-retry',i)">⟳ 重试</button>
               </div>
             </div>
             <div v-else class="chat-bub chat-a"><span class="spin"></span></div>

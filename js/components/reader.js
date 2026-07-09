@@ -26,6 +26,8 @@ const ReaderMixin = {
       if(this.reader.segMode)this.readerSegToggle();
       this.rdAi.open=true; this.reader.barsHidden=false;
       this.$nextTick(()=>{ const el=this.$refs.rdAiInp; if(el){ el.focus(); const n=el.value.length; try{ el.setSelectionRange(n,n); }catch(_){} } }); },
+    rdAiRetry(i){ const c=this.rdAi.chat[i]; if(!c||!c.err||this.rdAi.asking)return;
+      const q=c.q; this.rdAi.chat.splice(i,1); this.rdAi.input=q; return this.rdAiSend(); },
     async rdAiSend(){ const q=(this.rdAi.input||'').trim(); if(!q||this.rdAi.asking)return;
       if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const mat=this.currentPageMat; if(!mat)return;
@@ -56,7 +58,11 @@ const ReaderMixin = {
             } }
         } else { const d=await res.json(); if(d.error)throw new Error(d.error); entry.a=d.text||''; }
         if(!entry.a) entry.a='_（模型没有返回内容）_';
-      }catch(e){ if(e.name!=='AbortError'){ entry.a=entry.a||('_回答失败：'+e.message+'_'); this.flash('提问失败：'+e.message,true); } }
+      }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误';
+        if(/429/.test(msg)) msg+='（中转站限流，稍等几秒再重试）';
+        else if(/Failed to fetch|NetworkError/i.test(msg)) msg='网络异常，请检查网络后重试';
+        entry.a='_回答失败：'+msg+'_'; entry.err=true;
+        this.flash('提问失败：'+msg,true); } }
       this.rdAi.asking=false; if(this._rdCtrl===ctrl)this._rdCtrl=null; },
     // —— 沉浸式阅读器（番茄/七猫风格）——
     readerLoadCfg(){ try{ const c=JSON.parse(localStorage.getItem('zb_reader')||'null'); if(c&&typeof c==='object'){ this.reader.fontSize=Math.min(30,Math.max(15,parseInt(c.fontSize,10)||19)); this.reader.lineGap=[1.6,1.9,2.3].includes(c.lineGap)?c.lineGap:1.9; this.reader.theme=['paper','sepia','green','night'].includes(c.theme)?c.theme:'paper'; this.reader.serif=!!c.serif; } }catch(_){ } },

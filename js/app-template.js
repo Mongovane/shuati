@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v32</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v33</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -68,7 +68,7 @@ const APP_TEMPLATE = `
             <select class="bk-mini" style="margin-left:auto" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="改本题科目（纠正分类）"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
             <button class="bk-del" @click="deleteCurrentQuestion" title="从题库删除本题">删除本题</button>
           </div>
-          <question-card :q="cur" :key="cur.id" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" />
+          <question-card :q="cur" :key="cur.id" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" />
           <div class="q-nav-bar">
             <button class="btn subtle" :disabled="qi<=0" @click="prev">← 上一题</button>
             <button class="btn" @click="next">{{ qi>=queue.length-1 ? '换一批 ↻' : '下一题 →' }}</button>
@@ -769,6 +769,7 @@ const APP_TEMPLATE = `
         <div v-for="(c,i) in rdAi.chat" :key="'rai'+i" class="rai-item">
           <div class="rai-q">🙋 {{ c.q }}</div>
           <rich-text v-if="c.a" :content="c.a" /><span v-else class="spin"></span>
+          <div v-if="c.err && !rdAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" @click="rdAiRetry(i)">⟳ 重试</button></div>
         </div>
         <div v-if="!rdAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页内容或选段提问，例如：这段在讲什么？这个公式怎么来的？</div>
       </div>
