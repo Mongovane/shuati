@@ -77,9 +77,7 @@ async aiExplain(){ const q=this.cur; if(!q)return;
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
   this.aiX={ id:q.id, text:'', busy:true, chat:[], asking:false, model:'' };
   try{
-    const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
-      headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
-      body:JSON.stringify({ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }) });
+    const res=await this.aiFetch({ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }, ctrl.signal);
     if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     const ct=res.headers.get('content-type')||'';
     try{ const mdl=res.headers.get('x-ai-model'); if(mdl&&this.aiX.id===q.id)this.aiX.model=mdl; }catch(_){}
@@ -127,10 +125,8 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
   const entry={ q:text, a:'' }; this.aiX.chat.push(entry); this.aiX.asking=true;
   const history=[]; for(const c of this.aiX.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a)history.push({role:'assistant',content:c.a}); }
   try{
-    const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
-      headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
-      body:JSON.stringify({ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
-        analysis:this.aiX.text.slice(0,6000), history, ask:text }) });
+    const res=await this.aiFetch({ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
+        analysis:this.aiX.text.slice(0,6000), history, ask:text }, ctrl.signal);
     if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     const ct=res.headers.get('content-type')||'';
     try{ const mdl=res.headers.get('x-ai-model'); if(mdl&&this.aiX.id===q.id)this.aiX.model=mdl; }catch(_){}

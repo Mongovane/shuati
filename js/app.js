@@ -23,6 +23,7 @@ const App={
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
     explainCfg:{ base:'', key:'', model:'' },  // AI 解析中转站（本机 localStorage，留空用服务端）
+    explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
     materials:{ subject:'all', items:[], loading:false, loaded:false }, loadProgMsg:'',
     booksMode:'notes', bookFold:{},
     pageRendering:false,
@@ -98,7 +99,32 @@ const App={
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
   methods:{
-aiOv(vision){ // 全局 AI 中转站覆盖：随所有 AI 请求携带（成对生效；拍照/看图另带视觉模型）
+async aiFetch(body, signal){
+      const stable = this.explainStable || body.stream===false;
+      const attempt = async (useStream, tries)=>{
+        const ctrl = new AbortController();
+        const onAbort = ()=>{ try{ ctrl.abort(); }catch(_){} };
+        if(signal){ if(signal.aborted)onAbort(); else signal.addEventListener('abort', onAbort, {once:true}); }
+        let watchdog=null;
+        if(useStream) watchdog=setTimeout(onAbort, 25000);
+        try{
+          const res = await fetch('/api/explain', { method:'POST', signal:ctrl.signal,
+            headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
+            body: JSON.stringify({ ...body, stream: useStream }) });
+          if(watchdog){ clearTimeout(watchdog); watchdog=null; }
+          return res;
+        }catch(e){
+          if(watchdog){ clearTimeout(watchdog); watchdog=null; }
+          if(signal && signal.aborted) throw e;
+          const net = /Failed to fetch|NetworkError|HTTP2|PROTOCOL|network/i.test(e.message||'') || e.name==='AbortError';
+          if(useStream){ return attempt(false, tries); }
+          if(net && tries>0){ await new Promise(r=>setTimeout(r, tries===2?1000:3000)); return attempt(false, tries-1); }
+          throw e;
+        }
+      };
+      return attempt(!stable, 2);
+    },
+    aiOv(vision){ // 全局 AI 中转站覆盖：随所有 AI 请求携带（成对生效；拍照/看图另带视觉模型）
   const e=this.explainCfg||{}; const o={};
   if(e.base&&e.key){ o.base_url=e.base; o.api_key=e.key; }
   if(e.model) o.model=e.model;
@@ -152,6 +178,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     window.addEventListener('focus', this.onFocus);
     try{ const oc=JSON.parse(localStorage.getItem('zb_ocrcfg')||'null'); if(oc&&typeof oc==='object'){ this.ocrCfg.model=oc.model||''; this.ocrCfg.base=oc.base||''; this.ocrCfg.key=oc.key||''; } }catch(_){}
     try{ const ec=JSON.parse(localStorage.getItem('zb_explaincfg')||'null'); if(ec&&typeof ec==='object'){ this.explainCfg.base=ec.base||''; this.explainCfg.key=ec.key||''; this.explainCfg.model=ec.model||''; } }catch(_){}
+    try{ this.explainStable = localStorage.getItem('zb_explain_stable')==='1'; }catch(_){}
     try{ const mc=JSON.parse(localStorage.getItem('zb_mineru_cfg')||'null'); if(mc&&typeof mc==='object'){ if(mc.pageLimit!=null)this.mineruCfg.pageLimit=mc.pageLimit; if(mc.fileLimit!=null)this.mineruCfg.fileLimit=mc.fileLimit; this.mineruCfg.tokenExp=mc.tokenExp||''; this.mineruCfg.token=mc.token||''; } }catch(_){}
     this.mineruRefreshUsage();
     try{ if(localStorage.getItem('zb_mineru_tokenbad')==='1')this.mineruTokenBad=true; }catch(_){}

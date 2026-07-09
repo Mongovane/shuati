@@ -35,7 +35,24 @@ const RichText={
       const fences=[]; src=src.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`/g,(m)=>{ fences.push(m); return '\uE100'+(fences.length-1)+'\uE101'; });
       // 模型最常见的块级公式写法是 $$ 独占一行（$$\n公式\n$$），而提取器按单行配对，
       // 会把两个 $$ 行各自配成空公式、让中间的 LaTeX 裸奔——先压成单行：
-      src=src.replace(/\$\$[ \t]*\n([\s\S]+?)\n[ \t]*\$\$/g,(m,t)=>'\n$$ '+t.replace(/\s*\n\s*/g,' ').trim()+' $$\n');
+      src=(function(str){
+        let out='', i=0, n=str.length;
+        while(i<n){
+          const a=str.indexOf('$$', i);
+          if(a<0){ out+=str.slice(i); break; }
+          const b=str.indexOf('$$', a+2);
+          if(b<0){ out+=str.slice(i); break; }            // 落单 $$：原样留下
+          const inner=str.slice(a+2, b);
+          out+=str.slice(i, a);
+          if(inner.indexOf('\n')>=0){                      // 跨行块 → 压单行 + 前后补空行
+            out+='\n\n$$ '+inner.replace(/\s*\n\s*/g,' ').trim()+' $$\n\n';
+          } else {                                          // 单行块原样
+            out+='$$'+inner+'$$';
+          }
+          i=b+2;
+        }
+        return out;
+      })(src);
       src=src.replace(/\\\[([\s\S]+?)\\\]/g,(m,t)=>'\n$$ '+t.replace(/\s*\n\s*/g,' ').trim()+' $$\n').replace(/\\\(([\s\S]+?)\\\)/g,(m,t)=>'$'+t.replace(/\s*\n\s*/g,' ').trim()+'$');
       // 粗体加固：模型可能写出紧贴中文标点/序号的 **……**，个别 marked 版本按侧翼规则拒绝配对导致 ** 漏出。
       // 在数学占位之后、marked 之前做确定性转换；跳过 ``` 围栏与 `行内代码`（避免破坏 C 代码里的 **p）。
