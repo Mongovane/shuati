@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v31</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v32</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
