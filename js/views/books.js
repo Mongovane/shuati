@@ -36,6 +36,49 @@ bookPrev(){ this.bookGoto(this.bookIdx-1); },
 bookNext(){ this.bookGoto(this.bookIdx+1); },
 bookJumpPage(p){ const b=this.currentBook; if(!b)return; const n=parseInt(p,10); if(!Number.isFinite(n))return; const idx=b.pages.findIndex(m=>Number(m.page)===n); if(idx>=0)this.bookGoto(idx); else this.flash('没有第 '+n+' 页',true); },
 async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI && !(this.explainCfg&&this.explainCfg.base&&this.explainCfg.key)){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; } this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(false),subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; },
+async pdfvPageText(n){ try{ const doc=this._pdfvDoc; if(!doc)return ''; const page=await doc.getPage(n||this.pdfv.cur);
+    const tc=await page.getTextContent(); let last=null, out='';
+    for(const it of tc.items){ const s=it.str||''; if(!s){ continue; }
+      // 依据 y 坐标换行：不同行之间补换行，同行拼接
+      if(last!==null && Math.abs((it.transform&&it.transform[5]||0)-last)>3) out+='\n';
+      out+=s + (it.hasEOL?'\n':''); last=it.transform&&it.transform[5]||last; }
+    return out.replace(/\n{3,}/g,'\n\n').trim(); }catch(_){ return ''; } },
+pdfAiOpen(){ this.pdfAi.open=true; this.pdfAi.pageAtOpen=this.pdfv.cur;
+    this.$nextTick(()=>{ const el=this.$refs.pdfAiInp; if(el)el.focus(); }); },
+async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.asking)return;
+    if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+    if(!(this.ai.hasAI || (this.explainCfg.base&&this.explainCfg.key))){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; }
+    const pageNo=this.pdfv.cur;
+    let pageText=this.pdfAi._cacheP===pageNo ? this.pdfAi._cacheT : '';
+    if(!pageText){ pageText=await this.pdfvPageText(pageNo); this.pdfAi._cacheP=pageNo; this.pdfAi._cacheT=pageText; }
+    if(this._pdfAiCtrl){ try{ this._pdfAiCtrl.abort(); }catch(_){} }
+    const ctrl=new AbortController(); this._pdfAiCtrl=ctrl;
+    const entry={ q, a:'', page:pageNo }; this.pdfAi.chat.push(entry); this.pdfAi.asking=true; this.pdfAi.input='';
+    const history=[]; for(const c of this.pdfAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a)history.push({role:'assistant',content:c.a}); }
+    try{
+      if(!pageText){ throw new Error('本页是扫描图/无文字层，无法提取文本。可截图后用「拍照识题」或换文字版 PDF'); }
+      const res=await this.aiFetch({ ...this.aiOv(false), mode:'reading',
+        question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页提问）', passage:pageText.slice(0,4000), type:'short_answer', subject:'教材' },
+        analysis:'', history, ask:q }, ctrl.signal);
+      if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.pdfvClose(); this.go('settings'); throw new Error('访问码无效'); }
+      const ct=res.headers.get('content-type')||'';
+      if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
+      if(ct.includes('text/event-stream') && res.body){
+        const rd=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+        while(true){ const {done,value}=await rd.read(); if(done)break;
+          buf+=dec.decode(value,{stream:true});
+          let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+            if(!line.startsWith('data:'))continue; const p=line.slice(5).trim();
+            if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
+            if(j.error) throw new Error(j.error.message||String(j.error));
+            const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content; if(t)entry.a+=t; } }
+      } else { const d=await res.json(); if(d.error)throw new Error(d.error); entry.a=d.text||''; }
+      if(!entry.a) entry.a='_（模型没有返回内容）_';
+    }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误';
+        if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL/i.test(msg))msg='网络异常，请检查网络后重试';
+        entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('提问失败：'+msg,true); } }
+    this.pdfAi.asking=false; if(this._pdfAiCtrl===ctrl)this._pdfAiCtrl=null; },
+pdfAiRetry(i){ const c=this.pdfAi.chat[i]; if(!c||!c.err||this.pdfAi.asking)return; const q=c.q; this.pdfAi.chat.splice(i,1); this.pdfAi.input=q; return this.pdfAiSend(); },
 async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
 _isMobile(){ try{ const coarse=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches; return !!coarse && (window.innerWidth||9999)<=900; }catch(_){ return (window.innerWidth||9999)<=820; } },
 async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; this.pdfv.msg=this.pdfv.msg||'解析中…'; try{ await this.ensurePdfjs(); const task=window.pdfjsLib.getDocument({data:buf}); if(task.onProgress!==undefined){ task.onProgress=(p)=>{ if(p&&p.total)this.pdfv.msg='解析中 '+Math.round(p.loaded/p.total*100)+'%'; }; } const doc=await task.promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.title=title||'PDF'; this.pdfvMobile=this._isMobile();

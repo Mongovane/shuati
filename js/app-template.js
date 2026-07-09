@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v35</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v36</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -174,6 +174,7 @@ const APP_TEMPLATE = `
             <input class="bk-jump inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value)" placeholder="跳页" />
             <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
             <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
+            <button class="btn subtle" @click="pdfAiOpen" title="就当前页内容问 AI">✨ 问 AI</button>
             <button class="btn subtle" @click="pdfvClose">关闭</button>
           </div>
           <div class="pdfv-body" :class="{'one-col': pdfv.mode==='page'}">
@@ -190,6 +191,7 @@ const APP_TEMPLATE = `
             <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
             <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
             <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
+            <button @click="pdfAiOpen" title="就当前页问 AI">✨</button>
           </div>
           <div v-if="pdfvMobile" class="pdfv-drawer" :class="{open:pdfvTocOpen}">
             <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">共 {{ pdfv.pages }} 页</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
@@ -759,6 +761,25 @@ const APP_TEMPLATE = `
       <button class="rbtn" :disabled="!reader.segCount" @click="readerSegCopy">合并复制</button>
       <button class="rbtn" v-if="readerCanAi" :disabled="!reader.segCount" @click="readerAskAI">✨ 问 AI</button>
       <button class="rbtn" @click="readerSegToggle">✕</button>
+    </div>
+    <div v-if="pdfAi.open" class="r-panel-backdrop" @click="pdfAi.open=false"></div>
+    <div class="r-ai" :class="{open:pdfAi.open}">
+      <div class="rai-h"><b>✨ 问 AI · 第 {{ pdfv.cur }} 页</b><span style="flex:1"></span>
+        <button class="ricon" v-if="pdfAi.chat.length" @click="pdfAi.chat=[]" title="清空对话">🗑</button>
+        <button class="ricon" @click="pdfAi.open=false">✕</button></div>
+      <div class="rai-quote" v-if="pdfAi.pageAtOpen && pdfAi.pageAtOpen!==pdfv.cur">提示：你已翻到第 {{ pdfv.cur }} 页，提问将针对当前页</div>
+      <div class="rai-list">
+        <div v-for="(c,i) in pdfAi.chat" :key="'pai'+i" class="rai-item">
+          <div class="rai-q">🙋 {{ c.q }} <span class="muted" style="font-size:11px">· 第{{ c.page }}页</span></div>
+          <rich-text v-if="c.a" :content="c.a" /><span v-else class="spin"></span>
+          <div v-if="c.err && !pdfAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" @click="pdfAiRetry(i)">⟳ 重试</button></div>
+        </div>
+        <div v-if="!pdfAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页 PDF 内容提问，例如：这页在讲什么？帮我总结要点。（扫描图 PDF 无文字层时无法提取）</div>
+      </div>
+      <div class="rai-in">
+        <input ref="pdfAiInp" v-model="pdfAi.input" :disabled="pdfAi.asking" placeholder="就第 {{ pdfv.cur }} 页提问（Enter 发送）…" @keyup.enter="pdfAiSend" />
+        <button class="rbtn" :disabled="pdfAi.asking||!pdfAi.input.trim()" @click="pdfAiSend"><span v-if="pdfAi.asking" class="spin"></span>{{ pdfAi.asking?'回答中':'发送' }}</button>
+      </div>
     </div>
     <div v-if="rdAi.open" class="r-panel-backdrop" @click="rdAi.open=false"></div>
     <div class="r-ai" :class="{open:rdAi.open}">
