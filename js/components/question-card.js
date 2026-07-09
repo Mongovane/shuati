@@ -118,14 +118,15 @@ const QuestionCard={
           <button class="btn subtle" v-if="aiText && !aiBusy" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="进入选段模式：像勾选复选框一样点选段落/公式/代码块，再合并复制或引用到追问">{{ segMode?'✕ 退出选段':'📝 选段' }}</button>
         </div>
         <template v-if="aiText && !aiBusy">
-          <div v-for="(c,i) in aiChat" :key="'aq'+i" style="margin-top:10px;border-top:1px dashed var(--line,rgba(0,0,0,.12));padding-top:8px">
-            <div class="muted" style="font-size:13px">🙋 <rich-text :content="c.q" style="display:inline-block;vertical-align:top;max-width:100%" /></div>
-            <rich-text v-if="c.a" :content="c.a" />
-            <div v-if="c.a && !aiAsking" style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
-              <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选段落/公式，底部操作条合并复制或引用追问">{{ segMode?'✕ 退出':'📝 选段' }}</button>
-              <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button>
+          <div v-for="(c,i) in aiChat" :key="'aq'+i" class="chat-round">
+            <div class="chat-bub chat-q"><div class="chat-tag">🙋 你</div><rich-text :content="c.q" /></div>
+            <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+              <div v-if="!aiAsking" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+                <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选段落/公式，底部操作条合并复制或引用追问">{{ segMode?'✕ 退出':'📝 选段' }}</button>
+                <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button>
+              </div>
             </div>
-            <span v-else class="spin"></span>
+            <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
           </div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <input ref="askInp" v-model="askInput" :disabled="aiAsking" placeholder="对解析还有疑问？继续追问（可直接复制上方公式粘贴，会自动还原为 $ 公式源码；Enter 发送）…" style="flex:1;min-width:0" @keyup.enter="doAsk" />

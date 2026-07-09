@@ -55,7 +55,7 @@ export async function onRequestPost({ request, env }) {
     ? (reading
       ? ('你是一位耐心的大学课程辅导老师，学生在阅读教材/资料时就选中的内容提问。基于提供的材料与选段作答，聚焦所问，讲清概念与来龙去脉，简洁清楚；使用 Markdown，' + fmtRule + '中文回答，直接开始。')
       : ('你是一位耐心且严谨的大学课程解题老师，正在就同一道题回答学生的追问。基于题目与先前给出的解析作答，聚焦学生问的点，简洁清楚；使用 Markdown，' + fmtRule + '中文回答，直接开始。'))
-    : ('你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份详细解析，使用 Markdown，' + fmtRule + '结构：先用一两句话点明「思路」；然后分步推导（关键步骤要交代依据，如用到的定理/公式）；最后给出「易错点」。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。');
+    : ('你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份【详尽】的解析，使用 Markdown，' + fmtRule + '结构：先用一两句话点明「思路」；然后【完整分步推导】——每一步写出具体运算过程与所依据的定理/公式，不跳步、不省略中间步骤、不用「显然」「易得」「略」带过，选择题要逐个选项分析对错原因；最后给出「易错点」。输出长度不设上限，宁详勿略。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。');
 
   const base = effBase;
   const messages = [ { role: 'system', content: sys }, { role: 'user', content: parts.join('\n\n') } ];
@@ -68,7 +68,7 @@ export async function onRequestPost({ request, env }) {
     model: ovModel || env.AI_MODEL || 'gpt-4o',
     messages,
     temperature: 0.3,
-    max_tokens: ask ? 1000 : 1600,
+    max_tokens: ask ? 1400 : 3000,
   };
   const call = (stream) => fetch(`${base}/chat/completions`, {
     method: 'POST',

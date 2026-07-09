@@ -460,3 +460,15 @@ a{color:var(--accent)}
 .rai-in input{flex:1;min-width:0;height:42px;border-radius:10px;border:1px solid var(--line,rgba(0,0,0,.15));padding:0 12px;background:var(--surface,transparent);color:inherit}
 [data-theme=dark] .r-ai{background:#1e2430}
 .reader.t-night .r-ai{background:#171c26;color:#cfd6e4}
+
+/* —— 追问对话气泡 —— */
+.chat-round{margin-top:12px}
+.chat-bub{border-radius:12px;padding:10px 12px;border:1px solid var(--line,rgba(0,0,0,.12))}
+.chat-q{border-color:rgba(79,70,229,.45);background:rgba(79,70,229,.06)}
+.chat-a{margin-top:8px;background:var(--surface,rgba(0,0,0,.02))}
+.chat-tag{font-size:11.5px;color:var(--muted,#777);margin-bottom:4px;font-weight:600;letter-spacing:.02em}
+.chat-q .chat-tag{color:var(--accent,#4f46e5)}
+.chat-bub .rich>:first-child{margin-top:0}
+.chat-bub .rich>:last-child{margin-bottom:0}
+[data-theme=dark] .chat-q{border-color:rgba(129,140,248,.5);background:rgba(129,140,248,.10)}
+[data-theme=dark] .chat-a{background:rgba(255,255,255,.03)}
