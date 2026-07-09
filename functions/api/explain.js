@@ -59,7 +59,17 @@ export async function onRequestPost({ request, env }) {
     : ('你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份【详尽】的解析，使用 Markdown，' + fmtRule + '结构：先用一两句话点明「思路」；然后【完整分步推导】——每一步写出具体运算过程与所依据的定理/公式，不跳步、不省略中间步骤、不用「显然」「易得」「略」带过，选择题要逐个选项分析对错原因；最后给出「易错点」。输出长度不设上限，宁详勿略。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。');
 
   const base = effBase;
-  const userText = parts.join('\n\n');
+  // reading 模式：用「材料 + 选段」的自然表述做上下文，不套题目/选项/参考答案模板（否则模型误以为在解题而非阅读辅导）
+  let userText;
+  if (reading) {
+    const seg = [];
+    if (q.passage) seg.push('【本页材料】\n' + String(q.passage).slice(0, 4000));
+    const focus = String(q.stem || '').trim();
+    if (focus && !/^（/.test(focus)) seg.push('【我选中/关注的部分】\n' + focus.slice(0, 3000));
+    userText = seg.join('\n\n') || '（见下方图片/材料）';
+  } else {
+    userText = parts.join('\n\n');
+  }
   const firstUser = pageImage
     ? { role: 'user', content: [ { type: 'text', text: (userText || '（请阅读下图这一页教材内容）') }, { type: 'image_url', image_url: { url: pageImage } } ] }
     : { role: 'user', content: userText };
