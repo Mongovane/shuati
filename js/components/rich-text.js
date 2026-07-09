@@ -54,7 +54,7 @@ const RichText={
         const flush=()=>{ if(run.length){ o.push('$$ '+run.join(' \\\\ ')+' $$'); run=[]; } };
         for(const l of L){ if(isTex(l))run.push(l.trim()); else { flush(); o.push(l); } } flush(); src=o.join('\n'); }
       // 先抽出公式（占用私有区字符占位），避免 marked 把多行 $$…$$ 拆散或转义反斜杠
-      src=src.replace(/\$\$([\s\S]+?)\$\$/g,(m,x)=>{ math.push({tex:x,display:true}); return '\uE000'+(math.length-1)+'\uE001'; });
+      src=src.replace(/\$\$([^\n]+?)\$\$/g,(m,x)=>{ math.push({tex:x,display:true}); return '\uE000'+(math.length-1)+'\uE001'; });
       src=src.replace(/\\\[([\s\S]+?)\\\]/g,(m,x)=>{ math.push({tex:x,display:true}); return '\uE000'+(math.length-1)+'\uE001'; });
       src=src.replace(/\$([^\$\n]+?)\$/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
       src=src.replace(/\\\(([^\n]+?)\\\)/g,(m,x)=>{ math.push({tex:x,display:false}); return '\uE000'+(math.length-1)+'\uE001'; });
