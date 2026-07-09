@@ -43,6 +43,11 @@ async pdfvPageText(n){ try{ const doc=this._pdfvDoc; if(!doc)return ''; const pa
       if(last!==null && Math.abs((it.transform&&it.transform[5]||0)-last)>3) out+='\n';
       out+=s + (it.hasEOL?'\n':''); last=it.transform&&it.transform[5]||last; }
     return out.replace(/\n{3,}/g,'\n\n').trim(); }catch(_){ return ''; } },
+async pdfvPageImage(n){ try{ const doc=this._pdfvDoc; if(!doc)return ''; const page=await doc.getPage(n||this.pdfv.cur);
+    const vp1=page.getViewport({scale:1}); const targetW=1400; const scale=Math.min(2.2, targetW/vp1.width);
+    const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height);
+    await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+    return cv.toDataURL('image/jpeg',0.82); }catch(_){ return ''; } },
 pdfAiOpen(){ this.pdfAi.open=true; this.pdfAi.pageAtOpen=this.pdfv.cur;
     this.$nextTick(()=>{ const el=this.$refs.pdfAiInp; if(el)el.focus(); }); },
 async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.asking)return;
@@ -56,10 +61,21 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
     const entry={ q, a:'', page:pageNo }; this.pdfAi.chat.push(entry); this.pdfAi.asking=true; this.pdfAi.input='';
     const history=[]; for(const c of this.pdfAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a)history.push({role:'assistant',content:c.a}); }
     try{
-      if(!pageText){ throw new Error('本页是扫描图/无文字层，无法提取文本。可截图后用「拍照识题」或换文字版 PDF'); }
-      const res=await this.aiFetch({ ...this.aiOv(false), mode:'reading',
-        question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页提问）', passage:pageText.slice(0,4000), type:'short_answer', subject:'教材' },
-        analysis:'', history, ask:q }, ctrl.signal);
+      let reqBody;
+      if(pageText){ // 有文字层：走文本（省 token、更准）
+        reqBody={ ...this.aiOv(false), mode:'reading',
+          question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页提问）', passage:pageText.slice(0,4000), type:'short_answer', subject:'教材' },
+          analysis:'', history, ask:q };
+      } else { // 无文字层（扫描图）：渲染成图片走视觉模型
+        entry._vision=true;
+        let img=(this.pdfAi._cacheImgP===pageNo) ? this.pdfAi._cacheImg : '';
+        if(!img){ img=await this.pdfvPageImage(pageNo); this.pdfAi._cacheImg=img; this.pdfAi._cacheImgP=pageNo; }
+        if(!img) throw new Error('本页无法提取文字也无法渲染为图片，请换文字版 PDF 或用「拍照识题」');
+        reqBody={ ...this.aiOv(true), mode:'reading', image:img,
+          question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页的图片提问，请先识别图中文字再回答）', type:'short_answer', subject:'教材' },
+          analysis:'', history, ask:q };
+      }
+      const res=await this.aiFetch(reqBody, ctrl.signal);
       if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.pdfvClose(); this.go('settings'); throw new Error('访问码无效'); }
       const ct=res.headers.get('content-type')||'';
       if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }

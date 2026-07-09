@@ -28,7 +28,8 @@ export async function onRequestPost({ request, env }) {
   }
   const q = b.question || {};
   const stem = String(q.stem || '').trim().slice(0, 6000);
-  if (!stem) return json({ error: '缺少题目内容' }, 400);
+  const pageImage = typeof b.image === 'string' && /^data:image\//.test(b.image) ? b.image : '';
+  if (!stem && !pageImage) return json({ error: '缺少题目内容' }, 400);
   const wantStream = b.stream !== false;
 
   const typeMap = { single_choice: '单选题', multiple_choice: '多选题', true_false: '判断题', fill_blank: '填空题', short_answer: '简答题', code: '编程题' };
@@ -58,14 +59,18 @@ export async function onRequestPost({ request, env }) {
     : ('你是一位耐心且严谨的大学课程解题老师。请针对给出的题目输出一份【详尽】的解析，使用 Markdown，' + fmtRule + '结构：先用一两句话点明「思路」；然后【完整分步推导】——每一步写出具体运算过程与所依据的定理/公式，不跳步、不省略中间步骤、不用「显然」「易得」「略」带过，选择题要逐个选项分析对错原因；最后给出「易错点」。输出长度不设上限，宁详勿略。若提供了参考答案，以参考答案为准展开讲解，不要另起炉灶；不要重复抄写题干；中文回答，直接开始，不要客套话。');
 
   const base = effBase;
-  const messages = [ { role: 'system', content: sys }, { role: 'user', content: parts.join('\n\n') } ];
+  const userText = parts.join('\n\n');
+  const firstUser = pageImage
+    ? { role: 'user', content: [ { type: 'text', text: (userText || '（请阅读下图这一页教材内容）') }, { type: 'image_url', image_url: { url: pageImage } } ] }
+    : { role: 'user', content: userText };
+  const messages = [ { role: 'system', content: sys }, firstUser ];
   if (ask) {
     if (priorAnalysis) messages.push({ role: 'assistant', content: priorAnalysis }); // 已生成的解析作为上一轮回答
     messages.push(...history);                                                        // 之前的追问轮次
     messages.push({ role: 'user', content: ask });                                    // 本次追问
   }
   const payload = {
-    model: ovModel || env.AI_MODEL || 'gpt-4o',
+    model: pageImage ? (String(b.vision_model||'').trim() || ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (ovModel || env.AI_MODEL || 'gpt-4o'),
     messages,
     temperature: 0.3,
     max_tokens: ask ? 1400 : 3000,

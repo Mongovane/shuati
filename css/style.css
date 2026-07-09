@@ -472,3 +472,39 @@ a{color:var(--accent)}
 .chat-bub .rich>:last-child{margin-bottom:0}
 [data-theme=dark] .chat-q{border-color:rgba(129,140,248,.45);background:rgba(129,140,248,.08)}
 [data-theme=dark] .chat-a{background:transparent}
+
+/* —— PDF 阅读器内的 AI 抽屉：必须盖在 .pdfv(z-index:200) 之上 —— */
+.pdf-ai-backdrop{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.35)}
+.r-ai.pdf-ai{z-index:220}
+
+/* ============ 移动端字体/内容溢出统一修复 (v38) ============ */
+/* 长公式：可横向滚动而非被裁切（原 overflow:hidden 会截断超宽公式） */
+.rich .katex-display{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+/* 超长英文/URL/无空格串：允许断行，不撑破容器 */
+.rich{overflow-wrap:break-word;word-break:break-word}
+.rich pre{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.rich table{display:block;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.rich img{max-width:100%;height:auto}
+/* 选段/追问气泡内容不溢出 */
+.chat-bub{overflow-wrap:break-word;word-break:break-word}
+.chat-bub .katex-display{overflow-x:auto}
+/* AI 抽屉回答区同理 */
+.rai-list .katex-display{overflow-x:auto}
+.rai-item{overflow-wrap:break-word;word-break:break-word}
+
+/* seg-bar 按钮：文字不换行、不被挤成竖排 */
+.seg-bar .rbtn,.seg-bar button,.seg-bar .btn{flex:none;white-space:nowrap;padding:6px 12px;height:auto;min-height:34px}
+.seg-bar .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.r-segbar .rbtn{flex:none;white-space:nowrap;padding:8px 14px}
+
+@media (max-width:640px){
+  /* 全局：防止任何超宽子元素撑出视口产生横向滚动条 */
+  body,#app{overflow-x:hidden}
+  /* 顶栏标题超长省略 */
+  .topbar .brand{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
+  /* 阅读器/PDF 顶栏标题省略 */
+  .r-top .ttl,.pdfv-top .ttl,.bk-reader-top .ttl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* seg-bar 在窄屏：按钮字号略缩，一行排开 */
+  .seg-bar{flex-wrap:nowrap}
+  .seg-bar .rbtn,.seg-bar button{font-size:13px;padding:6px 10px}
+}

@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v36</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v39</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -245,6 +245,7 @@ const APP_TEMPLATE = `
                 <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
               </div>
+              <button v-if="readerCanAi" class="bk-toctoggle" @click="bookAskAI" title="就本篇内容问 AI">✨ 问 AI</button>
               <button class="bk-toctoggle" @click="readerOpen" title="全屏沉浸阅读：可调字号、行距、主题，点两侧翻篇">📖 沉浸阅读</button>
               <input class="bk-jump inp" type="number" min="1" @keyup.enter="bookJumpPage($event.target.value)" placeholder="跳页" title="输入页码回车跳转" />
               <button class="btn subtle" @click="currentBookId=''" style="flex:none">关闭</button>
@@ -762,8 +763,8 @@ const APP_TEMPLATE = `
       <button class="rbtn" v-if="readerCanAi" :disabled="!reader.segCount" @click="readerAskAI">✨ 问 AI</button>
       <button class="rbtn" @click="readerSegToggle">✕</button>
     </div>
-    <div v-if="pdfAi.open" class="r-panel-backdrop" @click="pdfAi.open=false"></div>
-    <div class="r-ai" :class="{open:pdfAi.open}">
+    <div v-if="pdfAi.open" class="pdf-ai-backdrop" @click="pdfAi.open=false"></div>
+    <div class="r-ai pdf-ai" :class="{open:pdfAi.open}">
       <div class="rai-h"><b>✨ 问 AI · 第 {{ pdfv.cur }} 页</b><span style="flex:1"></span>
         <button class="ricon" v-if="pdfAi.chat.length" @click="pdfAi.chat=[]" title="清空对话">🗑</button>
         <button class="ricon" @click="pdfAi.open=false">✕</button></div>
@@ -774,10 +775,10 @@ const APP_TEMPLATE = `
           <rich-text v-if="c.a" :content="c.a" /><span v-else class="spin"></span>
           <div v-if="c.err && !pdfAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" @click="pdfAiRetry(i)">⟳ 重试</button></div>
         </div>
-        <div v-if="!pdfAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页 PDF 内容提问，例如：这页在讲什么？帮我总结要点。（扫描图 PDF 无文字层时无法提取）</div>
+        <div v-if="!pdfAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页 PDF 内容提问，例如：这页在讲什么？帮我总结要点。（文字版直接读取；扫描版会自动识图，稍慢些）</div>
       </div>
       <div class="rai-in">
-        <input ref="pdfAiInp" v-model="pdfAi.input" :disabled="pdfAi.asking" placeholder="就第 {{ pdfv.cur }} 页提问（Enter 发送）…" @keyup.enter="pdfAiSend" />
+        <input ref="pdfAiInp" v-model="pdfAi.input" :disabled="pdfAi.asking" :placeholder="'就第 '+pdfv.cur+' 页提问（Enter 发送）…'" @keyup.enter="pdfAiSend" />
         <button class="rbtn" :disabled="pdfAi.asking||!pdfAi.input.trim()" @click="pdfAiSend"><span v-if="pdfAi.asking" class="spin"></span>{{ pdfAi.asking?'回答中':'发送' }}</button>
       </div>
     </div>

@@ -22,7 +22,10 @@ const ReaderMixin = {
         this.flash('已复制 '+parts.length+' 块'); }catch(_){}
       this.readerSegToggle(); },
     // —— 阅读页问 AI（底部抽屉，选段可作引用）——
-    readerAskAI(){ const parts=this.readerSegTexts(); if(parts.length)this.rdAi.quote=parts.join(' ').slice(0,3000);
+    bookAskAI(){ // 内联章节阅读（Books 页，未进沉浸模式）就整篇材料问 AI
+      this.rdAi.quote=''; this.rdAi.open=true;
+      this.$nextTick(()=>{ const el=this.$refs.rdAiInp; if(el)el.focus(); }); },
+        readerAskAI(){ const parts=this.readerSegTexts(); if(parts.length)this.rdAi.quote=parts.join(' ').slice(0,3000);
       if(this.reader.segMode)this.readerSegToggle();
       this.rdAi.open=true; this.reader.barsHidden=false;
       this.$nextTick(()=>{ const el=this.$refs.rdAiInp; if(el){ el.focus(); const n=el.value.length; try{ el.setSelectionRange(n,n); }catch(_){} } }); },
