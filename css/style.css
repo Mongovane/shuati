@@ -1,3 +1,7 @@
+/* KaTeX 兜底：MathML 语义层永不显示（防 CDN CSS 未及时加载时公式重复/错乱）——必须在所有 katex 规则之前 */
+.katex-mathml{position:absolute!important;clip:rect(1px,1px,1px,1px)!important;padding:0!important;border:0!important;height:1px!important;width:1px!important;overflow:hidden!important;white-space:nowrap!important}
+.katex annotation{display:none!important}
+
 :root{
   --bg:#F5F6F2; --surface:#FFFFFF; --surface-2:#EEF0EA;
   --ink:#1A1F2B; --ink-soft:#616A7D; --line:#E3E6DF;
@@ -508,3 +512,13 @@ a{color:var(--accent)}
   .seg-bar{flex-wrap:nowrap}
   .seg-bar .rbtn,.seg-bar button{font-size:13px;padding:6px 10px}
 }
+
+/* —— AI 抽屉：内容限宽居中，聊天气泡美化 (v41) —— */
+.r-ai .rai-list{max-width:820px;margin-left:auto;margin-right:auto;width:100%}
+.r-ai .chat-round{margin-top:14px}
+.r-ai .chat-round:first-child{margin-top:4px}
+.r-ai .chat-q{margin-left:auto;max-width:88%;width:fit-content}
+.r-ai .chat-a{max-width:100%}
+.r-ai .rai-quote{max-width:820px;margin-left:auto;margin-right:auto}
+.r-ai .rai-in{max-width:820px;margin-left:auto;margin-right:auto;width:100%}
+@media (min-width:900px){ .r-ai{max-height:80vh} .r-ai .rai-list{padding:0 4px} }

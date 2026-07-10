@@ -100,26 +100,57 @@ const App={
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
   methods:{
-async aiFetch(body, signal){
+async aiFetch(body, signal, onDelta){
       const stable = this.explainStable || body.stream===false;
+      const isNet = (e)=> /Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream|INTERNAL_ERROR|network|aborted/i.test((e&&e.message)||'') || (e&&e.name==='AbortError');
       const attempt = async (useStream, tries)=>{
         const ctrl = new AbortController();
         const onAbort = ()=>{ try{ ctrl.abort(); }catch(_){} };
         if(signal){ if(signal.aborted)onAbort(); else signal.addEventListener('abort', onAbort, {once:true}); }
-        let watchdog=null;
-        if(useStream) watchdog=setTimeout(onAbort, 25000);
+        let watchdog = useStream ? setTimeout(onAbort, 25000) : null;
+        let res;
         try{
-          const res = await fetch('/api/explain', { method:'POST', signal:ctrl.signal,
+          res = await fetch('/api/explain', { method:'POST', signal:ctrl.signal,
             headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
             body: JSON.stringify({ ...body, stream: useStream }) });
           if(watchdog){ clearTimeout(watchdog); watchdog=null; }
-          return res;
         }catch(e){
           if(watchdog){ clearTimeout(watchdog); watchdog=null; }
           if(signal && signal.aborted) throw e;
-          const net = /Failed to fetch|NetworkError|HTTP2|PROTOCOL|network/i.test(e.message||'') || e.name==='AbortError';
-          if(useStream){ return attempt(false, tries); }
-          if(net && tries>0){ await new Promise(r=>setTimeout(r, tries===2?1000:3000)); return attempt(false, tries-1); }
+          if(useStream) return attempt(false, tries);
+          if(isNet(e) && tries>0){ await new Promise(r=>setTimeout(r, tries===2?1000:3000)); return attempt(false, tries-1); }
+          throw e;
+        }
+        if(!res.ok){ return { res, text:'', ok:false }; }
+        const ct = res.headers.get('content-type')||'';
+        if(useStream && ct.includes('text/event-stream') && res.body){
+          let acc=''; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+          try{
+            while(true){ const {done,value}=await reader.read(); if(done)break;
+              buf+=dec.decode(value,{stream:true});
+              let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+                if(!line.startsWith('data:'))continue; const p=line.slice(5).trim();
+                if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
+                if(j.error) throw new Error(j.error.message||String(j.error));
+                if(j.model && onDelta) onDelta({model:j.model});
+                const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+                if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); } } }
+            return { res, text:acc, ok:true };
+          }catch(e){
+            if(signal && signal.aborted) throw e;
+            if(onDelta) onDelta({reset:true});
+            return attempt(false, tries);
+          }
+        }
+        try{
+          const d = await res.json();
+          if(d && d.error) return { res, text:'', ok:false, errText:d.error };
+          const txt = (d && d.text) || '';
+          if(d && d.model && onDelta) onDelta({model:d.model});
+          if(txt && onDelta) onDelta({text:txt, acc:txt, full:true});
+          return { res, text:txt, ok:true };
+        }catch(e){
+          if(isNet(e) && tries>0){ await new Promise(r=>setTimeout(r, tries===2?1000:3000)); return attempt(false, tries-1); }
           throw e;
         }
       };

@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v40</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v42</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -770,10 +770,12 @@ const APP_TEMPLATE = `
         <button class="ricon" @click="rdAi.open=false">✕</button></div>
       <div v-if="rdAi.quote" class="rai-quote">已引用选段：{{ rdAi.quote.slice(0,120) }}{{ rdAi.quote.length>120?'…':'' }}</div>
       <div class="rai-list">
-        <div v-for="(c,i) in rdAi.chat" :key="'rai'+i" class="rai-item">
-          <div class="rai-q">🙋 {{ c.q }}</div>
-          <rich-text v-if="c.a" :content="c.a" /><span v-else class="spin"></span>
-          <div v-if="c.err && !rdAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" @click="rdAiRetry(i)">⟳ 重试</button></div>
+        <div v-for="(c,i) in rdAi.chat" :key="'rai'+i" class="chat-round">
+          <div class="chat-bub chat-q"><div class="chat-tag">🙋 你</div>{{ c.q }}</div>
+          <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+            <div v-if="c.err && !rdAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" style="flex:none;padding:4px 14px" @click="rdAiRetry(i)">⟳ 重试</button></div>
+          </div>
+          <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
         </div>
         <div v-if="!rdAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页内容或选段提问，例如：这段在讲什么？这个公式怎么来的？</div>
       </div>
@@ -837,10 +839,12 @@ const APP_TEMPLATE = `
         <button class="ricon" @click="pdfAi.open=false">✕</button></div>
       <div class="rai-quote" v-if="pdfAi.pageAtOpen && pdfAi.pageAtOpen!==pdfv.cur">提示：你已翻到第 {{ pdfv.cur }} 页，提问将针对当前页</div>
       <div class="rai-list">
-        <div v-for="(c,i) in pdfAi.chat" :key="'pai'+i" class="rai-item">
-          <div class="rai-q">🙋 {{ c.q }} <span class="muted" style="font-size:11px">· 第{{ c.page }}页</span></div>
-          <rich-text v-if="c.a" :content="c.a" /><span v-else class="spin"></span>
-          <div v-if="c.err && !pdfAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" @click="pdfAiRetry(i)">⟳ 重试</button></div>
+        <div v-for="(c,i) in pdfAi.chat" :key="'pai'+i" class="chat-round">
+          <div class="chat-bub chat-q"><div class="chat-tag">🙋 你 · 第{{ c.page }}页</div>{{ c.q }}</div>
+          <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+            <div v-if="c.err && !pdfAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" style="flex:none;padding:4px 14px" @click="pdfAiRetry(i)">⟳ 重试</button></div>
+          </div>
+          <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
         </div>
         <div v-if="!pdfAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页 PDF 内容提问，例如：这页在讲什么？帮我总结要点。（文字版直接读取；扫描版会自动识图，稍慢些）</div>
       </div>

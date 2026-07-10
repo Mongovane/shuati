@@ -37,35 +37,16 @@ const ReaderMixin = {
       if(this._rdCtrl){ try{ this._rdCtrl.abort(); }catch(_){} }
       const ctrl=new AbortController(); this._rdCtrl=ctrl;
       const entry={ q, a:'' }; this.rdAi.chat.push(entry); this.rdAi.asking=true; this.rdAi.input='';
-      const history=[]; for(const c of this.rdAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a)history.push({role:'assistant',content:c.a}); }
+      const history=[]; for(const c of this.rdAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
       try{
-        const res=await fetch('/api/explain',{ method:'POST', signal:ctrl.signal,
-          headers:{ 'authorization':'Bearer '+this.token, 'content-type':'application/json' },
-          body:JSON.stringify({ ...this.aiOv(false), mode:'reading',
-            question:{ stem:this.rdAi.quote||'（未选段，就整页材料提问）', passage:String(this.cleanPageMd(mat.content_md)||'').slice(0,4000), type:'short_answer', subject:mat.subject },
-            analysis:'', history, ask:q }) });
-        if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.readerClose(); this.go('settings'); throw new Error('访问码无效'); }
-        const ct=res.headers.get('content-type')||'';
-        if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
-        if(ct.includes('text/event-stream') && res.body){
-          const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
-          while(true){ const {done,value}=await reader.read(); if(done)break;
-            buf+=dec.decode(value,{stream:true});
-            let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
-              if(!line.startsWith('data:'))continue; const payload=line.slice(5).trim();
-              if(!payload || payload==='[DONE]')continue;
-              let j=null; try{ j=JSON.parse(payload); }catch(_){ continue; }
-              if(j.error) throw new Error(j.error.message||String(j.error));
-              const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
-              if(t) entry.a+=t;
-            } }
-        } else { const d=await res.json(); if(d.error)throw new Error(d.error); entry.a=d.text||''; }
+        const r=await this.aiFetch({ ...this.aiOv(false), mode:'reading',
+          question:{ stem:this.rdAi.quote||'（未选段，就整页材料提问）', passage:String(this.cleanPageMd(mat.content_md)||'').slice(0,4000), type:'short_answer', subject:mat.subject },
+          analysis:'', history, ask:q }, ctrl.signal,
+          (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
+        if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.readerClose(); this.go('settings'); throw new Error('访问码无效'); }
+        if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
         if(!entry.a) entry.a='_（模型没有返回内容）_';
-      }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误';
-        if(/429/.test(msg)) msg+='（中转站限流，稍等几秒再重试）';
-        else if(/Failed to fetch|NetworkError/i.test(msg)) msg='网络异常，请检查网络后重试';
-        entry.a='_回答失败：'+msg+'_'; entry.err=true;
-        this.flash('提问失败：'+msg,true); } }
+      }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('提问失败：'+msg,true); } }
       this.rdAi.asking=false; if(this._rdCtrl===ctrl)this._rdCtrl=null; },
     // —— 沉浸式阅读器（番茄/七猫风格）——
     readerLoadCfg(){ try{ const c=JSON.parse(localStorage.getItem('zb_reader')||'null'); if(c&&typeof c==='object'){ this.reader.fontSize=Math.min(30,Math.max(15,parseInt(c.fontSize,10)||19)); this.reader.lineGap=[1.6,1.9,2.3].includes(c.lineGap)?c.lineGap:1.9; this.reader.theme=['paper','sepia','green','night'].includes(c.theme)?c.theme:'paper'; this.reader.serif=!!c.serif; } }catch(_){ } },

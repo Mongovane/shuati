@@ -59,14 +59,14 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
     if(this._pdfAiCtrl){ try{ this._pdfAiCtrl.abort(); }catch(_){} }
     const ctrl=new AbortController(); this._pdfAiCtrl=ctrl;
     const entry={ q, a:'', page:pageNo }; this.pdfAi.chat.push(entry); this.pdfAi.asking=true; this.pdfAi.input='';
-    const history=[]; for(const c of this.pdfAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a)history.push({role:'assistant',content:c.a}); }
+    const history=[]; for(const c of this.pdfAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
     try{
       let reqBody;
-      if(pageText){ // 有文字层：走文本（省 token、更准）
+      if(pageText){
         reqBody={ ...this.aiOv(false), mode:'reading',
           question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页提问）', passage:pageText.slice(0,4000), type:'short_answer', subject:'教材' },
           analysis:'', history, ask:q };
-      } else { // 无文字层（扫描图）：渲染成图片走视觉模型
+      } else {
         entry._vision=true;
         let img=(this.pdfAi._cacheImgP===pageNo) ? this.pdfAi._cacheImg : '';
         if(!img){ img=await this.pdfvPageImage(pageNo); this.pdfAi._cacheImg=img; this.pdfAi._cacheImgP=pageNo; }
@@ -75,24 +75,11 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
           question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页的图片提问，请先识别图中文字再回答）', type:'short_answer', subject:'教材' },
           analysis:'', history, ask:q };
       }
-      const res=await this.aiFetch(reqBody, ctrl.signal);
-      if(res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.pdfvClose(); this.go('settings'); throw new Error('访问码无效'); }
-      const ct=res.headers.get('content-type')||'';
-      if(!res.ok){ let msg='HTTP '+res.status; try{ const d=await res.json(); if(d&&d.error)msg=d.error; }catch(_){} throw new Error(msg); }
-      if(ct.includes('text/event-stream') && res.body){
-        const rd=res.body.getReader(); const dec=new TextDecoder(); let buf='';
-        while(true){ const {done,value}=await rd.read(); if(done)break;
-          buf+=dec.decode(value,{stream:true});
-          let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
-            if(!line.startsWith('data:'))continue; const p=line.slice(5).trim();
-            if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
-            if(j.error) throw new Error(j.error.message||String(j.error));
-            const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content; if(t)entry.a+=t; } }
-      } else { const d=await res.json(); if(d.error)throw new Error(d.error); entry.a=d.text||''; }
+      const r=await this.aiFetch(reqBody, ctrl.signal, (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
+      if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.pdfvClose(); this.go('settings'); throw new Error('访问码无效'); }
+      if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
       if(!entry.a) entry.a='_（模型没有返回内容）_';
-    }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误';
-        if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL/i.test(msg))msg='网络异常，请检查网络后重试';
-        entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('提问失败：'+msg,true); } }
+    }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('提问失败：'+msg,true); } }
     this.pdfAi.asking=false; if(this._pdfAiCtrl===ctrl)this._pdfAiCtrl=null; },
 pdfAiRetry(i){ const c=this.pdfAi.chat[i]; if(!c||!c.err||this.pdfAi.asking)return; const q=c.q; this.pdfAi.chat.splice(i,1); this.pdfAi.input=q; return this.pdfAiSend(); },
 async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
