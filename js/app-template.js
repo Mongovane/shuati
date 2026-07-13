@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v43</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v44</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -189,7 +189,7 @@ const APP_TEMPLATE = `
             <div class="pdfv-single" v-if="pdfv.mode==='page'"><canvas ref="pdfvSingle"></canvas></div>
           </div>
           <div class="pdfv-slider" v-if="pdfvMobile && pdfv.pages>3">
-            <input type="range" min="1" :max="pdfv.pages" :value="pdfv.cur" @input="pdfvSliderShow($event.target.value)" @change="pdfvGoto($event.target.value); pdfvSliderHide()" />
+            <input type="range" min="1" :max="pdfv.pages" :value="pdfvSliderTip || pdfv.cur" @input="pdfvSliderShow($event.target.value)" @change="pdfvGoto($event.target.value); pdfvSliderHide()" />
             <span v-if="pdfvSliderTip" class="pdfv-slider-tip">{{ pdfvSliderTip }} / {{ pdfv.pages }}</span>
           </div>
           <div class="pdfv-foot">
@@ -205,7 +205,7 @@ const APP_TEMPLATE = `
             <input class="inp pdfv-drawer-jump" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
             <div class="pdfv-drawer-list" ref="pdfvTocList">
               <template v-if="pdfv.outline.length">
-                <div v-for="(o,oi) in pdfv.outline" :key="'ol'+oi" :class="{on: o.page<=pdfv.cur && (oi===pdfv.outline.length-1 || pdfv.outline[oi+1].page>pdfv.cur)}" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="pdfvGoto(o.page); pdfvTocOpen=false">{{ o.title }}<span class="muted" style="float:right;font-size:11px">{{ o.page }}</span></div>
+                <div v-for="(o,oi) in pdfv.outline" :key="'ol'+oi" class="toc-row" :class="{on: o.page<=pdfv.cur && (oi===pdfv.outline.length-1 || pdfv.outline[oi+1].page>pdfv.cur)}" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="pdfvGoto(o.page); pdfvTocOpen=false"><span class="toc-t">{{ o.title }}</span><span class="toc-p">{{ o.page }}</span></div>
               </template>
               <template v-else>
                 <div v-for="n in pdfv.pages" :key="n" :class="{on:n===pdfv.cur}" @click="pdfvGoto(n); pdfvTocOpen=false">第 {{ n }} 页</div>

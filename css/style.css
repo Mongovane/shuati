@@ -540,3 +540,9 @@ a{color:var(--accent)}
 .note-ta{min-height:88px;max-height:50vh;overflow-y:auto;resize:none}
 .bk-card{position:relative}
 .bk-pct{position:absolute;top:8px;right:8px;font-size:10.5px;padding:2px 8px;border-radius:99px;background:var(--accent,#4f46e5);color:#fff;opacity:.92;pointer-events:none}
+
+/* v44：目录抽屉修复 */
+.pdfv-drawer-jump{flex:none !important;height:42px !important} /* 防移动端 .inp{flex:1} 在纵向抽屉里被拉成巨块 */
+.pdfv-drawer-list .toc-row{display:flex;align-items:center;gap:8px;padding-top:9px;padding-bottom:9px;line-height:1.35}
+.pdfv-drawer-list .toc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdfv-drawer-list .toc-p{flex:none;font-size:11px;color:var(--muted,#888)}
