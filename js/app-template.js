@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v44</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v45</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -163,7 +163,7 @@ const APP_TEMPLATE = `
             </div>
           </template>
         </template>
-        <div v-if="pdfv.open" class="pdfv" :class="{inv: pdfv.invert}" style="margin-top:14px">
+        <div v-if="pdfv.open" class="pdfv" :class="{inv: pdfv.invert, 'bars-off': pdfv.barsOff}" style="margin-top:14px">
           <div class="pdfv-bar">
             <div class="ttl">{{ pdfv.title }}</div>
             <div class="bk-nav">
@@ -192,13 +192,13 @@ const APP_TEMPLATE = `
             <input type="range" min="1" :max="pdfv.pages" :value="pdfvSliderTip || pdfv.cur" @input="pdfvSliderShow($event.target.value)" @change="pdfvGoto($event.target.value); pdfvSliderHide()" />
             <span v-if="pdfvSliderTip" class="pdfv-slider-tip">{{ pdfvSliderTip }} / {{ pdfv.pages }}</span>
           </div>
-          <div class="pdfv-foot">
-            <button v-if="pdfvMobile" @click="pdfvTocOpen=true">☰ 目录</button>
-            <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
-            <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
-            <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
-            <button @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5)':''">🌙</button>
-            <button @click="pdfAiOpen" title="就当前页问 AI">✨</button>
+          <div class="pdfv-foot" :class="{ic:pdfvMobile}">
+            <button v-if="pdfvMobile" class="pf-ic" @click="pdfvTocOpen=true" title="目录">☰</button>
+            <button class="pf-ic pf-nav" :disabled="pdfv.cur<=1" @click="pdfvPrev" title="上一页">‹</button>
+            <span class="muted pf-pg">{{ pdfv.cur }} <i>/</i> {{ pdfv.pages }}</span>
+            <button class="pf-ic pf-nav" :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext" title="下一页">›</button>
+            <button class="pf-ic" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5)':''" title="夜间反色">🌙</button>
+            <button class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI">✨</button>
           </div>
           <div class="pdfv-drawer" :class="{open:pdfvTocOpen}">
             <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">{{ pdfv.outline.length? pdfv.outline.length+' 章节' : ('共 '+pdfv.pages+' 页') }}</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>

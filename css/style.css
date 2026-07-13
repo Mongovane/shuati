@@ -546,3 +546,14 @@ a{color:var(--accent)}
 .pdfv-drawer-list .toc-row{display:flex;align-items:center;gap:8px;padding-top:9px;padding-bottom:9px;line-height:1.35}
 .pdfv-drawer-list .toc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pdfv-drawer-list .toc-p{flex:none;font-size:11px;color:var(--muted,#888)}
+
+/* v45：PDF 底栏图标化 + 沉浸隐藏工具栏 */
+.pdfv-foot.ic{gap:6px;justify-content:space-around;padding:6px 10px calc(6px + env(safe-area-inset-bottom,0px))}
+.pdfv-foot .pf-ic{flex:none;width:46px;height:42px;display:flex;align-items:center;justify-content:center;font-size:17px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:12px;background:var(--card-bg,#fff);white-space:nowrap;padding:0}
+.pdfv-foot .pf-nav{font-size:26px;font-weight:600;line-height:1;padding-bottom:3px}
+.pdfv-foot .pf-ic:disabled{opacity:.35}
+.pdfv-foot .pf-pg{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:64px;text-align:center}
+.pdfv-foot .pf-pg i{font-style:normal;opacity:.45;margin:0 2px}
+[data-theme=dark] .pdfv-foot .pf-ic{background:#242b38}
+/* 单击沉浸：隐藏顶栏/滑块/底栏，内容占满 */
+.pdfv.bars-off .pdfv-bar,.pdfv.bars-off .pdfv-slider,.pdfv.bars-off .pdfv-foot{display:none}
