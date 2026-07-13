@@ -126,9 +126,20 @@ pdfvTouchEnd(e){
       return;
     }
     this._lastTap=now; this._lastTapX=t.clientX; this._lastTapY=t.clientY;
-    // 单击（320ms 内无第二击）：切换工具栏显隐，沉浸阅读
+    // 单击（320ms 内无第二击）：
+    // 工具栏隐藏时 → 左 30% 上一页 / 右 30% 下一页 / 中间唤回工具栏；显示时 → 整屏点击隐藏
     if(this._tapTimer)clearTimeout(this._tapTimer);
-    this._tapTimer=setTimeout(()=>{ this._tapTimer=null; this.pdfv.barsOff=!this.pdfv.barsOff; },330);
+    const tapX=t.clientX;
+    this._tapTimer=setTimeout(()=>{ this._tapTimer=null;
+      if(this.pdfv.barsOff){
+        const w=(window.innerWidth||360);
+        if(tapX < w*0.3) this.pdfvPrev();
+        else if(tapX > w*0.7) this.pdfvNext();
+        else this.pdfv.barsOff=false;
+      } else {
+        this.pdfv.barsOff=true;
+      }
+    },330);
   }
   // 翻页：仅水平滑（竖直留给页面滚动，放大时留给平移）
   if((Number(this.pdfv.scale)||1)>1.05)return;
