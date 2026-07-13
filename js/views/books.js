@@ -84,7 +84,7 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
 pdfAiRetry(i){ const c=this.pdfAi.chat[i]; if(!c||!c.err||this.pdfAi.asking)return; const q=c.q; this.pdfAi.chat.splice(i,1); this.pdfAi.input=q; return this.pdfAiSend(); },
 async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
 _isMobile(){ try{ const coarse=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches; return !!coarse && (window.innerWidth||9999)<=900; }catch(_){ return (window.innerWidth||9999)<=820; } },
-async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; this.pdfv.msg=this.pdfv.msg||'解析中…'; try{ await this.ensurePdfjs(); const task=window.pdfjsLib.getDocument({data:buf}); if(task.onProgress!==undefined){ task.onProgress=(p)=>{ if(p&&p.total)this.pdfv.msg='解析中 '+Math.round(p.loaded/p.total*100)+'%'; }; } const doc=await task.promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.title=title||'PDF'; this.pdfvMobile=this._isMobile();
+async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; this.pdfv.msg=this.pdfv.msg||'解析中…'; try{ await this.ensurePdfjs(); const task=window.pdfjsLib.getDocument({data:buf}); if(task.onProgress!==undefined){ task.onProgress=(p)=>{ if(p&&p.total)this.pdfv.msg='解析中 '+Math.round(p.loaded/p.total*100)+'%'; }; } const doc=await task.promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.title=title||'PDF'; this.pdfvMobile=this._isMobile(); this.pdfvLoadOutline(); try{ this.pdfv.invert=localStorage.getItem('zb_pdf_invert')==='1'; }catch(_){}
         let pref=''; try{ pref=localStorage.getItem('zb_pdfmode')||''; }catch(_){}
         this.pdfv.mode = this.pdfvMobile ? 'page' : (pref==='page'?'page':'scroll');
         let saved=1; try{ saved=Math.min(Math.max(1,parseInt(localStorage.getItem(this._pdfvPosKey())||'1',10)||1),this.pdfv.pages); }catch(_){ saved=1; }
@@ -96,9 +96,39 @@ pdfvSavePos(){ try{ localStorage.setItem(this._pdfvPosKey(), String(this.pdfv.cu
 pdfvToggleMode(){ this.pdfv.mode = this.pdfv.mode==='scroll' ? 'page' : 'scroll'; try{ localStorage.setItem('zb_pdfmode', this.pdfv.mode); }catch(_){} const cur=this.pdfv.cur; this._pdfvQueue=[]; this._pdfvBusy=false; if(this.pdfv.mode==='page'){ if(this._pdfvObsR)this._pdfvObsR.disconnect(); const main=this.$refs.pdfvMain; if(main&&this._pdfvScroll)main.removeEventListener('scroll',this._pdfvScroll); this.$nextTick(()=>this.pdfvRenderSingle()); } else { this.$nextTick(()=>{ this.pdfvSetupPages(false); this.pdfvSetupThumbs(); this.$nextTick(()=>this.pdfvGoto(cur)); }); } },
 pdfvScrollCardTop(){ try{ const card=document.querySelector('.pdfv'); if(!card)return; const tb=document.querySelector('.topbar'); const off=(tb?tb.getBoundingClientRect().height:90)+8; const y=window.scrollY+card.getBoundingClientRect().top-off; window.scrollTo({top:Math.max(0,y), behavior:'auto'}); }catch(_){} },
 async pdfvRenderSingle(opts){ opts=opts||{}; const doc=this._pdfvDoc, cv=this.$refs.pdfvSingle; if(!doc||!cv)return; const token=(this._pdfvSingleToken=(this._pdfvSingleToken||0)+1); if(this._pdfvSingleTask){ try{ this._pdfvSingleTask.cancel(); }catch(_){ } this._pdfvSingleTask=null; } this.pdfv.rendering=true; let anchor=null; if(opts.keepScroll){ try{ const h0=cv.parentElement; if(h0){ const top0=window.scrollY+h0.getBoundingClientRect().top; anchor=(window.scrollY-top0)/(h0.offsetHeight||1); } }catch(_){ } } else { this.pdfvScrollCardTop(); } try{ const page=await doc.getPage(this.pdfv.cur); if(token!==this._pdfvSingleToken)return; const dpr=Math.min(window.devicePixelRatio||1, 3); const host=cv.parentElement; const cw=Math.max(120,((host&&host.clientWidth)||600)-20); const vp1=page.getViewport({scale:1}); const z=Number(this.pdfv.scale)||1; const cssW=cw*z; const eff=Math.min(dpr, 2400/cssW); const rscale=(cssW/vp1.width)*eff; const vp=page.getViewport({scale:rscale}); const off=document.createElement('canvas'); off.width=Math.floor(vp.width); off.height=Math.floor(vp.height); const task=page.render({canvasContext:off.getContext('2d'),viewport:vp}); this._pdfvSingleTask=task; await task.promise; if(token!==this._pdfvSingleToken)return; cv.width=off.width; cv.height=off.height; cv.style.width=Math.round(cssW)+'px'; cv.getContext('2d').drawImage(off,0,0); if(opts.keepScroll&&anchor!=null){ try{ const h1=cv.parentElement; if(h1){ const top1=window.scrollY+h1.getBoundingClientRect().top; window.scrollTo({top:Math.max(0,top1+anchor*(h1.offsetHeight||1)),behavior:'auto'}); } }catch(_){ } } }catch(e){} finally{ if(token===this._pdfvSingleToken){ this._pdfvSingleTask=null; this.pdfv.rendering=false; } } },
-pdfvTouchStart(e){ const t=e.touches&&e.touches[0]; this._pdfvTx=t?t.clientX:0; this._pdfvTy=t?t.clientY:0; },
-pdfvTouchMove(e){ if((Number(this.pdfv.scale)||1)<=1.05){ if(e.cancelable)e.preventDefault(); } },
-pdfvTouchEnd(e){ if((Number(this.pdfv.scale)||1)>1.05)return; const t=e.changedTouches&&e.changedTouches[0]; if(!t)return; const dx=t.clientX-(this._pdfvTx||0), dy=t.clientY-(this._pdfvTy||0); if(Math.abs(dy)>45 && Math.abs(dy)>Math.abs(dx)){ if(dy<0)this.pdfvNext(); else this.pdfvPrev(); } else if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)){ if(dx<0)this.pdfvNext(); else this.pdfvPrev(); } },
+pdfvTouchStart(e){ const t=e.touches&&e.touches[0]; this._pdfvTx=t?t.clientX:0; this._pdfvTy=t?t.clientY:0; this._pdfvT0=Date.now();
+  if(e.touches&&e.touches.length===2){ const a=e.touches[0],b=e.touches[1];
+    this._pinch0=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY); this._pinchScale0=this.pdfv.scale; this._pinching=true; } },
+pdfvTouchMove(e){
+  if(!this._pinching && (Number(this.pdfv.scale)||1)<=1.05 && this.pdfv.mode==='page'){ if(e.cancelable)e.preventDefault(); }
+  if(this._pinching && e.touches && e.touches.length===2){ e.preventDefault();
+  const a=e.touches[0],b=e.touches[1]; const d=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
+  if(this._pinch0>0){ const raw=this._pinchScale0*(d/this._pinch0); this._pinchPreview=Math.min(3,Math.max(0.5,raw));
+    const el=this.$refs.pdfvMain; if(el){ el.style.setProperty('--pz', String(this._pinchPreview/this.pdfv.scale)); el.classList.add('pinching'); } } } },
+
+pdfvTouchEnd(e){
+  // 捏合落定：按预览比例重渲染
+  if(this._pinching){ if(!e.touches || e.touches.length===0){ this._pinching=false;
+      const el=this.$refs.pdfvMain; if(el){ el.classList.remove('pinching'); el.style.removeProperty('--pz'); }
+      if(this._pinchPreview && Math.abs(this._pinchPreview-this.pdfv.scale)>0.05){ this.pdfv.scale=Math.round(this._pinchPreview*10)/10;
+        if(this.pdfv.mode==='page'){ this.$nextTick(()=>this.pdfvRenderSingle({keepScroll:true})); } else { const cur=this.pdfv.cur; this.$nextTick(()=>{ this.pdfvSetupPages(false); this.$nextTick(()=>this.pdfvGoto(cur)); }); } }
+      this._pinchPreview=0; }
+    return; }
+  const t=e.changedTouches&&e.changedTouches[0]; if(!t)return;
+  const dx=t.clientX-(this._pdfvTx||0), dy=t.clientY-(this._pdfvTy||0), dt=Date.now()-(this._pdfvT0||0);
+  // 双击（300ms 内两次轻点同位置）：100% ↔ 200%
+  if(dt<250 && Math.abs(dx)<12 && Math.abs(dy)<12){
+    const now=Date.now();
+    if(this._lastTap && now-this._lastTap<320 && Math.hypot(t.clientX-this._lastTapX, t.clientY-this._lastTapY)<40){
+      this._lastTap=0; const target=(this.pdfv.scale>1.15)?1:2; this.pdfv.scale=target;
+      if(this.pdfv.mode==='page'){ this.$nextTick(()=>this.pdfvRenderSingle({keepScroll:true})); } else { const cur=this.pdfv.cur; this.$nextTick(()=>{ this.pdfvSetupPages(false); this.$nextTick(()=>this.pdfvGoto(cur)); }); }
+      return;
+    }
+    this._lastTap=now; this._lastTapX=t.clientX; this._lastTapY=t.clientY;
+  }
+  // 翻页：仅水平滑（竖直留给页面滚动，放大时留给平移）
+  if((Number(this.pdfv.scale)||1)>1.05)return;
+  if(dt<600 && Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)*1.5){ if(dx<0)this.pdfvNext(); else this.pdfvPrev(); } },
 async pdfvSetupPages(restore){ const doc=this._pdfvDoc, main=this.$refs.pdfvMain; if(!doc||!main)return; try{ const p1=await doc.getPage(1); const vp1=p1.getViewport({scale:1}); this._pdfvAspect=vp1.height/vp1.width; this._pdfvBaseW=vp1.width; }catch(_){ this._pdfvAspect=1.414; this._pdfvBaseW=600; }
       const scale=Number(this.pdfv.scale)||1; const cw=Math.max(120,(main.clientWidth||600)-32); const dispW=Math.max(160, cw*scale); const dispH=Math.round(dispW*this._pdfvAspect); this._pdfvDispW=dispW; this._pdfvDispH=dispH;
       this._pdfvQueue=[]; this._pdfvBusy=false;
@@ -122,6 +152,18 @@ async pdfvDrain(){ if(this._pdfvBusy)return; this._pdfvBusy=true; const main=thi
 pdfvUnrender(el){ if(!el||el.dataset.rendered!=='1')return; const cv=el.querySelector('canvas'); if(cv){ cv.width=0; cv.height=0; cv.style.width=''; } el.dataset.rendered=''; if(this._pdfvDispH)el.style.height=this._pdfvDispH+'px'; },
 pdfvPrune(){ const main=this.$refs.pdfvMain; if(!main)return; const KEEP=this._pdfvKeep(); const lo=this.pdfv.cur-KEEP, hi=this.pdfv.cur+KEEP; main.querySelectorAll('.pdfv-page').forEach(el=>{ if(el.dataset.rendered==='1'){ const p=parseInt(el.dataset.page,10); if(p<lo||p>hi)this.pdfvUnrender(el); } }); },
 pdfvScrollSync(){ const main=this.$refs.pdfvMain; if(!main)return; const top=main.scrollTop+90; let cur=1; const els=main.querySelectorAll('.pdfv-page'); for(const el of els){ if(el.offsetTop<=top)cur=parseInt(el.dataset.page,10); else break; } for(let i=cur-1;i<=cur+2;i++){ const e=main.querySelector('.pdfv-page[data-page="'+i+'"]'); if(e)this.pdfvEnqueue(i,e); } if(cur&&cur!==this.pdfv.cur){ this.pdfv.cur=cur; this.pdfvSavePos(); this.pdfvPrune(); const t=this.$refs.pdfvRail&&this.$refs.pdfvRail.querySelector('.pdfv-thumb[data-page="'+cur+'"]'); if(t)t.scrollIntoView({block:'nearest'}); } },
+async pdfvLoadOutline(){ this.pdfv.outline=[]; try{ const doc=this._pdfvDoc; if(!doc||!doc.getOutline)return;
+  const raw=await doc.getOutline(); if(!raw||!raw.length)return;
+  const out=[]; const walk=async(items,level)=>{ for(const it of items){ let page=0;
+    try{ let dest=it.dest; if(typeof dest==='string')dest=await doc.getDestination(dest);
+      if(Array.isArray(dest)&&dest[0]){ page=(await doc.getPageIndex(dest[0]))+1; } }catch(_){}
+    out.push({title:(it.title||'').trim()||'(未命名)',page,level});
+    if(it.items&&it.items.length&&level<3)await walk(it.items,level+1); } };
+  await walk(raw,0); this.pdfv.outline=out.filter(o=>o.page>0);
+}catch(_){ this.pdfv.outline=[]; } },
+pdfvSliderShow(v){ this.pdfvSliderTip=String(v); },
+pdfvSliderHide(){ setTimeout(()=>{ this.pdfvSliderTip=''; },250); },
+pdfvToggleInvert(){ this.pdfv.invert=!this.pdfv.invert; try{ localStorage.setItem('zb_pdf_invert', this.pdfv.invert?'1':'0'); }catch(_){} },
 pdfvGoto(n){ const t=Math.min(Math.max(1,parseInt(n,10)||1),this.pdfv.pages); this.pdfv.cur=t; this.pdfvSavePos(); if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { const main=this.$refs.pdfvMain; if(main){ const sel='.pdfv-page[data-page="'+t+'"]'; const el=main.querySelector(sel); if(el){ for(let i=t-1;i<=t+2;i++){ const e=main.querySelector('.pdfv-page[data-page="'+i+'"]'); if(e)this.pdfvEnqueue(i,e); } main.scrollTop=el.offsetTop; this.pdfvPrune(); const fix=()=>{ const e2=main.querySelector(sel); if(e2)main.scrollTop=e2.offsetTop; }; requestAnimationFrame(fix); setTimeout(fix,180); setTimeout(fix,460); } } } const r=this.$refs.pdfvRail&&this.$refs.pdfvRail.querySelector('.pdfv-thumb[data-page="'+t+'"]'); if(r)r.scrollIntoView({block:'nearest'}); },
 pdfvPrev(){ this.pdfvGoto(this.pdfv.cur-1); },
 pdfvNext(){ this.pdfvGoto(this.pdfv.cur+1); },

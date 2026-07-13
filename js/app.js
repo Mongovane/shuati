@@ -39,8 +39,8 @@ const App={
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
     pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
-    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1, title:'', mode:'scroll', msg:'' },
-    pdfvMobile:false, pdfvTocOpen:false,
+    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1, title:'', mode:'scroll', msg:'' , outline:[], invert:false},
+    pdfvMobile:false, pdfvSliderTip:'', pdfvTocOpen:false,
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
     mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
@@ -100,7 +100,10 @@ const App={
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
   methods:{
-async aiFetch(body, signal, onDelta){
+bookReadPct(b){ try{ const s=localStorage.getItem('zb_readpos:'+b.key); if(s==null)return ''; const i=parseInt(s,10)||0;
+      if(!b.pages||!b.pages.length||i<=0)return ''; const pct=Math.min(100,Math.round((i+1)/b.pages.length*100));
+      return pct>=100?'读完':('读到 '+pct+'%'); }catch(_){ return ''; } },
+    async aiFetch(body, signal, onDelta){
       const stable = this.explainStable || body.stream===false;
       const isNet = (e)=> /Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream|INTERNAL_ERROR|network|aborted/i.test((e&&e.message)||'') || (e&&e.name==='AbortError');
       const attempt = async (useStream, tries)=>{

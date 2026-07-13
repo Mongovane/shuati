@@ -15,7 +15,7 @@ const APP_TEMPLATE = `
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
     <button class="tab" :class="{active:view==='bank'}" @click="go('bank')">Bank</button>
     <button class="tab" :class="{active:view==='ingest'}" @click=\"go('ingest')\">Import</button>
-    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v42</span></button>
+    <button class="tab" :class="{active:view==='settings'}" @click=\"go('settings')\">Settings <span class="muted" style="font-size:10px">v43</span></button>
   </div></div>
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
@@ -163,7 +163,7 @@ const APP_TEMPLATE = `
             </div>
           </template>
         </template>
-        <div v-if="pdfv.open" class="pdfv" style="margin-top:14px">
+        <div v-if="pdfv.open" class="pdfv" :class="{inv: pdfv.invert}" style="margin-top:14px">
           <div class="pdfv-bar">
             <div class="ttl">{{ pdfv.title }}</div>
             <div class="bk-nav">
@@ -172,12 +172,14 @@ const APP_TEMPLATE = `
             </div>
             <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
             <input class="bk-jump inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value)" placeholder="跳页" />
+            <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvTocOpen=true" title="目录">☰ 目录</button>
+            <button v-if="!pdfvMobile" class="btn subtle" :style="pdfv.invert?'color:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5)':''" @click="pdfvToggleInvert" title="夜间反色">🌙</button>
             <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
             <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
             <button class="btn subtle" @click="pdfAiOpen" title="就当前页内容问 AI">✨ 问 AI</button>
             <button class="btn subtle" @click="pdfvClose">关闭</button>
           </div>
-          <div class="pdfv-body" :class="{'one-col': pdfv.mode==='page'}">
+          <div class="pdfv-body" :class="{'one-col': pdfv.mode==='page'}" @touchstart="pdfvTouchStart" @touchmove="pdfvTouchMove" @touchend="pdfvTouchEnd">
             <div class="pdfv-rail" ref="pdfvRail" v-if="pdfv.mode==='scroll'">
               <div v-for="n in pdfv.pages" :key="n" class="pdfv-thumb" :class="{on:n===pdfv.cur}" :data-page="n" @click="pdfvGoto(n)"><canvas></canvas><span>{{ n }}</span></div>
             </div>
@@ -186,21 +188,31 @@ const APP_TEMPLATE = `
             </div>
             <div class="pdfv-single" v-if="pdfv.mode==='page'"><canvas ref="pdfvSingle"></canvas></div>
           </div>
+          <div class="pdfv-slider" v-if="pdfvMobile && pdfv.pages>3">
+            <input type="range" min="1" :max="pdfv.pages" :value="pdfv.cur" @input="pdfvSliderShow($event.target.value)" @change="pdfvGoto($event.target.value); pdfvSliderHide()" />
+            <span v-if="pdfvSliderTip" class="pdfv-slider-tip">{{ pdfvSliderTip }} / {{ pdfv.pages }}</span>
+          </div>
           <div class="pdfv-foot">
             <button v-if="pdfvMobile" @click="pdfvTocOpen=true">☰ 目录</button>
             <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
             <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
             <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
+            <button @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5)':''">🌙</button>
             <button @click="pdfAiOpen" title="就当前页问 AI">✨</button>
           </div>
-          <div v-if="pdfvMobile" class="pdfv-drawer" :class="{open:pdfvTocOpen}">
-            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">共 {{ pdfv.pages }} 页</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
+          <div class="pdfv-drawer" :class="{open:pdfvTocOpen}">
+            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">{{ pdfv.outline.length? pdfv.outline.length+' 章节' : ('共 '+pdfv.pages+' 页') }}</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
             <input class="inp pdfv-drawer-jump" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
-            <div class="pdfv-drawer-list">
-              <div v-for="n in pdfv.pages" :key="n" :class="{on:n===pdfv.cur}" @click="pdfvGoto(n); pdfvTocOpen=false">第 {{ n }} 页</div>
+            <div class="pdfv-drawer-list" ref="pdfvTocList">
+              <template v-if="pdfv.outline.length">
+                <div v-for="(o,oi) in pdfv.outline" :key="'ol'+oi" :class="{on: o.page<=pdfv.cur && (oi===pdfv.outline.length-1 || pdfv.outline[oi+1].page>pdfv.cur)}" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="pdfvGoto(o.page); pdfvTocOpen=false">{{ o.title }}<span class="muted" style="float:right;font-size:11px">{{ o.page }}</span></div>
+              </template>
+              <template v-else>
+                <div v-for="n in pdfv.pages" :key="n" :class="{on:n===pdfv.cur}" @click="pdfvGoto(n); pdfvTocOpen=false">第 {{ n }} 页</div>
+              </template>
             </div>
           </div>
-          <div v-if="pdfvMobile && pdfvTocOpen" class="pdfv-backdrop" @click="pdfvTocOpen=false"></div>
+          <div v-if="pdfvTocOpen" class="pdfv-backdrop" @click="pdfvTocOpen=false"></div>
         </div>
         <div v-else-if="!pdfv.loading" class="empty"><p>选择一个 PDF 直接在线阅读。适合公式、图表多、不想被 OCR 弄花的教材。<br>提示：PDF 仅在本次打开期间保留；想长期保存请用「整理笔记」导入，或把 PDF 放进部署的 public/。</p></div>
       </div>
@@ -220,6 +232,7 @@ const APP_TEMPLATE = `
             <div class="bk-shelf-label fold-head" @click="bookFold[sub]=!bookFold[sub]"><span>{{ subjName(sub)==='other'? '其他' : subjName(sub) }} <span class="muted" style="font-weight:400;font-size:12px">{{ list.length }} 本</span></span><span class="fold-arrow" :class="{open:!bookFold[sub]}">▾</span></div>
             <div v-show="!bookFold[sub]" class="bk-grid">
               <button v-for="b in list" :key="b.key" class="bk-card" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">
+                <span v-if="bookReadPct(b)" class="bk-pct">{{ bookReadPct(b) }}</span>
                 <span class="spine"></span>
                 <span class="t">{{ b.title }}</span>
                 <span class="m">{{ b.pages.length }} 页</span>
@@ -744,7 +757,7 @@ const APP_TEMPLATE = `
     <div class="r-top">
       <button class="ricon" @click="readerClose" title="退出阅读">‹ 退出</button>
       <div class="rttl">{{ pageLabel(currentPageMat) }}</div>
-      <button class="ricon" @click="reader.tocOpen=true" title="目录">☰</button>
+      <button class="ricon" @click="readerTocShow" title="目录">☰</button>
       <button class="ricon" :style="reader.segMode?'color:var(--accent,#4f46e5)':''" @click="readerSegToggle" title="选段：点选段落/公式后合并复制或问 AI">📝</button>
       <button class="ricon" v-if="readerCanAi" @click="readerAskAI" title="就本页内容问 AI">✨</button>
       <button class="ricon" @click="reader.panel=!reader.panel; reader.barsHidden=false" title="字号 / 主题">Aa</button>

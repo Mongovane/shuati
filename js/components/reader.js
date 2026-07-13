@@ -51,6 +51,9 @@ const ReaderMixin = {
     // —— 沉浸式阅读器（番茄/七猫风格）——
     readerLoadCfg(){ try{ const c=JSON.parse(localStorage.getItem('zb_reader')||'null'); if(c&&typeof c==='object'){ this.reader.fontSize=Math.min(30,Math.max(15,parseInt(c.fontSize,10)||19)); this.reader.lineGap=[1.6,1.9,2.3].includes(c.lineGap)?c.lineGap:1.9; this.reader.theme=['paper','sepia','green','night'].includes(c.theme)?c.theme:'paper'; this.reader.serif=!!c.serif; } }catch(_){ } },
     readerSaveCfg(){ try{ localStorage.setItem('zb_reader', JSON.stringify({fontSize:this.reader.fontSize,lineGap:this.reader.lineGap,theme:this.reader.theme,serif:this.reader.serif})); }catch(_){ } },
+    readerTocShow(){ this.reader.tocOpen=true; this.$nextTick(()=>{ try{
+      const box=document.querySelector('.r-toc .list'); const cur=box&&box.querySelector('.on');
+      if(cur)cur.scrollIntoView({block:'center'}); }catch(_){ } }); },
     readerOpen(){ if(!this.currentBook||!this.currentPageMat){ this.flash('请先选择一本书',true); return; } this.readerLoadCfg(); this.reader.barsHidden=false; this.reader.panel=false; this.reader.tocOpen=false; this.reader.open=true; try{ document.body.style.overflow='hidden'; }catch(_){ } this.$nextTick(()=>this.readerScrollTop()); },
     readerClose(){ this.reader.open=false; this.reader.panel=false; this.reader.tocOpen=false; try{ document.body.style.overflow=''; }catch(_){ } },
     readerScrollTop(){ const el=this.$refs.readerScroll; if(el)el.scrollTop=0; },

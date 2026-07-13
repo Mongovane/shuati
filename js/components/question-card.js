@@ -23,6 +23,7 @@ const QuestionCard={
   watch:{ q(){ this.reset(); } },
   mounted(){ this.reset(); },
   methods:{
+    taGrow(e){ const el=e&&e.target; if(!el)return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight+2, Math.round(window.innerHeight*0.5))+'px'; },
     segToggle(){ this.segMode=!this.segMode; if(!this.segMode)this._segClear(); },
     _segBox(){ return this.$refs.aiBox; },
     _segClear(){ const b=this._segBox(); if(b)b.querySelectorAll('.seg-sel').forEach(el=>el.classList.remove('seg-sel')); this.segCount=0; },
@@ -151,7 +152,7 @@ const QuestionCard={
           <button class="btn subtle" style="margin-top:8px" @click="noteEdit=true; noteDraft=q.note||''">✏️ 编辑笔记</button>
         </template>
         <template v-else>
-          <textarea v-model="noteDraft" style="min-height:80px" placeholder="记下易错点或记忆口诀…（支持 Markdown 与 $ 公式）"></textarea>
+          <textarea v-model="noteDraft" class="note-ta" @input="taGrow($event)" @focus="taGrow($event)" placeholder="记下易错点或记忆口诀…（支持 Markdown 与 $ 公式）"></textarea>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button class="btn subtle" @click="saveNote(); noteEdit=false">保存笔记</button>
             <button v-if="q.note" class="btn subtle" @click="noteEdit=false; noteDraft=q.note||''">取消</button>
