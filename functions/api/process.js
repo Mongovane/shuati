@@ -1,10 +1,12 @@
-import { json, checkAuth } from './_utils.js';
+import { json, checkAuth, batchChunked } from './_utils.js';
+
+const MAX_IMPORT = 2000; // 单次直接导入 JSON 的题目上限（超过请分批，防单请求撑爆内存/超时）
 
 const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 const VALID_TYPES = ['single_choice', 'multiple_choice', 'true_false', 'fill_blank', 'short_answer', 'code'];
 
 // 由"科目 + 题干内容"生成稳定 id（64-bit 双 FNV），同一题重复导入会覆盖而非新增，避免重复题
-function stableQid(subject, stem) {
+export function stableQid(subject, stem) {
   const str = String(subject || '') + '|' + String(stem || '').replace(/\s+/g, ' ').trim();
   let h1 = 0x811c9dc5 >>> 0, h2 = 0xc2b2ae35 >>> 0;
   for (let i = 0; i < str.length; i++) {
@@ -16,7 +18,7 @@ function stableQid(subject, stem) {
 }
 
 // —— 结构特征判科目（代码语法 / 数学 TeX 符号 / 英文占比）——
-function structuralSubject(s) {
+export function structuralSubject(s) {
   if (/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|for\s*\([^;]*;|while\s*\(/.test(s)) return 'computer';
   if (/\\int|\\lim|\\sum|\\frac|\\sqrt|\\partial|\\overrightarrow|\\mathrm\{d\}/.test(s)) return 'math';
   const letters = (s.match(/[A-Za-z]/g) || []).length;
@@ -27,7 +29,7 @@ function structuralSubject(s) {
 }
 
 // —— 综合判科目：先结构特征，再按 subjects 表里的术语关键词匹配（仅强特征命中才返回，否则 ''）——
-function guessSubjectFromText(text, subjList) {
+export function guessSubjectFromText(text, subjList) {
   const s = String(text || '');
   const codes = new Set((subjList || []).map((x) => x.code));
   const st = structuralSubject(s);
@@ -85,6 +87,9 @@ export async function onRequestPost({ request, env }) {
 
   // 路径 A：直接导入已结构化的 JSON 数组（不调用 AI，零成本），始终视为题库
   if (Array.isArray(body.questions) && body.questions.length) {
+    if (body.questions.length > MAX_IMPORT) {
+      return json({ error: `单次最多导入 ${MAX_IMPORT} 题（本次 ${body.questions.length} 题），请拆成多批粘贴` }, 400);
+    }
     questions = body.questions;
   } else if (Array.isArray(body.images) && body.images.length) {
     // 路径 C：图片/扫描页 → 视觉模型识别（含自动分辨）
@@ -133,6 +138,7 @@ export async function onRequestPost({ request, env }) {
       answer: JSON.stringify(Array.isArray(q.answer) ? q.answer : (q.answer != null ? [q.answer] : [])),
       analysis: (q.analysis || '').trim() || null,
       tags: JSON.stringify(Array.isArray(q.tags) ? q.tags : []),
+      status: trusted ? null : 'draft',   // AI 整理的先进「待审核」，人工过目再发布；JSON 直导视为已校对
     });
   }
 
@@ -166,31 +172,32 @@ export async function onRequestPost({ request, env }) {
       // UPSERT 而非 OR REPLACE：保留 rowid/created_at 与关联的 progress 学习进度
       // （OR REPLACE = 先删后插，外键级联会顺带清掉该题的错题/收藏记录），且能正确触发 FTS 索引更新
       const sql = `INSERT INTO questions
-        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags, page)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags, page, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           subject=excluded.subject, chapter=excluded.chapter, type=excluded.type,
           difficulty=excluded.difficulty, source=excluded.source, passage=excluded.passage,
           stem=excluded.stem, options=excluded.options, answer=excluded.answer,
-          analysis=excluded.analysis, tags=excluded.tags, page=excluded.page`;
-      await env.DB.batch(cleanedQ.map((q) =>
+          analysis=excluded.analysis, tags=excluded.tags, page=excluded.page,
+          status=excluded.status`;
+      await batchChunked(env, cleanedQ.map((q) =>
         env.DB.prepare(sql).bind(
           q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
-          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.page
+          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.page, q.status
         )
-      ));
+      ), 80);
     }
     if (cleanedM.length) {
       await ensureMaterialsTable(env);
       const sqlM = `INSERT OR REPLACE INTO materials
         (id, subject, title, source, page, page_image, content_md, summary, tags)
         VALUES (?,?,?,?,?,?,?,?,?)`;
-      await env.DB.batch(cleanedM.map((m) =>
+      await batchChunked(env, cleanedM.map((m) =>
         env.DB.prepare(sqlM).bind(
           m.id, m.subject, m.title, m.source, m.page,
           m.page_image, m.content_md, m.summary, m.tags
         )
-      ));
+      ), 80);
     }
   } catch (e) {
     return json({ error: '写入数据库失败：' + e.message }, 500);
@@ -207,15 +214,18 @@ export async function onRequestPost({ request, env }) {
     inserted: cleanedQ.length,            // 兼容旧前端：仍表示题目数
     inserted_questions: cleanedQ.length,
     inserted_materials: cleanedM.length,
+    inserted_drafts: cleanedQ.filter((q) => q.status === 'draft').length,   // 其中进「待审核」的数量（AI 整理路径）
     sample: cleanedQ.slice(0, 3).map((q) => ({ subject: q.subject, type: q.type, stem: q.stem.slice(0, 60) })),
     material_sample: cleanedM.slice(0, 3).map((m) => ({ subject: m.subject, title: m.title })),
   });
 }
 
 async function ensureQuestionsSchema(env) {
-  // 老库的 questions 表可能没有 page 列，自动补上（已存在则忽略报错），无需手动迁移
+  // 老库的 questions 表可能没有 page / status 列，自动补上（已存在则忽略报错），无需手动迁移
   try { await env.DB.prepare('ALTER TABLE questions ADD COLUMN page INTEGER').run(); }
   catch (e) { /* duplicate column name：已存在，忽略 */ }
+  try { await env.DB.prepare('ALTER TABLE questions ADD COLUMN status TEXT').run(); }
+  catch (e) { /* 已存在，忽略 */ }
 }
 
 async function ensureMaterialsTable(env) {

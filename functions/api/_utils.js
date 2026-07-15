@@ -17,27 +17,39 @@ function safeEqual(a, b) {
 }
 
 // —— 口令爆破限速：同一 IP 15 分钟内错 20 次即拒绝（429）——
+// 设计（v48 起）：
+//   · 正确口令：零 DB 开销（不读不写限速表）
+//   · 错误口令：先记内存（isolate 级 Map），只在累计 3 / 10 / 20 次这三个阈值同步到 D1
+//     —— 有人拿错口令狂刷时，每 IP 每窗口最多 3 次写，烧不动每日 10 万写配额
+//   · 封禁判断：内存命中直接 429（零读）；未命中读一次 D1 兜跨 isolate 的历史失败
 const RL_WINDOW = 900;   // 秒
 const RL_MAX = 20;
+const RL_SYNC_AT = new Set([3, 10, RL_MAX]);
+const _rlMem = new Map(); // ip -> { n, ts }
+function _rlMemGet(ip) {
+  const now = Math.floor(Date.now() / 1000);
+  const r = _rlMem.get(ip);
+  if (r && now - r.ts >= RL_WINDOW) { _rlMem.delete(ip); return null; }
+  return r || null;
+}
+function _rlMemSet(ip, n, ts) {
+  _rlMem.set(ip, { n, ts });
+  if (_rlMem.size > 500) { const k = _rlMem.keys().next().value; _rlMem.delete(k); } // 防内存无限涨
+}
 
 async function rlGet(env, ip) {
   try {
     return await env.DB.prepare(`SELECT n, ts FROM auth_fails WHERE ip = ?`).bind(ip).first();
   } catch (_) { return null; } // 表还不存在等情况：视为无记录
 }
-async function rlBump(env, ip) {
+async function rlSync(env, ip, n) {
   try {
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS auth_fails (ip TEXT PRIMARY KEY, n INTEGER DEFAULT 0, ts INTEGER)`).run();
     await env.DB.prepare(
-      `INSERT INTO auth_fails (ip, n, ts) VALUES (?, 1, unixepoch())
-       ON CONFLICT(ip) DO UPDATE SET
-         n = CASE WHEN unixepoch() - ts < ${RL_WINDOW} THEN n + 1 ELSE 1 END,
-         ts = unixepoch()`
-    ).bind(ip).run();
+      `INSERT INTO auth_fails (ip, n, ts) VALUES (?, ?, unixepoch())
+       ON CONFLICT(ip) DO UPDATE SET n = ?, ts = unixepoch()`
+    ).bind(ip, n, n).run();
   } catch (_) {}
-}
-async function rlClear(env, ip) {
-  try { await env.DB.prepare(`DELETE FROM auth_fails WHERE ip = ?`).bind(ip).run(); } catch (_) {}
 }
 
 // 校验访问口令（APP_TOKEN）。前端在每次请求头里带 Authorization: Bearer <token>
@@ -50,18 +62,35 @@ export async function checkAuth(request, env) {
   const token = auth.replace(/^Bearer\s+/i, '').trim();
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
 
-  const rl = env.DB ? await rlGet(env, ip) : null;
-  const now = Math.floor(Date.now() / 1000);
-  if (rl && rl.n >= RL_MAX && now - (rl.ts || 0) < RL_WINDOW) {
-    return { ok: false, resp: json({ error: '尝试次数过多，请约 15 分钟后再试' }, 429) };
+  // 口令正确：直接放行（不再像旧版那样每个请求都先读一次 auth_fails，省全站读放大）
+  if (safeEqual(token, env.APP_TOKEN)) {
+    if (_rlMem.has(ip)) _rlMem.delete(ip);
+    return { ok: true };
   }
 
-  if (!safeEqual(token, env.APP_TOKEN)) {
-    if (env.DB) await rlBump(env, ip);
-    return { ok: false, resp: json({ error: '未授权：请在「设置」里填写正确的访问口令' }, 401) };
+  // —— 以下是失败路径 ——
+  const now = Math.floor(Date.now() / 1000);
+  const mem = _rlMemGet(ip);
+  if (mem && mem.n >= RL_MAX) {
+    return { ok: false, resp: json({ error: '尝试次数过多，请约 15 分钟后再试' }, 429) };
   }
-  if (env.DB && rl && rl.n) await rlClear(env, ip);
-  return { ok: true };
+  // 内存没封：合并 D1 里跨 isolate 的历史失败数（窗口内）
+  let base = mem ? mem.n : 0;
+  if (env.DB && !mem) {
+    const rl = await rlGet(env, ip);
+    if (rl && now - (rl.ts || 0) < RL_WINDOW) base = Math.max(base, rl.n || 0);
+    if (base >= RL_MAX) {
+      _rlMemSet(ip, base, now);
+      return { ok: false, resp: json({ error: '尝试次数过多，请约 15 分钟后再试' }, 429) };
+    }
+  }
+  const n = base + 1;
+  _rlMemSet(ip, n, mem ? mem.ts : now);
+  if (env.DB && RL_SYNC_AT.has(n)) await rlSync(env, ip, n);
+  if (n >= RL_MAX) {
+    return { ok: false, resp: json({ error: '尝试次数过多，请约 15 分钟后再试' }, 429) };
+  }
+  return { ok: false, resp: json({ error: '未授权：请在「设置」里填写正确的访问口令' }, 401) };
 }
 
 // —— SRS / 日志相关的懒迁移：旧库自动补列建表，每个 isolate 只跑一次 ——
@@ -72,6 +101,10 @@ export async function ensureSrsSchema(env) {
     `ALTER TABLE progress ADD COLUMN due_at INTEGER`,
     `ALTER TABLE progress ADD COLUMN interval_days REAL DEFAULT 0`,
     `ALTER TABLE progress ADD COLUMN ease REAL DEFAULT 2.5`,
+    `ALTER TABLE answer_log ADD COLUMN duration_ms INTEGER`,   // 每题作答用时（毫秒，可空）
+    `ALTER TABLE questions ADD COLUMN status TEXT`,            // 'draft' = AI 导入待审核；NULL/'ok' = 已发布
+    `ALTER TABLE questions ADD COLUMN page INTEGER`,
+    `ALTER TABLE mock_results ADD COLUMN score REAL`,          // 多选半分制得分（可空，旧记录无）
   ];
   for (const sql of alters) { try { await env.DB.prepare(sql).run(); } catch (_) { /* duplicate column：已存在 */ } }
   try { await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_pr_due ON progress(due_at)`).run(); } catch (_) {}
@@ -80,6 +113,7 @@ export async function ensureSrsSchema(env) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       question_id TEXT,
       is_correct INTEGER,
+      duration_ms INTEGER,
       ts INTEGER DEFAULT (unixepoch())
     )`).run();
   } catch (_) {}
@@ -136,6 +170,14 @@ export async function ensureFts(env) {
 // FTS5 关键词安全引用：整词短语匹配，防注入查询语法
 export function ftsQuote(kw) {
   return '"' + String(kw).replace(/"/g, '""') + '"';
+}
+
+// —— 大批量语句分块提交：D1 单次 batch 语句数有限，超大导入/恢复按块跑 ——
+// 注意：跨块不再是单事务；调用方需保证语句幂等（UPSERT / OR REPLACE）
+export async function batchChunked(env, stmts, size = 80) {
+  for (let i = 0; i < stmts.length; i += size) {
+    await env.DB.batch(stmts.slice(i, i + size));
+  }
 }
 
 // 把数据库行还原成前端可用的题目对象

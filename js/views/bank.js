@@ -1,7 +1,27 @@
 // 题库总览：列表 / 批量操作 / 单题编辑 / 去重 / 智能归类
 // —— 由 app.js 按功能域拆分而来；与其余 mixin 合并进同一个 Vue 实例，this.* 跨文件可用 ——
+// —— 近似查重：simhash(字符 3-gram) 指纹 + 4×16 位分带 LSH 找候选对 ——
+//    判定双闸：汉明距离 ≤4 直接判相似；5~10 之间再用字符 bigram Jaccard ≥0.72 复核，
+//    防「下列说法正确的是…」这类同套话头、不同题尾被误并。纯前端计算，不吃服务端配额。
+const _dsNorm=(x)=>String(x||'').toLowerCase().replace(/[\s，。！？；：、,.!?;:'"()（）\[\]【】<>《》\-—_·…]/g,'');
+function _fnv(str,seed){ let h=seed>>>0; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619)>>>0; } return h>>>0; }
+function simhash64(text){ const t=_dsNorm(text); if(!t)return [0,0];
+  const v=new Array(64).fill(0);
+  for(let i=0;i<Math.max(1,t.length-2);i++){ const g=t.slice(i,i+3);
+    const h1=_fnv(g,0x811c9dc5), h2=_fnv(g,0x01000193);
+    for(let b=0;b<32;b++){ v[b]+=((h1>>>b)&1)?1:-1; v[32+b]+=((h2>>>b)&1)?1:-1; } }
+  let lo=0,hi=0; for(let b=0;b<32;b++){ if(v[b]>0)lo|=(1<<b); if(v[32+b]>0)hi|=(1<<b); }
+  return [lo>>>0,hi>>>0]; }
+function _pop(x){ x=x-((x>>>1)&0x55555555); x=(x&0x33333333)+((x>>>2)&0x33333333); return (((x+(x>>>4))&0x0f0f0f0f)*0x01010101)>>>24; }
+function hamming64(a,b){ return _pop((a[0]^b[0])>>>0)+_pop((a[1]^b[1])>>>0); }
+function bigramJac(a,b){ if(!a||!b)return 0; const A=new Set(),B=new Set();
+  for(let i=0;i<a.length-1;i++)A.add(a.slice(i,i+2));
+  for(let i=0;i<b.length-1;i++)B.add(b.slice(i,i+2));
+  if(!A.size||!B.size)return 0; let inter=0; for(const g of A){ if(B.has(g))inter++; }
+  return inter/(A.size+B.size-inter); }
+
 const BankMixin = { methods: {
-async loadBank(reset){ if(!this.token)return; if(reset){ this.bank.offset=0; this.bank.items=[]; this.bank.sel=[]; } this.bank.loading=true; try{ const p=new URLSearchParams(); if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject); if(this.bank.type)p.set('type',this.bank.type); if(this.bank.kw&&this.bank.kw.trim())p.set('q',this.bank.kw.trim()); p.set('order','seq'); p.set('mode','all'); p.set('limit',this.bank.limit); p.set('offset',this.bank.offset); const d=await this.api('/api/questions?'+p.toString()); this.bank.items = reset ? (d.items||[]) : this.bank.items.concat(d.items||[]); this.bank.total=d.total||this.bank.items.length; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.bank.loading=false; },
+async loadBank(reset){ if(!this.token)return; if(reset){ this.bank.offset=0; this.bank.items=[]; this.bank.sel=[]; } this.bank.loading=true; try{ const p=new URLSearchParams(); if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject); if(this.bank.type)p.set('type',this.bank.type); if(this.bank.kw&&this.bank.kw.trim())p.set('q',this.bank.kw.trim()); if(this.bank.tag&&this.bank.tag.trim())p.set('tag',this.bank.tag.trim()); if(this.bank.status)p.set('status',this.bank.status); p.set('order','seq'); p.set('mode','all'); p.set('limit',this.bank.limit); p.set('offset',this.bank.offset); const d=await this.api('/api/questions?'+p.toString()); this.bank.items = reset ? (d.items||[]) : this.bank.items.concat(d.items||[]); this.bank.total=d.total||this.bank.items.length; }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.bank.loading=false; },
 bankMore(){ this.bank.offset+=this.bank.limit; this.loadBank(false); },
 bankToggle(id){ const i=this.bank.sel.indexOf(id); i>=0?this.bank.sel.splice(i,1):this.bank.sel.push(id); },
 bankAllOnPage(){ const ids=this.bank.items.map(q=>q.id); const allSel=ids.every(id=>this.bank.sel.includes(id)); this.bank.sel = allSel ? this.bank.sel.filter(id=>!ids.includes(id)) : Array.from(new Set(this.bank.sel.concat(ids))); },
@@ -17,6 +37,72 @@ async bankDedup(){ if(!this.token){ this.flash('请先在设置中填写访问�
         let del=0; const CH=100; for(let i=0;i<dupIds.length;i+=CH){ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:dupIds.slice(i,i+CH)})}); del+=(d.deleted||dupIds.slice(i,i+CH).length); }
         this.flash('已清理 '+del+' 道重复题'); this.loadMeta(true); this.statsDirty=true; await this.loadBank(true);
       }catch(e){ if(e.message!=='unauth')this.flash('清理失败：'+e.message,true); } this.bank.loading=false; },
+async bankApprove(q){ try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],status:'ok'})});
+      q.status='ok';
+      if(this.bank.status==='draft'){ const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); this.bank.total=Math.max(0,this.bank.total-1); }
+      this.flash('已通过，进入刷题范围'); this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('操作失败：'+e.message,true); } },
+async bankBatchApprove(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; }
+      try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,status:'ok'})});
+        this.flash('已通过 '+(d.updated||ids.length)+' 题，进入刷题范围'); this.bank.sel=[]; this.loadMeta(true); await this.loadBank(true);
+      }catch(e){ if(e.message!=='unauth')this.flash('操作失败：'+e.message,true); } },
+async bankDupScan(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      if(this.dup.busy)return; this.dup.busy=true; this.dup.open=true; this.dup.groups=[]; this.dup.del={}; this.dup.scanned=0;
+      try{
+        const all=[];
+        for(const st of ['','draft']){ let offset=0;
+          for(;;){ const p=new URLSearchParams({order:'seq',mode:'all',limit:'200',offset:String(offset),nocount:'1'}); if(st)p.set('status',st);
+            const d=await this.api('/api/questions?'+p.toString()); const got=d.items||[];
+            all.push(...got); offset+=got.length; this.dup.scanned=all.length;
+            if(got.length<200||all.length>=8000)break; } }
+        const norms=all.map(q=>_dsNorm(q.stem||''));
+        const sig=all.map(q=>simhash64((q.stem||'')+' '+((q.options||[]).map(o=>o&&o.text).join(' '))));
+        const cand=new Map();
+        sig.forEach((sg,i)=>{ const keys=['a'+(sg[0]&0xffff),'b'+(sg[0]>>>16),'c'+(sg[1]&0xffff),'d'+(sg[1]>>>16)];
+          for(const k of keys){ let a=cand.get(k); if(!a){ a=[]; cand.set(k,a); } a.push(i); } });
+        const fa=all.map((_,i)=>i); const find=(x)=>{ while(fa[x]!==x){ fa[x]=fa[fa[x]]; x=fa[x]; } return x; };
+        for(const arr of cand.values()){ if(arr.length<2||arr.length>60)continue;
+          for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++){ const a=arr[i],b=arr[j];
+            if(find(a)===find(b))continue;
+            if(all[a].subject!==all[b].subject)continue;
+            const la=norms[a].length, lb=norms[b].length;
+            if(!la||!lb||Math.min(la,lb)/Math.max(la,lb)<0.7)continue;
+            const d=hamming64(sig[a],sig[b]);
+            if(d>10)continue;
+            if(d>4 && bigramJac(norms[a],norms[b])<0.72)continue;
+            fa[find(a)]=find(b); } }
+        const gm=new Map(); all.forEach((q,i)=>{ const r=find(i); let g=gm.get(r); if(!g){ g=[]; gm.set(r,g); } g.push(q); });
+        const groups=[...gm.values()].filter(g=>g.length>1).sort((a,b)=>b.length-a.length).slice(0,100);
+        const del={}; for(const g of groups){ g.sort((a,b)=>(a.created_at||0)-(b.created_at||0)); for(let i=1;i<g.length;i++)del[g[i].id]=true; }
+        this.dup.groups=groups; this.dup.del=del;
+        if(!groups.length){ this.dup.open=false; this.flash('没有发现相似重复题（共扫描 '+all.length+' 题）✨'); }
+      }catch(e){ if(e.message!=='unauth')this.flash('查重失败：'+e.message,true); }
+      this.dup.busy=false; },
+dupToggle(id){ if(this.dup.del[id])delete this.dup.del[id]; else this.dup.del[id]=true; },
+dupDelCount(){ return Object.keys(this.dup.del).length; },
+async dupDelete(){ const ids=Object.keys(this.dup.del); if(!ids.length){ this.flash('未勾选要删除的题',true); return; }
+      if(!confirm('删除勾选的 '+ids.length+' 道相似重复题？不可恢复，建议先备份。'))return;
+      try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})});
+        this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.dup.open=false;
+        this.loadMeta(true); this.statsDirty=true; await this.loadBank(true);
+      }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+bankPickImg(){ const el=this.$refs.qimgFile; if(el){ el.value=''; el.click(); } },
+async bankImgFile(ev){ const f=ev&&ev.target&&ev.target.files&&ev.target.files[0]; if(ev&&ev.target)ev.target.value=''; if(!f)return;
+      if(!/^image\//.test(f.type)){ this.flash('请选择图片文件',true); return; }
+      try{
+        let url='';
+        if(this.qimgInline || f.size<=100*1024){
+          url=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error('读取失败')); r.readAsDataURL(f); });
+        } else {
+          if(f.size>2*1024*1024){ this.flash('图片超过 2MB，请先压缩（或勾选内嵌并压小）',true); return; }
+          const fd=new FormData(); fd.append('file',f);
+          const res=await fetch('/api/qimg',{method:'POST',headers:{authorization:'Bearer '+this.token},body:fd});
+          const d=await res.json().catch(()=>({}));
+          if(!res.ok)throw new Error(d.error||('HTTP '+res.status));
+          url=d.url;
+        }
+        this.bankEdit.stem=(this.bankEdit.stem||'')+'\n\n![]('+url+')';
+        this.flash('已把图片插到题干末尾（下方预览可见）');
+      }catch(e){ this.flash('插图失败：'+e.message,true); } },
 async bankAutoClassify(){ const changes={}; let n=0; for(const q of this.bank.items){ const opt=Array.isArray(q.options)?q.options.map(o=>o&&o.text).join(' '):''; const g=this.classifySubject([q.stem,q.chapter,opt].join('  ')); if(g&&g!==q.subject){ (changes[g]=changes[g]||[]).push(q); n++; } } if(!n){ this.flash('本页没有可自动纠正的题（特征不明确的不动）'); return; } if(!confirm('将按题干内容自动纠正本页 '+n+' 道题的科目（仅强特征命中的）。继续？'))return; try{ for(const subj of Object.keys(changes)){ const arr=changes[subj]; const ids=arr.map(q=>q.id); await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); arr.forEach(q=>q.subject=subj); } this.flash('已自动归类 '+n+' 题'); this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('智能归类失败：'+e.message,true); } },
 bankOpenEdit(q){ this.bankEdit={ open:true, q, stem:q.stem||'', analysis:q.analysis||'', subject:q.subject||'', type:q.type||'', options:(Array.isArray(q.options)?q.options.map(o=>({key:o.key||'',text:o.text||''})):[]), answerText:(Array.isArray(q.answer)?q.answer.join(this.isChoiceType(q.type)?', ':'\n'):(q.answer||'')), busy:false }; },
 isChoiceType(t){ return t==='single_choice'||t==='multiple_choice'||t==='true_false'; },

@@ -31,8 +31,18 @@ const ApiMixin = {
       }
       let data = null; try { data = await res.json(); } catch (e) {}
       if (res.status === 401) { this.token = ''; localStorage.removeItem('zb_token'); this.view = 'settings'; this.flash('访问码无效，请重新输入', true); throw new Error('unauth'); }
-      if (!res.ok) throw new Error((data && data.error) || ('请求失败 ' + res.status));
+      if (!res.ok) {
+        // 服务端 5xx（D1 偶发超时等）：学习记录类写操作入队重试，避免静默丢失（4xx 是请求本身的问题，照常抛错）
+        if (res.status >= 500 && method === 'POST' && path.indexOf('/api/progress') === 0) {
+          await this._offQueue(path, opts);
+          this.offlineQueued = (this.offlineQueued || 0) + 1;
+          this.flash('服务器繁忙，这条记录已暂存，稍后自动补传', true);
+          return { queued: true, deferred: true };
+        }
+        throw new Error((data && data.error) || ('请求失败 ' + res.status));
+      }
       this._setOffline(false);
+      if (this.offlineQueued > 0) this._offFlush(); // 有积压（含 5xx 暂存）就趁请求正常时补传
       if (method === 'GET') this._offPut(path, data);
       return data;
     },

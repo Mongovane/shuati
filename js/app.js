@@ -12,11 +12,11 @@ const App={
     stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
     tokenInput:'', view:'practice',
     subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:true,
-    f:{ subject:'all', chapter:'', type:'', order:'random', _mode:'all' }, filterLock:false,
+    f:{ subject:'all', chapter:'', type:'', order:'random', tag:'', _mode:'all' }, filterLock:false,
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'',
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
-    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
+    ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, extracted:'', start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'scribe', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mdFiles:[], mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
     aiX:{ id:'', text:'', busy:false, chat:[], asking:false, model:'' },  // AI 解析：流式内容 + 追问对话（按题 id 归属）
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ aicfg:true, mineru:true, offline:true, subjects:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
@@ -35,7 +35,7 @@ const App={
     mineruTokenBad:false,
     bookExtract:{ busy:false, prog:'', done:0, total:0 },
     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0 },
-    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', sel:[], batchSubject:'' },
+    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
     pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
@@ -43,7 +43,17 @@ const App={
     pdfvMobile:false, pdfvSliderTip:'', pdfvTocOpen:false,
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
-    mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0 },
+    mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0,
+      bp:{ on:false, rows:[{type:'',chapter:'',count:10}] },   /* 组卷蓝图：章节×题型×数量 */
+      touched:{}, lastId:null, sheetOpen:true },
+    printW:{ items:[], withAns:true, busy:false },   /* 错题打印 */
+    ankiBusy:false,
+    examDate: localStorage.getItem('zb_examdate')||'',
+    dailyNewLimit: parseInt(localStorage.getItem('zb_newlimit')||'0',10)||0,
+    dup:{ open:false, busy:false, groups:[], del:{}, scanned:0 },   /* 近似查重 */
+    qimgInline:false,   /* 插图：小图内嵌 dataURL */
+    mockSaved:null,               // 未完成模考的快照（供「继续上次考试」横幅）
+    restoring:false, restoreReplace:false,  // 备份恢复：进行中标记 / 覆盖式开关
     toast:null, toastTimer:null,
     exporting:false,
   }; },
@@ -55,6 +65,9 @@ const App={
     ocrModelName(){ return this.ai.visionModel || this.ai.model || '未读取模型'; },
     sessionMode(){ if(this.view==='wrong')return'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
     chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
+    mockChapters(){ const seen=new Set(); const out=[];
+      for(const c of this.meta.chapters){ if(this.mock.subject!=='all'&&c.subject!==this.mock.subject)continue; if(!seen.has(c.chapter)){ seen.add(c.chapter); out.push(c.chapter); } }
+      return out; },
     ingestChapterOptions(){ const preset=(CHAPTER_PRESETS[this.ingest.subject]||[]).map(ch=>({chapter:ch,n:'预设'})); const existing=(this.meta.chapters||[]).filter(c=>c.subject===this.ingest.subject&&!preset.some(p=>p.chapter===c.chapter)); return [...preset,...existing]; },
     sourcePreview(){ return this.makeSource(); },
     wrongTotal(){ if(!this.stats)return 0; return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); },
@@ -67,12 +80,23 @@ const App={
     sessionElapsed(){ if(!this.sessionStart)return '0:00'; let s=Math.max(0,Math.round((Date.now()-this.sessionStart)/1000)); const m=Math.floor(s/60); s=s%60; return m+':'+String(s).padStart(2,'0'); },
     statTotals(){ const z={totalQ:0,seen:0,wrongOpen:0,mastered:0,fav:0,right:0,wrong:0}; if(!this.stats)return z;
       for(const r of this.stats.bySubject){ z.totalQ+=r.total_q||0; z.seen+=r.seen||0; z.wrongOpen+=r.wrong_open||0; z.mastered+=r.mastered||0; z.fav+=r.favorited||0; z.right+=r.right_sum||0; z.wrong+=r.wrong_sum||0; } return z; },
-    mockResult(){ const v=Object.values(this.mock.answers); return { graded:v.filter(x=>x!==null).length, correct:v.filter(x=>x===true).length, total:this.mock.questions.length }; },
+    mockResult(){ const v=Object.values(this.mock.answers); const correct=v.filter(x=>x===true).length; const half=v.filter(x=>x===0.5).length;
+      return { graded:v.filter(x=>x!==null).length, correct, half, score:correct+half*0.5, total:this.mock.questions.length }; },
     curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id) ? this.aiX.text : ''; },
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.chat||[]) : []; },
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     curAiModel(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.model||'') : ''; },
-    mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.correct/t*100); },
+    mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.score/t*100); },
+    streakDays(){ /* 🔥 连续学习天数：今天有记录从今天起算，否则从昨天起算 */
+      const heat=(this.stats&&this.stats.heat)||[]; if(!heat.length)return 0;
+      const set=new Set(heat.filter(h=>(h.n|0)>0).map(h=>h.d));
+      const day=(off)=>{ const d=new Date(Date.now()-off*86400000); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+      let off=0; if(!set.has(day(0))){ if(!set.has(day(1)))return 0; off=1; }
+      let n=0; while(n<=400 && set.has(day(off+n))) n++;
+      return n; },
+    examDaysLeft(){ if(!this.examDate)return null; const t=new Date(this.examDate+'T00:00:00'); if(isNaN(t))return null;
+      const today=new Date(); today.setHours(0,0,0,0); return Math.round((t-today)/86400000); },
+    themeIcon(){ return this.theme==='dark'?'🌙':(this.theme==='auto'?'🌗':'☀️'); },
     heatCells(){ const map={}; for(const h of ((this.stats&&this.stats.heat)||[]))map[h.d]=h;
       const out=[]; const today=new Date(); today.setHours(0,0,0,0);
       const start=new Date(today); start.setDate(start.getDate()-(139+((today.getDay()+6)%7))); /* 对齐到周一，共 20 列 */
@@ -83,7 +107,9 @@ const App={
     heatTotal(){ return this.heatCells.reduce((s,c)=>s+c.n,0); },
   },
   watch:{
-    theme(v){ document.documentElement.dataset.theme=v; localStorage.setItem('zb_theme',v); },
+    theme(v){ localStorage.setItem('zb_theme',v); this.applyTheme(); },
+    examDate(v){ try{ v?localStorage.setItem('zb_examdate',v):localStorage.removeItem('zb_examdate'); }catch(_){ } },
+    dailyNewLimit(v){ try{ localStorage.setItem('zb_newlimit',String(v|0)); }catch(_){ } },
     appName(v){ const n=(v||'').trim()||'刷题文档'; document.title=n; localStorage.setItem('zb_appname',n); },
     'stealth.autoHide'(v){ localStorage.setItem('zb_autohide', v?'1':'0'); },
     'f.subject'(){ this.f.chapter=''; },
@@ -100,6 +126,9 @@ const App={
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
   methods:{
+    applyTheme(){ const v=this.theme==='auto' ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light') : this.theme;
+      document.documentElement.dataset.theme=v; },
+    cycleTheme(){ this.theme = this.theme==='light'?'dark':(this.theme==='dark'?'auto':'light'); this.flash({light:'浅色主题',dark:'深色主题',auto:'跟随系统'}[this.theme]); },
 bookReadPct(b){ try{ const s=localStorage.getItem('zb_readpos:'+b.key); if(s==null)return ''; const i=parseInt(s,10)||0;
       if(!b.pages||!b.pages.length||i<=0)return ''; const pct=Math.min(100,Math.round((i+1)/b.pages.length*100));
       return pct>=100?'读完':('读到 '+pct+'%'); }catch(_){ return ''; } },
@@ -201,13 +230,47 @@ stealthShow(){ this.stealth.hidden=false; },
 onKey(e){ const tag=(e.target&&e.target.tagName)||'';
       if(this.stealth.hidden){ e.preventDefault(); this.stealth.hidden=false; return; }
       if(this.reader.open){ if(e.key==='Escape'){ if(this.reader.tocOpen){this.reader.tocOpen=false;return;} if(this.reader.panel){this.reader.panel=false;return;} this.readerClose(); return; } if(tag==='INPUT'||tag==='TEXTAREA')return; if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); this.readerNext(); return; } if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.readerPrev(); return; } return; }
+      // —— 刷题快捷键（练习/错题/收藏视图；输入框聚焦或按住修饰键时不拦截）——
+      if(['practice','wrong','favorite'].includes(this.view) && this.cur && !this.mock.started
+         && !e.metaKey && !e.ctrlKey && !e.altKey && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT'){
+        const card=this.$refs.curCard, k=e.key, kl=(k&&k.length===1)?k.toLowerCase():'';
+        if(k==='ArrowLeft'){ e.preventDefault(); this.prev(); return; }
+        if(k==='ArrowRight'){ e.preventDefault(); this.next(); return; }
+        if(card){
+          if(!card.revealed){
+            if(card.isChoice){
+              let key='';
+              if(/^[a-h]$/.test(kl)) key=kl.toUpperCase();
+              else if(/^[1-8]$/.test(kl)){ const o=(this.cur.options||[])[+kl-1]; key=o?o.key:''; }
+              if(key && (this.cur.options||[]).some(o=>o.key===key)){ e.preventDefault(); card.pick(key); return; }
+            } else if(this.cur.type==='true_false'){
+              if(kl==='1'||kl==='t'){ e.preventDefault(); card.pickTF('T'); return; }
+              if(kl==='2'||kl==='f'){ e.preventDefault(); card.pickTF('F'); return; }
+            }
+            if(k==='Enter'){ if(card.canSubmit()){ e.preventDefault(); card.submit(); } return; }
+          } else {
+            if(k==='Enter'){ e.preventDefault(); this.next(); return; }
+            if(!AUTO.includes(this.cur.type) && card.self==null){
+              if(kl==='1'){ e.preventDefault(); card.grade4('again'); return; }
+              if(kl==='2'){ e.preventDefault(); card.grade4('hard'); return; }
+              if(kl==='3'){ e.preventDefault(); card.grade4('good'); return; }
+              if(kl==='4'){ e.preventDefault(); card.grade4('easy'); return; }
+            }
+            if(kl==='f'){ e.preventDefault(); card.toggleFav(); return; }
+            if(kl==='m'){ e.preventDefault(); card.markMastered(); return; }
+          }
+        }
+      }
       if(e.key==='`'||e.key==='~'){ if(tag==='INPUT'||tag==='TEXTAREA')return; e.preventDefault(); this.stealth.hidden=true; } },
 onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
 onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
   },
   mounted(){ try{ window.__hideSplash&&window.__hideSplash(); }catch(_){}
     try{ console.log('[shuati] 前端版本 '+APP_VERSION); }catch(_){}
-    document.documentElement.dataset.theme=this.theme; document.title=this.appName;
+    this.applyTheme(); document.title=this.appName;
+    try{ this._mq=window.matchMedia('(prefers-color-scheme: dark)'); this._mqFn=()=>{ if(this.theme==='auto')this.applyTheme(); };
+      this._mq.addEventListener?this._mq.addEventListener('change',this._mqFn):this._mq.addListener(this._mqFn); }catch(_){ }
+    try{ const bp=JSON.parse(localStorage.getItem('zb_mock_bp')||'null'); if(bp&&Array.isArray(bp.rows)&&bp.rows.length)this.mock.bp={on:!!bp.on,rows:bp.rows.slice(0,8)}; }catch(_){ }
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('focus', this.onFocus);
@@ -230,12 +293,18 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     try{ this.offline = (typeof navigator!=='undefined' && navigator.onLine===false); }catch(_){ }
     window.addEventListener('online', this._onOnline);
     window.addEventListener('offline', this._onOffline);
+    // 模考断点续考：读取未完成的快照（横幅提示）；切后台/关页前抢救一次快照
+    this.mockSaved=this.mockSnapPeek();
+    window.addEventListener('pagehide', this._mockPagehide);
+    document.addEventListener('visibilitychange', this._mockVis);
+    // 兜底：有积压的作答记录（离线或服务端 5xx 暂存的）每分钟尝试补传一次
+    this._flushTimer=setInterval(()=>{ if(this.offlineQueued>0 && !this.offline)this._offFlush(); },60000);
     this._offQueueCount().then(n=>{ this.offlineQueued=n; if(n>0)this._offFlush(); }).catch(()=>{});
     this._loadOfflineSynced();
     // 开屏动画：等动画播完 + Vue 渲染完后淡出
     const sp=document.getElementById('splash'); if(sp){ const dismiss=()=>{ sp.classList.add('out'); setTimeout(()=>sp.remove(),600); }; const elapsed=performance.now(); const minTime=2000; if(elapsed>=minTime)dismiss(); else setTimeout(dismiss,minTime-elapsed); }
   },
-  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); },
+  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); window.removeEventListener('pagehide', this._mockPagehide); document.removeEventListener('visibilitychange', this._mockVis); clearInterval(this._flushTimer); },
   template:APP_TEMPLATE
 };
 

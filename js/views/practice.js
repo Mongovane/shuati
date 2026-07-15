@@ -8,6 +8,7 @@ qs(extra={}){ const p=new URLSearchParams();
       if(this.f.subject&&this.f.subject!=='all') p.set('subject',this.f.subject);
       if(this.f.chapter) p.set('chapter',this.f.chapter);
       if(this.f.type) p.set('type',this.f.type);
+      if(this.f.tag&&this.f.tag.trim()) p.set('tag',this.f.tag.trim());
       p.set('order', this.sessionMode==='wrong' ? 'weak' : this.f.order); p.set('mode',this.sessionMode);
       Object.entries(extra).forEach(([k,v])=>p.set(k,v)); return p.toString();
     },
@@ -65,10 +66,23 @@ next(){ if(this.qi<this.queue.length-1)this.qi++; else this.startSession(true); 
 async deleteCurrentQuestion(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true; this.flash('已删除本题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
 async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(true); this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
 findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
-async onAnswered(p){ this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; } try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct})}); }catch(e){} },
-async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
-async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){} },
-async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){} }
+async onAnswered(p){ this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
+      if(p.partial) this.flash('多选少选：按半分计，已计入错题复习');
+      this.countNewToday(p.id);
+      try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct,grade:p.grade||undefined,duration_ms:p.ms||undefined})}); }catch(e){ if(e.message!=='unauth')this.flash('作答记录保存失败：'+e.message,true); } },
+countNewToday(id){ /* 每日新题软上限：只提醒不硬拦，帮着把节奏留给复习 */
+      if(!(this.dailyNewLimit>0))return; const q=this.findQ(id); if(!q||q._seen)return;
+      if((q.right_count>0)||(q.wrong_count>0))return; q._seen=true;
+      const d=new Date(); const today=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      let day='',n=0; try{ day=localStorage.getItem('zb_newday')||''; n=parseInt(localStorage.getItem('zb_newcount')||'0',10)||0; }catch(_){ }
+      if(day!==today){ day=today; n=0; }
+      n++;
+      try{ localStorage.setItem('zb_newday',day); localStorage.setItem('zb_newcount',String(n)); }catch(_){ }
+      if(n===this.dailyNewLimit) this.flash('今日新题已达上限 '+this.dailyNewLimit+' 题，建议切到「今日待复习」巩固 💪');
+      else if(n>this.dailyNewLimit && (n-this.dailyNewLimit)%10===0) this.flash('已超今日新题上限（'+n+'/'+this.dailyNewLimit+'），注意复习消化'); },
+async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth')this.flash('收藏保存失败：'+e.message,true); } },
+async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth')this.flash('掌握状态保存失败：'+e.message,true); } },
+async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth')this.flash('笔记保存失败：'+e.message,true); } }
 
 ,
 async aiExplain(){ const q=this.cur; if(!q)return;

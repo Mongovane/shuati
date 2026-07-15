@@ -557,3 +557,105 @@ a{color:var(--accent)}
 [data-theme=dark] .pdfv-foot .pf-ic{background:#242b38}
 /* 单击沉浸：隐藏顶栏/滑块/底栏，内容占满 */
 .pdfv.bars-off .pdfv-bar,.pdfv.bars-off .pdfv-slider,.pdfv.bars-off .pdfv-foot{display:none}
+
+/* —— 刷题快捷键提示（仅桌面端显示）—— */
+.kbd-hint{margin-top:8px;font-size:12px;text-align:center;opacity:.72;letter-spacing:.2px}
+@media (max-width:768px){.kbd-hint{display:none}}
+
+/* ===================== v48：半分/四档/多空/答题卡/蓝图/查重/统计芯片/打印 ===================== */
+/* 多选少选（半分）判定条 */
+.verdict.part{color:#d97706}
+.verdict.part .tag{background:rgba(217,119,6,.12)}
+
+/* 四档自评按钮：颜色语义 重来=红 困难=橙 良好=绿 简单=蓝 */
+.selfgrade .sg{min-width:0}
+.selfgrade .sg-again.on,.selfgrade .sg-again:active{border-color:var(--bad);color:var(--bad)}
+.selfgrade .sg-hard.on,.selfgrade .sg-hard:active{border-color:#d97706;color:#d97706}
+.selfgrade .sg-good.on,.selfgrade .sg-good:active{border-color:var(--ok);color:var(--ok)}
+.selfgrade .sg-easy.on,.selfgrade .sg-easy:active{border-color:var(--accent);color:var(--accent)}
+
+/* 多空填空：一空一行输入框 */
+.blanks-multi{display:flex;flex-direction:column;gap:8px}
+.blanks-multi .inp{width:100%}
+
+/* 模考答题卡：吸顶在 mock-bar 之下 */
+.mock-sheet{position:sticky;top:118px;z-index:19;background:var(--bg);padding:6px 0 8px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.ms-toggle{border:none;background:none;color:var(--ink-soft);font-weight:700;font-size:13px;cursor:pointer;padding:4px 2px}
+.ms-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.ms-chip{width:34px;height:30px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink-soft);font-weight:700;font-size:13px;cursor:pointer;transition:.15s}
+.ms-chip.done{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (max-width:640px){
+  .ms-grid{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+  .ms-grid::-webkit-scrollbar{display:none}
+  .ms-chip{flex:0 0 auto}
+}
+
+/* 组卷蓝图行 */
+.bp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.bp-row .bp-n{width:76px;text-align:center}
+
+/* 统计页芯片 */
+.st-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border:1px solid var(--line);border-radius:999px;font-size:13px;font-weight:700;color:var(--ink-soft);background:var(--surface)}
+.st-chip.hot{border-color:#d97706;color:#d97706;background:rgba(217,119,6,.08)}
+.st-chip.warn{border-color:var(--bad);color:var(--bad);background:var(--bad-soft)}
+
+/* 题型平均用时 */
+.dur-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.dur-cell{border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:3px}
+.dur-cell b{font-size:17px}
+.dur-cell span{font-size:12px;color:var(--ink-soft)}
+
+/* 题库：待审核分段 + 角标 */
+.seg.xs button{padding:6px 12px;font-size:13px}
+.seg-badge{display:inline-block;margin-left:5px;min-width:17px;padding:0 5px;border-radius:999px;background:#d97706;color:#fff;font-size:11px;line-height:17px;text-align:center}
+.seg button.on .seg-badge{background:rgba(255,255,255,.28)}
+
+/* 近似查重 */
+.dup-group{border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin-bottom:12px;background:var(--surface)}
+.dup-item{display:flex;gap:9px;align-items:flex-start;padding:7px 8px;border-radius:8px;cursor:pointer}
+.dup-item:hover{background:var(--accent-soft)}
+.dup-item.del .dup-stem{text-decoration:line-through;opacity:.55}
+.dup-stem{flex:1;font-size:13.5px;line-height:1.5;word-break:break-all}
+
+/* ===================== 交互动效（尊重系统「减少动态效果」偏好） ===================== */
+@media (prefers-reduced-motion: no-preference){
+  .btn:active,.opt:active,.ms-chip:active,.icon-btn:active,.seg button:active{transform:scale(.965)}
+  .qfade-enter-active{transition:opacity .18s ease,transform .18s ease}
+  .qfade-leave-active{transition:opacity .12s ease,transform .12s ease}
+  .qfade-enter-from{opacity:0;transform:translateX(14px)}
+  .qfade-leave-to{opacity:0;transform:translateX(-10px)}
+  .verdict{animation:vpop .22s cubic-bezier(.2,.9,.3,1.2)}
+  @keyframes vpop{from{opacity:0;transform:scale(.94) translateY(3px)}to{opacity:1;transform:none}}
+  .toast{animation:toastin .22s ease}
+  @keyframes toastin{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+  .modal-mask{animation:mfade .16s ease}
+  .modal-mask .modal{animation:mpop .2s cubic-bezier(.2,.9,.3,1.15)}
+  @keyframes mfade{from{opacity:0}to{opacity:1}}
+  @keyframes mpop{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
+  .ms-chip{transition:background .18s,color .18s,border-color .18s,transform .12s}
+  .heat-cell{transition:transform .12s}
+  .heat-cell:hover{transform:scale(1.25)}
+  .st-chip.hot{animation:vpop .3s ease}
+}
+
+/* ===================== 打印错题卷 ===================== */
+.print-area{display:none}
+@media print{
+  body{background:#fff}
+  #app > *:not(.print-area){display:none !important}
+  .reader,.toast,.modal-mask{display:none !important}
+  .print-area{display:block !important;color:#000;font-size:13px;line-height:1.65}
+  .print-area .pmeta{color:#555;margin:0 0 14px;font-size:12px}
+  .pq{break-inside:avoid;margin:0 0 14px;padding-bottom:10px;border-bottom:1px dashed #ccc}
+  .pq-h{font-weight:700;margin-bottom:4px}
+  .pq-t{font-weight:400;color:#555;font-size:12px}
+  .pq-passage{border-left:3px solid #bbb;padding-left:10px;margin:6px 0;color:#333}
+  .pq-opt{margin:3px 0 3px 14px;display:flex;gap:6px;align-items:baseline}
+  .pq-opt-t{display:inline-block}
+  .pq-opt-t p{margin:0;display:inline}
+  .pq-blank{height:64px;border-bottom:1px solid #ddd;margin-top:8px}
+  .pq-ans-h{font-weight:800;font-size:15px;margin:18px 0 8px;page-break-before:always}
+  .pq-ans{display:flex;flex-wrap:wrap;gap:6px 18px}
+  .pq-ans-i{font-size:12.5px}
+  .rich img{max-width:70% !important}
+}

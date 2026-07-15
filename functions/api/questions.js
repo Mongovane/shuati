@@ -8,17 +8,19 @@ export async function onRequestGet({ request, env }) {
 
   const p = new URL(request.url).searchParams;
 
-  // —— meta：给前端筛选器用的科目 / 章节清单 ——
+  // —— meta：给前端筛选器用的科目 / 章节清单（不含待审核草稿；另附草稿数供题库页角标）——
   if (p.get('meta')) {
     const subjStmt = env.DB.prepare(
-      `SELECT subject, COUNT(*) AS n FROM questions GROUP BY subject`
+      `SELECT subject, COUNT(*) AS n FROM questions WHERE IFNULL(status,'') <> 'draft' GROUP BY subject`
     );
     const chapStmt = env.DB.prepare(
       `SELECT subject, chapter, COUNT(*) AS n FROM questions
-       WHERE chapter IS NOT NULL AND chapter <> '' GROUP BY subject, chapter ORDER BY subject, chapter`
+       WHERE chapter IS NOT NULL AND chapter <> '' AND IFNULL(status,'') <> 'draft' GROUP BY subject, chapter ORDER BY subject, chapter`
     );
+    let drafts = 0;
+    try { const d = await env.DB.prepare(`SELECT COUNT(*) AS n FROM questions WHERE status = 'draft'`).first(); drafts = (d && d.n) || 0; } catch (_) {}
     const [subs, chaps] = await Promise.all([subjStmt.all(), chapStmt.all()]);
-    return json({ subjects: subs.results, chapters: chaps.results });
+    return json({ subjects: subs.results, chapters: chaps.results, drafts });
   }
 
   const subject = p.get('subject');
@@ -30,6 +32,8 @@ export async function onRequestGet({ request, env }) {
   const order = ['seq','weak','due'].includes(p.get('order')) ? p.get('order') : 'random';
   const limit = Math.min(parseInt(p.get('limit') || '20', 10) || 20, 200);
   const offset = parseInt(p.get('offset') || '0', 10) || 0;
+  // nocount=1：跳过 COUNT 总数查询（分页续拉/离线全量下载用，省一次带 JOIN 的全表扫），total 返回 -1
+  const noCount = p.get('nocount') === '1';
 
   const where = [];
   const binds = [];
@@ -37,6 +41,13 @@ export async function onRequestGet({ request, env }) {
   if (subject && subject !== 'all') { where.push('q.subject = ?'); binds.push(subject); }
   if (chapter) { where.push('q.chapter = ?'); binds.push(chapter); }
   if (type) { where.push('q.type = ?'); binds.push(type); }
+  // —— 标签筛选：tags 以 JSON 数组字符串存储（["指针","链表"]），按整词 "tag" 匹配 ——
+  const tag = (p.get('tag') || '').trim().replace(/["\\%_]/g, '');
+  if (tag) { where.push('q.tags LIKE ?'); binds.push('%"' + tag + '"%'); }
+  // —— 待审核（AI 导入草稿）：status=draft 时只看草稿；默认把草稿排除在刷题/模考/离线包之外；ids 精确取题不受限 ——
+  // 单独放一个 draftCond（不进 where 数组），避免占掉「无筛选随机抽题」的 rowid 快路径判断位
+  const draftCond = p.get('status') === 'draft' ? `q.status = 'draft'`
+    : (!idsParam.length ? `IFNULL(q.status,'') <> 'draft'` : '');
 
   if (mode === 'wrong') where.push('pr.wrong_count > 0 AND IFNULL(pr.mastered, 0) = 0');
   else if (mode === 'favorite') where.push('IFNULL(pr.favorited, 0) = 1');
@@ -64,33 +75,36 @@ export async function onRequestGet({ request, env }) {
   const run = async (useFts) => {
     const { w, b } = withSearch(useFts);
     const where = w, binds = b;
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const conds = draftCond ? [...where, draftCond] : where;      // draftCond 只拼 SQL，不影响快路径判断
+    const whereSql = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const countSql = `SELECT COUNT(*) AS total FROM questions q
                     LEFT JOIN progress pr ON pr.question_id = q.id ${whereSql}`;
     let rows, total;
     if (order === 'random' && !where.length) {
       // 全表无筛选时的高效随机：随机取一个 rowid 阈值，从该点起按 rowid 顺序取 limit 条，不足则从头补齐，再打乱。
       // 避免 ORDER BY RANDOM() 对整张表排序造成的全表扫描与高额 D1 读配额（上万题时尤其明显）。
+      const draftAnd = draftCond ? ` AND ${draftCond}` : '';
+      const draftWhere = draftCond ? `WHERE ${draftCond} ` : '';
       const mx = await env.DB.prepare('SELECT MAX(rowid) AS m FROM questions').first();
       const maxId = (mx && mx.m) || 0;
       const threshold = maxId > 0 ? Math.floor(Math.random() * maxId) : 0;
-      const r1 = await env.DB.prepare(`${baseSelect} WHERE q.rowid >= ? ORDER BY q.rowid ASC LIMIT ?`).bind(threshold, limit).all();
+      const r1 = await env.DB.prepare(`${baseSelect} WHERE q.rowid >= ?${draftAnd} ORDER BY q.rowid ASC LIMIT ?`).bind(threshold, limit).all();
       rows = r1.results || [];
       if (rows.length < limit) { // 阈值靠后，从头补齐
-        const r2 = await env.DB.prepare(`${baseSelect} ORDER BY q.rowid ASC LIMIT ?`).bind(limit).all();
+        const r2 = await env.DB.prepare(`${baseSelect} ${draftWhere}ORDER BY q.rowid ASC LIMIT ?`).bind(limit).all();
         const got = new Set(rows.map(r => r.id));
         for (const r of (r2.results || [])) { if (!got.has(r.id)) { rows.push(r); got.add(r.id); if (rows.length >= limit) break; } }
       }
       for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = rows[i]; rows[i] = rows[j]; rows[j] = t; }
-      const c = await env.DB.prepare(countSql).bind(...binds).first();
-      total = c?.total ?? rows.length;
+      const c = noCount ? null : await env.DB.prepare(countSql).bind(...binds).first();
+      total = noCount ? -1 : (c?.total ?? rows.length);
     } else if (order === 'random') {
       // 有筛选条件时命中集较小：直接在子集上 ORDER BY RANDOM()，保证均匀（rowid 阈值法在稀疏子集上会偏向连续区段）
       const [list, cnt] = await Promise.all([
         env.DB.prepare(`${baseSelect} ${whereSql} ORDER BY RANDOM() LIMIT ?`).bind(...binds, limit).all(),
-        env.DB.prepare(countSql).bind(...binds).first(),
+        noCount ? Promise.resolve(null) : env.DB.prepare(countSql).bind(...binds).first(),
       ]);
-      rows = list.results || []; total = cnt?.total ?? rows.length;
+      rows = list.results || []; total = noCount ? -1 : (cnt?.total ?? rows.length);
     } else {
       const orderBy = order === 'seq' ? 'q.created_at ASC, q.id ASC'
         : order === 'due' ? 'pr.due_at ASC'                                            // due：最早到期优先
@@ -98,9 +112,9 @@ export async function onRequestGet({ request, env }) {
       const sql = `${baseSelect} ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
       const [list, cnt] = await Promise.all([
         env.DB.prepare(sql).bind(...binds, limit, offset).all(),
-        env.DB.prepare(countSql).bind(...binds).first(),
+        noCount ? Promise.resolve(null) : env.DB.prepare(countSql).bind(...binds).first(),
       ]);
-      rows = list.results; total = cnt?.total ?? rows.length;
+      rows = list.results; total = noCount ? -1 : (cnt?.total ?? rows.length);
     }
     return { rows, total };
   };
@@ -149,11 +163,12 @@ export async function onRequestPatch({ request, env }) {
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
   const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
   if (!ids.length) return json({ error: '缺少题目 id' }, 400);
-  const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis', 'options', 'answer', 'tags'];
+  const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis', 'options', 'answer', 'tags', 'status'];
   const JSON_FIELDS = new Set(['options', 'answer', 'tags']);
   const sets = [], vals = [];
   for (const k of ALLOWED) {
     if (body[k] !== undefined && body[k] !== null) {
+      if (k === 'status') { const v = String(body[k]); if (v !== 'draft' && v !== 'ok') continue; sets.push('status = ?'); vals.push(v); continue; }
       sets.push(`${k} = ?`);
       if (k === 'difficulty') vals.push(Number(body[k]) || 3);
       else if (JSON_FIELDS.has(k)) vals.push(JSON.stringify(Array.isArray(body[k]) ? body[k] : (body[k] === '' ? [] : [body[k]])));

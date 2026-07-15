@@ -1,4 +1,4 @@
-import { json, checkAuth } from './_utils.js';
+import { checkAuth } from './_utils.js';
 
 // GET /api/export —— 导出全部数据为 JSON（备份 / 迁移 / 打印错题用）
 // questions 可直接回贴到「导入 → 直接导入 JSON」恢复题库
@@ -13,8 +13,11 @@ export async function onRequestGet({ request, env }) {
     mock_results: `SELECT * FROM mock_results`,
     mock_answers: `SELECT * FROM mock_answers`,
     subjects: `SELECT * FROM subjects`,
+    answer_log: `SELECT * FROM answer_log`,   // 答题流水（热力图历史）
+    pdfs: `SELECT * FROM pdfs`,               // PDF 书架元信息（R2 里的文件本体不在备份里）
+    ai_usage: `SELECT * FROM ai_usage`,       // Workers AI OCR 每日用量计数
   };
-  const out = { exported_at: new Date().toISOString(), version: 1 };
+  const out = { exported_at: new Date().toISOString(), version: 2 };
   for (const [name, sql] of Object.entries(tables)) {
     try { out[name] = (await env.DB.prepare(sql).all()).results || []; }
     catch (_) { out[name] = []; } // 表不存在（旧库/未用过该功能）：导出空数组

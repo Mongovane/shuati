@@ -98,7 +98,7 @@ const RichText={
   mounted(){ this.enhance(); },
   updated(){ this.enhance(); },
   methods:{ enhance(){ const el=this.$el;
-    if(window.katex&&!window.katex.renderToString){} // 已在 html 内预渲染；此处仅兜底
+    // katex 已在 html 生成阶段预渲染；下面仅为 auto-render 兜底
     if(!window.katex&&window.renderMathInElement){ try{ renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false,strict:false}); }catch(e){} }
     if(window.hljs){ el.querySelectorAll('pre code').forEach(b=>{ try{hljs.highlightElement(b);}catch(e){} }); }
     this.fitMath();

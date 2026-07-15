@@ -1,10 +1,72 @@
 // 导入：手动 / 照片 / JSON / PDF / Markdown / 本地与云端 OCR
 // —— 由 app.js 按功能域拆分而来；与其余 mixin 合并进同一个 Vue 实例，this.* 跨文件可用 ——
 const IngestMixin = { methods: {
+// —— Excel / CSV 批量导入：SheetJS 按需加载，表头自动映射，前端解析后走可信 JSON 通道入库 ——
+ensureXlsx(){ return new Promise((res,rej)=>{ if(window.XLSX)return res();
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=()=>window.XLSX?res():rej(new Error('XLSX 库加载异常'));
+      s.onerror=()=>rej(new Error('表格解析库加载失败（需要联网）'));
+      document.head.appendChild(s); }); },
+async onXlsxFile(ev){ const f=ev&&ev.target&&ev.target.files&&ev.target.files[0]; if(ev&&ev.target)ev.target.value=''; if(!f)return;
+      this.ingest.xl={ busy:true, name:f.name, rows:[], issues:[], done:false };
+      try{
+        await this.ensureXlsx();
+        const buf=await f.arrayBuffer();
+        const wb=XLSX.read(buf,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+        if(!rows.length)throw new Error('表格是空的');
+        const head=rows[0].map(x=>String(x||'').trim());
+        const col=(re)=>head.findIndex(h=>re.test(h));
+        const ci={ stem:col(/题干|题目|stem/i), type:col(/题型|类型|type/i), subject:col(/科目|subject/i), chapter:col(/章节|chapter/i),
+          answer:col(/答案|answer/i), analysis:col(/解析|analysis/i), difficulty:col(/难度|difficulty/i), tags:col(/标签|tags/i), passage:col(/材料|阅读|passage/i) };
+        const optCols=[]; head.forEach((h,i)=>{ const m=h.match(/^选项\s*([A-H])$/i)||h.match(/^([A-H])$/)||h.match(/^option\s*([A-H])$/i); if(m)optCols.push({key:m[1].toUpperCase(),i}); });
+        if(ci.stem<0)throw new Error('找不到「题干」列。表头需含：题干；可选：题型 / 答案 / 选项A…选项H / 科目 / 章节 / 解析 / 难度 / 标签 / 材料');
+        const T={'单选':'single_choice','单选题':'single_choice','多选':'multiple_choice','多选题':'multiple_choice','判断':'true_false','判断题':'true_false','填空':'fill_blank','填空题':'fill_blank','简答':'short_answer','简答题':'short_answer','问答':'short_answer','问答题':'short_answer','编程':'code','编程题':'code'};
+        const out=[]; const issues=[];
+        for(let r=1;r<rows.length;r++){ const row=rows[r]||[]; const stem=String(row[ci.stem]||'').trim(); if(!stem)continue;
+          const options=optCols.map(c=>({key:c.key,text:String(row[c.i]||'').trim()})).filter(o=>o.text);
+          const rawAns=String(ci.answer>=0?(row[ci.answer]||''):'').trim();
+          let type= ci.type>=0 ? (T[String(row[ci.type]||'').trim()]||String(row[ci.type]||'').trim()) : '';
+          if(!type){ if(options.length)type= rawAns.replace(/[^A-Ha-h]/g,'').length>1?'multiple_choice':'single_choice';
+            else if(/^(对|错|正确|错误|T|F|√|×)$/i.test(rawAns))type='true_false';
+            else type= rawAns?'fill_blank':'short_answer'; }
+          if(!TYPES.some(t=>t.v===type)){ issues.push('第'+(r+1)+'行：题型「'+type+'」无法识别，按简答处理'); type='short_answer'; }
+          let answer=[];
+          if(type==='single_choice'||type==='multiple_choice'){ answer=rawAns.toUpperCase().replace(/[^A-H]/g,'').split('').filter(Boolean); if(!answer.length)issues.push('第'+(r+1)+'行：选择题没有答案'); }
+          else if(type==='true_false'){ answer=[/^(对|正确|T|√)$/i.test(rawAns)?'T':'F']; }
+          else if(type==='fill_blank'){ answer=rawAns?rawAns.split(/；|;/).map(x=>x.trim()).filter(Boolean):[]; if(!answer.length)issues.push('第'+(r+1)+'行：填空题没有答案'); }
+          else { answer=rawAns?[rawAns]:[]; }
+          out.push({ subject: ci.subject>=0&&String(row[ci.subject]||'').trim() ? this.mapSubject(String(row[ci.subject]).trim()) : this.ingest.subject,
+            chapter: ci.chapter>=0?String(row[ci.chapter]||'').trim():(this.ingest.chapter||''),
+            type, stem, options, answer,
+            analysis: ci.analysis>=0?String(row[ci.analysis]||'').trim():'',
+            passage: ci.passage>=0?String(row[ci.passage]||'').trim():'',
+            difficulty: ci.difficulty>=0?(parseInt(row[ci.difficulty],10)||3):3,
+            tags: ci.tags>=0?String(row[ci.tags]||'').split(/[,，;；\s]+/).filter(Boolean):[] });
+        }
+        if(!out.length)throw new Error('没有解析到任何题目（题干列是空的？）');
+        this.ingest.xl.rows=out; this.ingest.xl.issues=issues.slice(0,8); this.ingest.xl.busy=false;
+      }catch(e){ this.ingest.xl.busy=false; this.ingest.xl.rows=[]; this.flash('表格解析失败：'+e.message,true); } },
+mapSubject(name){ const low=String(name).toLowerCase();
+      for(const it of (this.subjects||[])){ if(it.v===low||String(it.t||'').includes(name))return it.v; }
+      const M={'政':'politics','英':'english','数':'math','计算机':'computer','高数':'math','高等数学':'math'};
+      for(const k of Object.keys(M)){ if(String(name).includes(k))return M[k]; }
+      return this.ingest.subject; },
+async importXlsx(){ const rows=(this.ingest.xl&&this.ingest.xl.rows)||[]; if(!rows.length)return;
+      if(rows.length>2000){ this.flash('单次最多导入 2000 题，请把表拆小一点',true); return; }
+      this.ingest.busy=true;
+      try{ const r=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,questions:rows})});
+        this.flash('已导入 '+(r.inserted_questions||r.inserted||rows.length)+' 题 ✅');
+        this.ingest.xl.done=true; this.ingest.xl.rows=[]; this.ingest.xl.issues=[];
+        this.bankDirty=true; this.statsDirty=true; this.loadMeta(true);
+      }catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); }
+      this.ingest.busy=false; },
 parseChapterMd(text){ const t=String(text||''); const ch=t.match(/^#\s+(.+)$/m); const chapterTitle=ch?ch[1].trim():''; const src=t.match(/来源[:：]\s*(.+)/); const source=src?src[1].trim().replace(/[`*]/g,''):''; const parts=t.split(/^##\s*第\s*(\d+)\s*页\s*$/m); const pages=[]; for(let i=1;i<parts.length;i+=2){ const pageNo=parseInt(parts[i],10); const body=(parts[i+1]||'').trim(); if(Number.isFinite(pageNo))pages.push({page:pageNo,body}); } return {chapterTitle,source,pages,whole:t}; },
 async onMdFiles(e){ const files=[...(e.target.files||[])]; if(!files.length)return; const out=[]; for(const f of files){ try{ out.push({name:f.name,text:await f.text()}); }catch(_){} } this.ingest.mdFiles=out; if(!this.ingest.bookTitle.trim()&&out[0]){ const m=out[0].text.match(/来源[:：]\s*(.+)/); this.ingest.bookTitle=(m?m[1].trim().replace(/[`*]/g,''):out[0].name.replace(/\.md$/i,'')); const gs=this.guessSubject(this.ingest.bookTitle); if(gs)this.ingest.subject=gs; } this.flash('已读取 '+out.length+' 个 Markdown 文件'); },
 async importMarkdown(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ingest.mdFiles.length){ this.flash('请先选择 .md 文件',true); return; } const parsed=this.ingest.mdFiles.map(f=>({name:f.name,...this.parseChapterMd(f.text)})); let book=(this.ingest.bookTitle||'').trim(); if(!book){ const ps=parsed.find(p=>p.source); book=ps?ps.source:this.ingest.mdFiles[0].name.replace(/\.md$/i,''); } const subj=this.guessSubject(book)||this.ingest.subject; const items=[]; let seq=0; for(const p of parsed){ if(p.pages.length){ p.pages.forEach((pg,idx)=>{ let body=this.rewriteMdImages(pg.body); if(idx===0&&p.chapterTitle)body='**'+p.chapterTitle+'**\n\n'+body; items.push({page:pg.page,content:body,chapter:p.chapterTitle}); }); } else { seq++; items.push({page:seq,content:this.rewriteMdImages(p.whole),chapter:p.chapterTitle}); } } items.sort((a,b)=>(a.page||0)-(b.page||0)); this.ingest.local.busy=true; this.ingest.local.done=0; this.ingest.local.total=items.length; this.ingest.local.inserted=0; this.ingest.result=null; try{ let n=0; for(const it of items){ this.ingest.local.prog='正在导入第 '+(n+1)+'/'+items.length+' 页'; await this.saveOneMaterial({id:'mat-'+subj+'-'+this.bookHashId(book+'#p'+it.page),subject:subj,title:book+' · 第 '+it.page+' 页',source:book,page:it.page,content_md:it.content,summary:'',tags:it.chapter?[it.chapter,'Markdown导入']:['Markdown导入']}); n++; this.ingest.local.done=n; this.ingest.local.inserted=n; } this.ingest.result={kind:'material',inserted_questions:0,inserted_materials:n,material_sample:[]}; this.flash('已导入《'+book+'》'+n+' 页到 Books（去 Books 查看）'); this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('Markdown 导入中断：已存 '+this.ingest.local.inserted+' 页，'+e.message,true); this.loadMaterials(); } this.ingest.local.busy=false; this.ingest.local.prog=''; },
-importMsg(d){ const q=d.inserted_questions??d.inserted??0; const m=d.inserted_materials??0; if(q&&m)return '识别为「题目+教材」，已导入 '+q+' 题、整理 '+m+' 段教材'; if(m)return '识别为教材，已整理 '+m+' 段（去「教材阅读」查看）'; return '识别为题库，已导入 '+q+' 题'; },
+importMsg(d){ const q=d.inserted_questions??d.inserted??0; const m=d.inserted_materials??0; const dr=d.inserted_drafts||0; const dn=dr?('，其中 '+dr+' 题进了「题库 → 待审核」，过目后一键通过'):''; if(q&&m)return '识别为「题目+教材」，已导入 '+q+' 题、整理 '+m+' 段教材'+dn; if(m)return '识别为教材，已整理 '+m+' 段（去「教材阅读」查看）'; return '识别为题库，已导入 '+q+' 题'+dn; },
 makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
 currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
 sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
@@ -195,11 +257,6 @@ async pdfExtractText(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); 
         const chunks=this.chunkText(text);
         if(!chunks.length){ this.flash('未找到文本——可能是扫描版 PDF。请改用拍照辅助或手动录入',true); this.ingest.pdf.busy=false; this.ingest.pdf.prog=''; return; }
         this.ingest.pdf.extracted=text.trim(); this.ingest.raw=text.trim(); this.ingest.pdf.prog=''; this.flash('已在本地提取文本——请复制有用内容到手动录入或 JSON'); this.ingest.pdf.busy=false; return;
-        let total=0;
-        for(let i=0;i<chunks.length;i++){ this.ingest.pdf.prog='正在结构化第 '+(i+1)+'/'+chunks.length+' 段（已导入 '+total+'）';
-          try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(false),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),raw_text:chunks[i]})}); total+=d.inserted||0; this.ingest.pdf.done=total; }
-          catch(e){ if(e.message==='unauth'){ this.ingest.pdf.busy=false; return; } } }
-        this.ingest.result={inserted:total,sample:[]}; this.ingest.pdf.prog=''; this.flash('PDF 文本处理完成，已导入 '+total+' 题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true;
       }catch(e){ this.flash('Failed: '+e.message,true); }
       this.ingest.pdf.busy=false; },
 async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }

@@ -1,8 +1,14 @@
+// 填空判分归一化：全角→半角（１２ａｂ（）→12ab()）、全角空格、去空白、小写
+const normAns=(v)=>String(v==null?'':v)
+  .replace(/[\uFF01-\uFF5E]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+  .replace(/\u3000/g,' ')
+  .trim().toLowerCase().replace(/\s+/g,'');
+
 const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-save','ai-ask','ai-note','ai-retry'],
-  data(){ return { sel:[], blanks:'', text:'', localRevealed:false, self:null, showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false }; },
+  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
@@ -10,11 +16,28 @@ const QuestionCard={
     isChoice(){ return this.q.type==='single_choice'||this.q.type==='multiple_choice'; },
     isMulti(){ return this.q.type==='multiple_choice'; },
     answerKeys(){ return (this.q.answer||[]).map(x=>String(x).toUpperCase()); },
+    blankCount(){ if(this.q.type!=='fill_blank')return 1; let n=1; for(const a of (this.q.answer||[])){ const k=String(a).split('||').length; if(k>n)n=k; } return n; },
+    isMultiBlank(){ return this.q.type==='fill_blank' && this.blankCount>1; },
+    ansDisplay(){ /* 填空答案展示：多空各空用 ⁄ 分隔，多个备选写法用「或」连接 */
+      if(this.q.type!=='fill_blank') return this.answerKeys.join(', ');
+      return (this.q.answer||[]).map(a=>String(a).split('||').join(' ⁄ ')).join('　或　'); },
+    mcPartial(){ /* 多选少选（所选都对但不全）→ 半分 */
+      if(!this.isMulti||!this.sel.length)return false;
+      const A=new Set(this.answerKeys);
+      return this.sel.every(k=>A.has(k)) && this.sel.length<A.size; },
     refText(){ return (this.q.answer||[]).join('\n'); },
     autoCorrect(){
       if(this.isChoice){ const a=[...this.answerKeys].sort().join(','); const b=[...this.sel].sort().join(','); return a===b&&b!==''; }
       if(this.q.type==='true_false'){ return this.sel[0]===this.answerKeys[0]; }
-      if(this.q.type==='fill_blank'){ const n=s=>String(s).trim().toLowerCase().replace(/\s+/g,''); const m=n(this.blanks); if(!m)return false; return (this.q.answer||[]).some(a=>n(a)===m); }
+      if(this.q.type==='fill_blank'){
+        if(this.isMultiBlank){
+          const user=this.blanksArr.map(normAns);
+          if(user.length!==this.blankCount || user.some(x=>!x))return false;
+          return (this.q.answer||[]).some(a=>{ const parts=String(a).split('||').map(normAns); return parts.length===user.length && parts.every((x,i)=>x===user[i]); });
+        }
+        const m=normAns(this.blanks); if(!m)return false;
+        return (this.q.answer||[]).some(a=>normAns(a)===m);
+      }
       return false;
     },
     finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
@@ -55,17 +78,31 @@ const QuestionCard={
         this.copied=key; setTimeout(()=>{ if(this.copied===key)this.copied=''; },1500);
       }catch(_){} },
     doAsk(){ const t=this.askInput.trim(); if(!t||this.aiAsking)return; this.$emit('ai-ask',t); this.askInput=''; },
-    reset(){ this.sel=[]; this.blanks=''; this.text=''; this.localRevealed=false; this.self=null; this.showNote=false; this.noteDraft=this.q.note||''; },
+    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; },
+    // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
+    snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
+    restoreState(s){ if(!s||typeof s!=='object')return;
+      this.sel=Array.isArray(s.sel)?s.sel.slice():[];
+      this.blanks=typeof s.blanks==='string'?s.blanks:'';
+      if(Array.isArray(s.blanksArr)){ const a=Array.from({length:this.blankCount},(_,i)=>String(s.blanksArr[i]||'')); this.blanksArr=a; }
+      this.text=typeof s.text==='string'?s.text:'';
+      this.self=(s.self===true||s.self===false)?s.self:null;
+      this.selfGrade=['again','hard','good','easy'].includes(s.selfGrade)?s.selfGrade:null;
+      this.localRevealed=!!s.revealed; },
     pick(k){ if(this.revealed)return; if(this.isMulti){ const i=this.sel.indexOf(k); i>=0?this.sel.splice(i,1):this.sel.push(k); } else this.sel=[k]; },
     pickTF(v){ if(this.revealed)return; this.sel=[v]; },
     optClass(k){ if(!this.revealed)return{sel:this.sel.includes(k)}; const a=this.answerKeys.includes(k),c=this.sel.includes(k); return{disabled:true,correct:a,wrong:c&&!a,sel:c&&a}; },
     tfClass(v){ if(!this.revealed)return{sel:this.sel.includes(v)}; const a=this.answerKeys[0]===v,c=this.sel.includes(v); return{correct:a,wrong:c&&!a}; },
-    submit(){ this.localRevealed=true; if(AUTO.includes(this.q.type)) this.$emit('answered',{id:this.q.id,correct:this.autoCorrect}); if(this.q.type==='fill_blank'&&this.autoCorrect){ this.self=true; this.$emit('answered',{id:this.q.id,correct:true}); } },
-    grade(ok){ this.self=ok; this.$emit('answered',{id:this.q.id,correct:ok}); },
+    elapsedMs(){ return Math.max(0, Math.min(600000, Date.now()-this.t0)); },
+    submit(){ this.localRevealed=true; const ms=this.elapsedMs();
+      if(AUTO.includes(this.q.type)) this.$emit('answered',{id:this.q.id,correct:this.autoCorrect,partial:this.mcPartial,ms});
+      if(this.q.type==='fill_blank'&&this.autoCorrect){ this.self=true; this.selfGrade='good'; this.$emit('answered',{id:this.q.id,correct:true,grade:'good',ms}); } },
+    grade4(g){ if(!['again','hard','good','easy'].includes(g))return; this.selfGrade=g; this.self=(g!=='again'); this.$emit('answered',{id:this.q.id,correct:this.self,grade:g,ms:this.elapsedMs()}); },
+    grade(ok){ this.grade4(ok?'good':'again'); }, /* 兼容旧调用（快捷键等）：映射到四档 */
     toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
     markMastered(){ this.$emit('master',{id:this.q.id,value:!this.q.mastered}); },
     saveNote(){ this.$emit('note',{id:this.q.id,note:this.noteDraft}); this.showNote=false; },
-    canSubmit(){ if(this.isChoice||this.q.type==='true_false')return this.sel.length>0; if(this.q.type==='fill_blank')return this.blanks.trim().length>0; return true; },
+    canSubmit(){ if(this.isChoice||this.q.type==='true_false')return this.sel.length>0; if(this.q.type==='fill_blank')return this.isMultiBlank ? this.blanksArr.every(x=>String(x).trim().length>0) : this.blanks.trim().length>0; return true; },
   },
   template:`
   <div class="card">
@@ -94,21 +131,27 @@ const QuestionCard={
       </div>
     </template>
     <template v-else-if="q.type==='fill_blank'">
-      <input class="inp" style="width:100%" v-model="blanks" :disabled="revealed" placeholder="输入答案（多个空用空格分隔）" @keyup.enter="!revealed && canSubmit() && submit()" />
+      <div v-if="isMultiBlank" class="blanks-multi">
+        <input v-for="i in blankCount" :key="i" class="inp" v-model="blanksArr[i-1]" :disabled="revealed" :placeholder="'第 '+i+' 空'" @keyup.enter="!revealed && canSubmit() && submit()" />
+      </div>
+      <input v-else class="inp" style="width:100%" v-model="blanks" :disabled="revealed" placeholder="输入答案（大小写、全半角、空格不影响判分）" @keyup.enter="!revealed && canSubmit() && submit()" />
     </template>
     <template v-else>
       <textarea :class="{code:q.type==='code'}" v-model="text" :disabled="revealed" :placeholder="q.type==='code' ? '在这里写代码（对照参考答案自查）' : '写下答题要点（对照参考答案自查）'"></textarea>
     </template>
     <template v-if="revealed">
-      <div v-if="AUTO.includes(q.type)" class="verdict" :class="autoCorrect?'ok':'bad'">
-        <span>{{ autoCorrect ? '正确' : '错误' }}</span>
+      <div v-if="AUTO.includes(q.type)" class="verdict" :class="autoCorrect?'ok':(mcPartial?'part':'bad')">
+        <span>{{ autoCorrect ? '正确' : (mcPartial ? '部分正确 · 少选' : '错误') }}</span>
+        <span v-if="mcPartial" class="tag">半分计，已进复习</span>
         <span class="tag">正确答案： {{ answerKeys.join(', ') }}</span>
       </div>
-      <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="refText" /></div>
+      <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="q.type==='fill_blank' ? ansDisplay : refText" /></div>
       <div v-if="!AUTO.includes(q.type)" class="selfgrade">
-        <span class="q">{{ q.type==='fill_blank' ? '答对了吗？' : '你做对了吗？' }}</span>
-        <button class="btn subtle" :style="self===true?'border-color:var(--ok);color:var(--ok)':''" @click="grade(true)">✓ 正确</button>
-        <button class="btn subtle" :style="self===false?'border-color:var(--bad);color:var(--bad)':''" @click="grade(false)">✗ 错误</button>
+        <span class="q">掌握程度？</span>
+        <button class="btn subtle sg sg-again" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="没答上来，10 分钟后回炉">✗ 重来</button>
+        <button class="btn subtle sg sg-hard" :class="{on:selfGrade==='hard'}" @click="grade4('hard')" title="勉强想起，间隔小步前进">困难</button>
+        <button class="btn subtle sg sg-good" :class="{on:selfGrade==='good'}" @click="grade4('good')" title="正常想起">✓ 良好</button>
+        <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单</button>
       </div>
             <div v-if="canAi || aiText || aiBusy" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
         <h5>AI 解析 <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
