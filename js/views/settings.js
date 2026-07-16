@@ -14,6 +14,19 @@ async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON
 async subjDelete(s){ const others=this.subjects.filter(x=>x.v!==s.v); let moveTo=''; if(confirm('删除科目「'+s.t+'」。\n\n点「确定」=同时把该科目下的题目转移到其他科目；点「取消」=只删科目、旧题保留原标记（下拉不再显示该科目）。')){ const names=others.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const pick=prompt('把「'+s.t+'」的题目转到哪个科目？输入序号：\n'+names); const idx=parseInt(pick,10)-1; if(others[idx])moveTo=others[idx].v; else { this.flash('序号无效，已取消',true); return; } } try{ await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,moveTo})}); this.flash('已删除科目「'+s.t+'」'+(moveTo?('，题目已转到「'+this.subjName(moveTo)+'」'):'')); await this.loadSubjects(); this.loadMeta&&this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
 guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
 saveExplainCfg(){ try{ localStorage.setItem('zb_explaincfg', JSON.stringify(this.explainCfg)); }catch(_){} },
+// 从中转站 /v1/models 拉取可用模型（经后端代理，Key 不直连上游）
+async fetchModels(){ if(this.modelPick.busy)return;
+  if(this.explainCfg.base && !this.explainCfg.key){ this.flash('填了 Base URL 就必须填对应的 API Key',true); return; }
+  if(!this.explainCfg.base && !this.explainCfg.key){ this.flash('请先填 Base URL 与 API Key（或直接手输模型名）',true); return; }
+  this.modelPick.busy=true; this.modelPick.list=[];
+  try{
+    const d=await this.api('/api/aimodels',{method:'POST',body:JSON.stringify({base_url:this.explainCfg.base,api_key:this.explainCfg.key})});
+    this.modelPick.list=d.models||[];
+    this.flash('拉到 '+this.modelPick.list.length+' 个模型，点选即可填入');
+  }catch(e){ if(e.message!=='unauth')this.flash('拉取失败：'+e.message,true); }
+  this.modelPick.busy=false;
+},
+pickModel(m){ this.explainCfg.model=m; this.saveExplainCfg(); this.modelPick.list=[]; this.flash('已选用模型：'+m); },
 saveExplainStable(){ try{ localStorage.setItem('zb_explain_stable', this.explainStable?'1':'0'); }catch(_){} },
 async loadConfig(){ if(!this.token)return; try{ const c=await this.api('/api/config'); this.ai.model=c.ai_model||''; this.ai.visionModel=c.ai_vision_model||''; this.ai.hasAI=!!c.has_ai; this.ai.hasCfAI=!!c.has_cf_ai; this.ai.hasMineru=!!c.has_mineru; }catch(e){} },
 saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问码',true); return; }

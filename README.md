@@ -63,6 +63,7 @@
 │   ├── export.js             # GET 一键导出全部数据备份（JSON）
 │   ├── restore.js            # POST 恢复备份（合并 / 覆盖两种模式，与 export 闭环）
 │   ├── qimg.js               # 题目插图：POST 上传到 R2（口令+2MB+类型校验），GET 按 128 位随机键出图
+│   ├── aimodels.js           # POST 代理中转站 /v1/models，供设置页「从端点拉取」列出可用模型
 │   └── config.js             # GET 读取 AI 模型 / 是否配置 AI 等前端所需配置
 ├── schema.sql                # D1 建表脚本（questions / progress / mock_results / materials …）
 └── wrangler.toml             # 仅 CLI 部署时需要

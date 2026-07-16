@@ -23,6 +23,7 @@ const App={
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
     explainCfg:{ base:'', key:'', model:'' },  // AI 解析中转站（本机 localStorage，留空用服务端）
+    modelPick:{ busy:false, list:[] },  // 「从端点拉取」到的模型候选列表
     explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
     materials:{ subject:'all', items:[], loading:false, loaded:false }, loadProgMsg:'',
     booksMode:'notes', bookFold:{},

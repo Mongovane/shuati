@@ -43,6 +43,13 @@ const TPL_VIEW_SETTINGS = `
           <div class="field" style="margin:0;min-width:280px"><label>API Key（自定义 Base 时必填）</label><input class="inp" type="password" v-model="explainCfg.key" @change="saveExplainCfg" placeholder="sk-..." /></div>
           <div class="field" style="margin:0;min-width:220px"><label>模型（留空用服务端 AI_MODEL）</label><input class="inp" v-model="explainCfg.model" @change="saveExplainCfg" placeholder="gpt-4o / deepseek-v3 …" /></div>
         </div>
+        <div class="row" style="gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn subtle xs" :disabled="modelPick.busy" @click="fetchModels" title="向中转站 /v1/models 拉取可用模型列表"><span v-if="modelPick.busy" class="spin"></span>⬇ 从端点拉取</button>
+          <span class="muted" style="font-size:12px">填好上面的 Base URL 与 Key 后点这里，自动列出该站支持的模型</span>
+        </div>
+        <div v-if="modelPick.list.length" class="model-pick">
+          <span v-for="m in modelPick.list" :key="m" class="model-chip" :class="{on:explainCfg.model===m}" @click="pickModel(m)" :title="m">{{ m }}</span>
+        </div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer"><input type="checkbox" v-model="explainStable" @change="saveExplainStable" style="width:auto;flex:none" /> 稳定模式（关闭流式）：某些模型或网络下流式易断（如 HTTP2 报错），开启后改用一次性返回，更稳但无逐字效果、需等全部生成</label>
         <div class="hint" style="margin-top:10px">⚠ Key 只存本机浏览器；自定义 Base 必须配它自己的 Key。公用电脑别填，建议用限额子 Key。</div>
         </div>

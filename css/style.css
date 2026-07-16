@@ -659,3 +659,10 @@ a{color:var(--accent)}
   .pq-ans-i{font-size:12.5px}
   .rich img{max-width:70% !important}
 }
+
+/* AI 中转站「从端点拉取」的模型候选区 */
+.model-pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;max-height:180px;overflow-y:auto;padding:2px}
+.model-chip{max-width:100%;padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink-soft);font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:.15s}
+.model-chip:hover{border-color:var(--accent);color:var(--accent)}
+.model-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-reduced-motion: no-preference){ .model-chip:active{transform:scale(.96)} }
