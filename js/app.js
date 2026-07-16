@@ -273,6 +273,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
       this._mq.addEventListener?this._mq.addEventListener('change',this._mqFn):this._mq.addListener(this._mqFn); }catch(_){ }
     try{ const bp=JSON.parse(localStorage.getItem('zb_mock_bp')||'null'); if(bp&&Array.isArray(bp.rows)&&bp.rows.length)this.mock.bp={on:!!bp.on,rows:bp.rows.slice(0,8)}; }catch(_){ }
     window.addEventListener('keydown', this.onKey);
+    document.addEventListener('click', this.settBlankClick, true);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('focus', this.onFocus);
     try{ const oc=JSON.parse(localStorage.getItem('zb_ocrcfg')||'null'); if(oc&&typeof oc==='object'){ this.ocrCfg.model=oc.model||''; this.ocrCfg.base=oc.base||''; this.ocrCfg.key=oc.key||''; } }catch(_){}
@@ -305,7 +306,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     // 开屏动画：等动画播完 + Vue 渲染完后淡出
     const sp=document.getElementById('splash'); if(sp){ const dismiss=()=>{ sp.classList.add('out'); setTimeout(()=>sp.remove(),600); }; const elapsed=performance.now(); const minTime=2000; if(elapsed>=minTime)dismiss(); else setTimeout(dismiss,minTime-elapsed); }
   },
-  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); window.removeEventListener('pagehide', this._mockPagehide); document.removeEventListener('visibilitychange', this._mockVis); clearInterval(this._flushTimer); },
+  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); document.removeEventListener('click', this.settBlankClick, true); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); window.removeEventListener('pagehide', this._mockPagehide); document.removeEventListener('visibilitychange', this._mockVis); clearInterval(this._flushTimer); },
   template:APP_TEMPLATE
 };
 

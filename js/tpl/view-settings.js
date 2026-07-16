@@ -1,7 +1,7 @@
 // 模板分片「TPL_VIEW_SETTINGS」——由 tools/split-template.mjs 从单体 app-template.js 拆出。
 // 直接编辑本文件即可；js/app-template.js 按固定顺序装配，勿在分片间搬动结构边界。
 const TPL_VIEW_SETTINGS = `
-    <div v-else-if="view==='settings'" @click="settBlankClick">
+    <div v-else-if="view==='settings'">
       <h2 style="margin:.2em 0 .5em">设置</h2>
       <div class="card" style="max-width:680px">
         <div class="field" style="margin-bottom:14px"><label>访问码（APP_TOKEN）</label>
