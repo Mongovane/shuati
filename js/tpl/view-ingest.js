@@ -38,7 +38,7 @@ const TPL_VIEW_INGEST = `
       <div class="hint" v-if="!['json','md','mineru'].includes(ingest.tab)">当前分类： <b>{{ subjName(ingest.subject) }}</b><span v-if="ingest.chapter"> · {{ ingest.chapter }}</span><span v-if="['photo','pdf','ai'].includes(ingest.tab) && ingest.bookTitle"> · 教材：{{ ingest.bookTitle }}</span><br>题目来源： <code>{{ currentSource() || '（无）' }}</code></div>
       <template v-if="ingest.tab==='excel'">
         <div class="card">
-          <p class="muted" style="margin:0 0 10px">上传 <b>.xlsx / .xls / .csv</b>。表头需含「<b>题干</b>」；可选列：题型、答案、选项A…选项H、科目、章节、解析、难度、标签、材料。选择/判断题答案写 <code>A</code> / <code>AC</code> / <code>对</code> / <code>错</code>；填空多个可接受写法用「；」分隔。整表在本机解析，确认预览后才入库。</p>
+          <p class="muted" style="margin:0 0 10px">上传 .xlsx / .xls / .csv，表头需含「题干」，其余列（题型 / 答案 / 选项A…H / 科目 / 章节 / 解析 / 难度 / 标签 / 材料）可选。本机解析、预览确认后入库；选择题答案写 A 或 AC，判断写 对/错，填空多写法用「；」分隔。</p>
           <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
             <div class="field" style="max-width:220px"><label>默认科目（表格没有科目列时）</label>
               <select v-model="ingest.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
@@ -61,7 +61,7 @@ const TPL_VIEW_INGEST = `
           <label class="btn subtle" style="cursor:pointer">拍摄 / 选择照片
             <input type="file" accept="image/*" capture="environment" @change="onPhotoFile" style="display:none" />
           </label>
-          <div class="hint">照片先保留在浏览器本地。“AI OCR 识别并导入”会把图片发给你配置的 AI 视觉模型，识别出的题目写入题库。若模型不支持图片，可用“本地 OCR 存为教材”，全程在浏览器里识别、不花 AI 额度。</div>
+          <div class="hint">照片先存本机。「AI OCR」发给你的视觉模型识题入库；模型不支持图片就用「本地 OCR 存为教材」，全程本机、零额度。</div>
           <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><button class="btn" :disabled="ingest.busy || ingest.local.busy || !ingest.photoDataUrl" @click="aiPhotoImport"><span v-if="ingest.busy" class="spin"></span>AI OCR 识别并导入</button><button class="btn subtle" :disabled="ingest.busy || ingest.local.busy || !ingest.photoDataUrl" @click="photoToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>本地 OCR 存为教材（不调用 AI）</button></div>
           <div class="hint" v-if="ingest.local.busy || ingest.local.prog">{{ ingest.local.prog || '处理中…' }}</div>
           <img v-if="ingest.photoUrl" :src="ingest.photoUrl" style="max-width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line)" />
@@ -78,18 +78,18 @@ const TPL_VIEW_INGEST = `
         <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.answer" placeholder="答案：单选填 A；多选填 A,C；判断填 T 或 F；填空每行一个；主观题填写参考答案" />
         <textarea v-model="ingest.manual.analysis" style="min-height:90px;margin-top:10px" placeholder="解析 / 分析（可选）"></textarea>
         <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.tags" placeholder="标签，用逗号分隔（可选）" />
-        <div class="hint">这会通过 /api/process 将结构化 JSON 直接保存到 D1。无需 AI、无需 OCR、无需付费服务。</div>
+        <div class="hint">结构化 JSON 直接入库：不走 AI，零成本。</div>
         <div class="row" style="margin-top:12px"><button class="btn" :disabled="ingest.busy" @click="saveManual"><span v-if="ingest.busy" class="spin"></span>免费保存题目</button><button class="btn subtle" @click="resetManual">清空</button></div>
       </template>
       <template v-else-if="ingest.tab==='ai'">
         <textarea v-model="ingest.raw" placeholder="粘贴任意原文：可以是杂乱的题目，也可以是教材正文。AI 会自动分辨——是题目就结构化进题库，是教材就整理成知识点笔记进「教材阅读」。此功能消耗 AI 中转额度。"></textarea>
-        <div class="hint">上方「导入类型」选<b>自动分辨</b>时，AI 会判断这段是题库还是教材并分别入库；也可强制只当题库 / 只当教材。纯免费零成本请用手动录入、JSON 或 PDF 本地提取文本。</div>
+        <div class="hint">「自动分辨」由 AI 判断题库/教材分别入库，也可强制其一。想零成本：用手动录入、JSON 或 Excel。</div>
         <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><button class="btn" :disabled="ingest.busy || ingest.local.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>用 AI 整理并导入</button><button class="btn subtle" :disabled="ingest.busy || ingest.local.busy" @click="saveTextAsMaterial"><span v-if="ingest.local.busy" class="spin"></span>不调用 AI，直接存为教材</button></div>
         <div class="hint" v-if="ingest.local.busy || ingest.local.prog">{{ ingest.local.prog || '处理中…' }}</div>
       </template>
       <template v-else-if="ingest.tab==='json'">
         <textarea class="code" v-model="ingest.json" placeholder='Paste a JSON array, e.g. [{"subject":"computer","type":"single_choice","stem":"...","options":[{"key":"A","text":"..."}],"answer":["B"]}]'></textarea>
-        <div class="hint">如果你已经有结构化题目，请用这里。<b>无 AI 成本</b>。数据格式见项目 README。</div>
+        <div class="hint">已有结构化题目用这里，零 AI 成本；格式见 README。</div>
         <div class="row" style="margin-top:12px">
           <button class="btn" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>导入</button>
           <button class="btn subtle" @click="loadSample">加载示例题集</button>
@@ -100,7 +100,7 @@ const TPL_VIEW_INGEST = `
           <input type="file" accept="application/pdf,.pdf" @change="onPdfFile" style="display:none" />
         </label>
         <span v-if="ingest.pdf.pages" class="muted" style="margin-left:10px">已加载，{{ ingest.pdf.pages }} 页</span>
-        <div class="hint">扫描版勾「扫描页用本地 OCR」后选引擎：<b>中转站·你的视觉模型</b>（最准，识别成带标题/公式的 Markdown，按你中转额度计费）；Scribe.js / tesseract（免费本地，公式弱）；Workers AI（Cloudflare 免费额度，每天 {{ cfocr.limit }} 页封顶）。公式会输出 LaTeX 并用 KaTeX 显示。建议每次先测 1–3 页。</div>
+        <div class="hint">扫描版选 OCR 引擎：中转站视觉模型最准（计费）；Scribe / tesseract 免费本地但公式弱；Workers AI 走免费额度（每天约 {{ cfocr.limit }} 页）。公式输出 LaTeX。先拿 1–3 页试效果。</div>
         <div class="toolbar" style="margin-top:12px" v-if="ingest.pdf.pages">
           <div class="field"><label>开始页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.start" /></div>
           <div class="field"><label>结束页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.end" /></div>
@@ -121,7 +121,7 @@ const TPL_VIEW_INGEST = `
                 <div class="field" style="margin:0;min-width:280px"><label>Base URL（留空用服务端）</label><input class="inp" v-model="ocrCfg.base" @change="saveOcrCfg" placeholder="https://你的中转站/v1" /></div>
                 <div class="field" style="margin:0;min-width:280px"><label>API Key（留空用服务端）</label><input class="inp" type="password" v-model="ocrCfg.key" @change="saveOcrCfg" placeholder="sk-..." /></div>
               </div>
-              <div class="hint" style="margin-top:6px">⚠ 这里填的 Key 仅保存在你本机浏览器（localStorage），请求时经本站后端转发给你的中转站；公用电脑勿填，建议用额度受限的子 Key。留空则用服务端环境变量里的配置。</div>
+              <div class="hint" style="margin-top:6px">⚠ Key 只存本机、经本站转发到你的中转站。公用电脑别填，建议用限额子 Key；留空用服务端配置。</div>
             </details>
           </template>
           <template v-if="ingest.local.ocr && ingest.local.engine==='cfai'">
@@ -156,15 +156,15 @@ const TPL_VIEW_INGEST = `
           <div class="bar accent"><span :style="{width:(ingest.pdf.total ? Math.round(ingest.pdf.done/ingest.pdf.total*100) : 0)+'%'}"></span></div>
           <div class="hint" style="margin-top:10px"><span v-if="ingest.pdf.busy" class="spin"></span> {{ ingest.pdf.prog || '等待开始' }} · {{ ingest.pdf.done }}/{{ ingest.pdf.total || 0 }} 页 · 已导入 {{ ingest.pdf.inserted }} 题</div>
         </div>
-        <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">如果是文字 PDF，可复制文本到“AI 整理”；如果是扫描版，直接用“AI OCR 当前页范围并导入”。</div>
+        <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">文字 PDF：复制文本给「AI 整理」；扫描版：直接「AI OCR 当前页范围」。</div>
       </template>
       <template v-else-if="ingest.tab==='md'">
         <label class="btn subtle" style="cursor:pointer">选择 Markdown 文件（可多选）
           <input type="file" accept=".md,.markdown,text/markdown" multiple @change="onMdFiles" style="display:none" />
         </label>
         <span v-if="ingest.mdFiles.length" class="muted" style="margin-left:10px">已选 {{ ingest.mdFiles.length }} 个文件</span>
-        <div class="hint">把本地转好的章节 Markdown（如 chapter-01.md … 或 front-matter.md）选进来，按「## 第 N 页」自动拆成页存入 Books，复用翻页/目录/出题阅读器。<b>免费、无 OCR、文本干净。</b></div>
-        <div class="hint">书名取上方「教材名称」（首个文件的「来源」会自动填）；多文件会按页码合并成同一本书。页面原图若引用 <code>public/textbooks-pages/…</code>，需把对应图片文件夹放进部署的 <code>public/</code> 才能显示；折叠的检索文本始终可读。</div>
+        <div class="hint">选入本地转好的章节 Markdown，按「## 第 N 页」自动拆页进 Books——免费、文本干净。</div>
+        <div class="hint">书名取上方「教材名称」，多文件按页码并成一本。引用 <code>public/textbooks-pages/…</code> 的原图需随部署放进 <code>public/</code>。</div>
         <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
           <button class="btn" :disabled="ingest.local.busy || !ingest.mdFiles.length" @click="importMarkdown"><span v-if="ingest.local.busy" class="spin"></span>导入到 Books</button>
         </div>
@@ -173,7 +173,7 @@ const TPL_VIEW_INGEST = `
       <template v-else-if="ingest.tab==='mineru'">
         <label class="btn subtle" style="cursor:pointer">选择 PDF<input type="file" accept="application/pdf,.pdf" @change="onMineruFile" style="display:none" /></label>
         <span v-if="ingest.mineru.name" class="muted" style="margin-left:10px">{{ ingest.mineru.name }}</span>
-        <div class="hint">用 <b>MinerU 云端</b>把整本 PDF 转成高质量 Markdown（公式 LaTeX、版面规整），自动按段导入 Books——很适合高数这类公式书。需先在 Cloudflare 配 <code>MINERU_API_KEY</code>（控制台「API 管理 → 创建 Token」生成的 Token，不是 Access/Secret Key）。解析在 MinerU 服务器进行，按你的 MinerU 额度计费（每天 1000 页高优先级）。书名取上方「教材名称」，科目自动判断。</div>
+        <div class="hint">MinerU 云端把整本 PDF 转成高质量 Markdown（公式 LaTeX）按段入 Books，最适合公式书。需在 Cloudflare 配 <code>MINERU_API_KEY</code>（「API 管理 → 创建 Token」，不是 Access Key）。按 MinerU 额度计费，书名取上方「教材名称」。</div>
         <div class="field" style="margin-top:8px;max-width:420px"><label>模式</label><select v-model="ingest.mineru.mode"><option value="agent">免 Token 轻量（≤10MB·≤20页·公式较弱·现在就能用）</option><option value="precise">精准 vlm（需 Token·≤200MB·≤200页·公式最好）</option></select></div>
         <div class="field" style="margin-top:8px;max-width:340px"><label>页码范围（轻量≤20页不支持逗号；精准留空=整本自动按200页分段连跑）</label><input class="inp" v-model="ingest.mineru.pageRange" placeholder="轻量如 1-20；精准留空=整本，或填 1-200" /></div>
         <div class="hint" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:16px;align-items:center">
@@ -182,7 +182,7 @@ const TPL_VIEW_INGEST = `
           <a href="#" @click.prevent="view='settings'" style="color:var(--accent)">配额 / Token 设置 ›</a>
         </div>
         <div v-if="mineruTokenDays()!=null && mineruTokenDays()<=7" class="hint" style="color:var(--bad);background:color-mix(in srgb,var(--bad) 8%,transparent);border:1px solid color-mix(in srgb,var(--bad) 35%,var(--line));border-radius:8px;padding:8px 10px;margin-top:6px">Token {{ mineruTokenDays()<0?'已过期':'即将过期' }}：MinerU 不支持续期，请去控制台「API 管理 → 创建 Token」重建，把新 Token 填到 Cloudflare Pages 环境变量 <code>MINERU_API_KEY</code> 后重新部署（应用无法自动创建）。</div>
-        <div v-if="mineruTokenBad" class="hint" style="color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));border-radius:8px;padding:8px 10px;margin-top:6px"><b>MinerU Token 已过期或无效</b>（接口返回 A0211 / A0202）。请去 MinerU 控制台「API 管理 → 创建 Token」重建，把新 Token 填到 Cloudflare Pages 环境变量 <code>MINERU_API_KEY</code> 后重新部署。<a href="#" @click.prevent="mineruTokenOk()" style="color:var(--accent);margin-left:6px">我已更新，清除提示</a></div>
+        <div v-if="mineruTokenBad" class="hint" style="color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));border-radius:8px;padding:8px 10px;margin-top:6px"><b>MinerU Token 已过期/无效</b>（A0211/A0202）：控制台重建 Token → 更新 <code>MINERU_API_KEY</code> → 重新部署。<a href="#" @click.prevent="mineruTokenOk()" style="color:var(--accent);margin-left:6px">我已更新，清除提示</a></div>
         <div class="row" style="margin-top:12px;gap:8px"><button class="btn" :disabled="ingest.mineru.busy || !ingest.mineru.name" @click="mineruConvert"><span v-if="ingest.mineru.busy" class="spin"></span>转换并导入 Books</button></div>
         <div v-if="ingest.mineru.busy || ingest.mineru.log.length" class="ocr-panel" style="margin-top:12px">
           <div class="top"><div><b>MinerU 转换进度</b><div class="muted">提交 → 解析 → 取回 Markdown → 导入</div></div><div class="pct">{{ ingest.mineru.pct }}%</div></div>

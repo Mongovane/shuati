@@ -204,7 +204,7 @@ const QuestionCard={
       </div>
     </template>
     <div class="q-actions" v-if="mode!=='exam'">
-      <button v-if="!revealed" class="btn" :disabled="!canSubmit()" @click="submit">提交 / 显示答案</button>
+      <button v-if="!revealed" class="btn" :disabled="!canSubmit()" @click="submit">{{ AUTO.includes(q.type) ? '提交' : '看参考答案' }}</button>
       <template v-else>
         <button class="btn" @click="$emit('next')">下一题 →</button>
         <button class="btn subtle" :style="q.mastered?'border-color:var(--ok);color:var(--ok)':''" @click="markMastered">{{ q.mastered?'已掌握 ✓':'标记为已掌握' }}</button>

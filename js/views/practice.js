@@ -19,7 +19,7 @@ async startSession(keep){ if(!this.token)return;
       if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
       const dedup=(arr)=>{ const m=new Map(); for(const q of (arr||[])){ if(q&&q.id!=null&&!m.has(q.id))m.set(q.id,q); } return [...m.values()]; };
       try{
-        const extra={limit:30}; if(keep)extra.nocount=1;
+        const extra={limit:30}; if(keep && this.sessionMode!=='wrong')extra.nocount=1; /* 复习视图保持计数新鲜（错题集小，COUNT 便宜）*/
         const d=await this.api('/api/questions?'+this.qs(extra));
         if(this.view!==forView){ this.loading=false; return; }
         this.queue=dedup(d.items);

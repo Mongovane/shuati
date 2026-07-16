@@ -10,7 +10,7 @@ const TPL_SHELL_OPEN = `
   <div class="tabs">
     <button class="tab" :class="{active:view==='practice'}" @click="go('practice')">Home</button>
     <button class="tab" :class="{active:view==='books'}" @click=\"go('books')\">Books</button>
-    <button class="tab" :class="{active:view==='wrong'}" @click="go('wrong')">Review<span v-if="wrongTotal" class="badge">{{ wrongTotal }}</span></button>
+    <button class="tab" :class="{active:view==='wrong'}" @click="go('wrong')">Review<span v-if="wrongTotal" class="badge" title="待复习错题总数（含未到期）">{{ wrongTotal }}</span></button>
     <button class="tab" :class="{active:view==='favorite'}" @click="go('favorite')">Saved</button>
     <button class="tab" :class="{active:view==='mock'}" @click=\"go('mock')\">Test</button>
     <button class="tab" :class="{active:view==='stats'}" @click="go('stats')">Reports</button>
