@@ -1,9 +1,9 @@
 // 模板分片「TPL_VIEW_SETTINGS」——由 tools/split-template.mjs 从单体 app-template.js 拆出。
 // 直接编辑本文件即可；js/app-template.js 按固定顺序装配，勿在分片间搬动结构边界。
 const TPL_VIEW_SETTINGS = `
-    <div v-else-if="view==='settings'">
+    <div v-else-if="view==='settings'" @click="settBlankClick">
       <h2 style="margin:.2em 0 .5em">设置</h2>
-      <div class="card" style="max-width:520px">
+      <div class="card" style="max-width:680px">
         <div class="field" style="margin-bottom:14px"><label>访问码（APP_TOKEN）</label>
           <input class="inp" style="width:100%" type="password" v-model="tokenInput" :placeholder="token?'已设置（重新输入可修改）':'输入你在 Cloudflare 设置的 APP_TOKEN'" @keyup.enter="saveToken" />
         </div>
@@ -102,7 +102,7 @@ const TPL_VIEW_SETTINGS = `
         </div>
       </div>
 
-      <div class="card" style="max-width:520px;margin-top:14px">
+      <div class="card" style="max-width:680px;margin-top:14px">
         <div style="font-weight:600;margin:2px 0 12px">个性化</div>
         <div class="field" style="margin-bottom:14px"><label>显示名称（浏览器标签页 + 页头）</label>
           <input class="inp" style="width:100%" v-model="appName" placeholder="例如：刷题 / 资料库 / 仪表盘 / 笔记" />
@@ -116,9 +116,8 @@ const TPL_VIEW_SETTINGS = `
           <select class="bk-mini" v-model="theme"><option value="light">浅色 ☀</option><option value="dark">深色 ☾</option><option value="auto">跟随系统 🌗</option></select>
         </div>
         <label class="row" style="cursor:pointer"><input type="checkbox" v-model="stealth.autoHide" /> <span class="muted">窗口失焦时自动隐藏（返回时恢复）</span></label>
-        <div class="hint" style="margin-top:14px">按 <code>&#96;</code>（1 左侧）或点眼睛图标，立即伪装成 Vane 品牌页；再按一次或点击任意处恢复。</div>
       </div>
-      <div class="muted" style="text-align:center;margin-top:28px;font-size:12px;opacity:.4">刷题文档 {{ appVer }}</div>
+      <div class="muted" style="max-width:680px;text-align:center;margin-top:28px;font-size:12px;opacity:.4">刷题文档 {{ appVer }}</div>
     </div>
 
   </div>
