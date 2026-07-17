@@ -11,6 +11,8 @@ const TPL_VIEW_BANK = `
           <input class="inp" v-model="bank.kw" @keyup.enter="loadBank(true)" placeholder="搜题干 / 章节，回车搜索" /></div>
         <div class="field" style="min-width:120px"><label>标签</label>
           <input class="inp" v-model="bank.tag" @keyup.enter="loadBank(true)" placeholder="整词筛选" /></div>
+        <div class="field" style="min-width:120px"><label>状态</label>
+          <select v-model="bank.mode" @change="loadBank(true)"><option value="all">全部</option><option value="wrong">仅错题</option><option value="favorite">仅收藏</option><option value="mastered">仅已掌握</option><option value="unseen">仅未做</option></select></div>
         <button class="btn subtle" @click="loadBank(true)" style="align-self:flex-end">↻ 搜索</button>
       </div>
 
@@ -23,11 +25,15 @@ const TPL_VIEW_BANK = `
         <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
         <button class="btn subtle" v-if="bank.items.length" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）">🪄 智能归类(本页)</button>
         <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表">🔄 刷新</button>
-        <button class="btn subtle" v-if="bank.total" @click="bankDedup" title="扫描整个题库，删除题干完全相同的重复题（每组保留一道）">🧹 清理重复</button>
+        <button class="btn subtle" v-if="bank.items.length && !bank.sel.length" @click="bankExportSel" title="把当前已加载的题导出为 JSON">⬇ 导出本页</button>
+        <button class="btn subtle" v-if="bank.total" @click="bankDedup" title="扫描整个题库，删除题干完全相同的重复题（每组保留一道）">🧹 清理完全重复</button>
         <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似（OCR 错字/标点差异）的疑似重复组，人工确认后删除"><span v-if="dup.busy" class="spin"></span>🔍 近似查重</button>
         <template v-if="bank.sel.length">
           <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
           <button class="btn subtle" @click="bankBatchSubject">应用</button>
+          <button class="btn subtle" @click="bankBatchChapter" title="批量修改选中题的章节">改章节</button>
+          <button class="btn subtle" @click="bankBatchTag" title="给选中题批量添加标签（与原标签合并）">加标签</button>
+          <button class="btn subtle" @click="bankExportSel" title="把选中题导出为 JSON（可在导入页导回）">⬇ 导出</button>
           <button v-if="bank.status==='draft'" class="btn subtle" style="color:var(--ok);border-color:var(--ok)" @click="bankBatchApprove">✓ 通过选中 ({{ bank.sel.length }})</button>
           <button class="bk-del" @click="bankBatchDelete">删除选中 ({{ bank.sel.length }})</button>
         </template>
@@ -39,7 +45,7 @@ const TPL_VIEW_BANK = `
         <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row" :class="{sel:bank.sel.includes(q.id)}">
           <input type="checkbox" class="bank-rowck" :checked="bank.sel.includes(q.id)" @change="bankToggle(q.id)" />
           <div class="bank-main">
-            <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span v-if="q.mastered" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已掌握</span><span v-else-if="q.wrong_count>0" class="q-badge" style="color:var(--bad);border-color:var(--bad)">错 {{ q.wrong_count }} 次</span><span v-else-if="q.right_count>0" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已做对</span><span v-if="q.favorited" class="q-badge" style="color:var(--accent);border-color:var(--accent)">★ 收藏</span><span v-if="q.status==='draft'" class="q-badge" style="color:#d97706;border-color:#d97706">待审核</span><span class="muted" style="font-size:12px">#{{ i+1 }}</span></div>
+            <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span v-if="q.mastered" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已掌握</span><span v-else-if="q.wrong_count>0" class="q-badge" style="color:var(--bad);border-color:var(--bad)">错 {{ q.wrong_count }} 次</span><span v-else-if="q.right_count>0" class="q-badge" style="color:var(--ok);border-color:var(--ok)">已做对</span><span v-if="q.favorited" class="q-badge" style="color:var(--accent);border-color:var(--accent)">★ 收藏</span><span v-if="q.status==='draft'" class="q-badge" style="color:#d97706;border-color:#d97706">待审核</span></div>
             <div class="bank-stem"><rich-text :content="q.stem || '（空题干）'" /></div>
             <div v-if="q.source || q.page" class="bank-src"><span class="bank-src-book" :title="q.source">📖 {{ srcBook(q.source) }}</span><span v-if="q.page" class="bank-src-pg">P{{ q.page }}</span></div>
           </div>
@@ -62,6 +68,11 @@ const TPL_VIEW_BANK = `
               <div class="field" style="flex:1"><label>科目</label><select v-model="bankEdit.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
               <div class="field" style="flex:1"><label>题型</label><select v-model="bankEdit.type"><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
             </div>
+            <div class="row" style="gap:10px;margin-bottom:10px">
+              <div class="field" style="flex:2"><label>章节</label><input class="inp" v-model="bankEdit.chapter" placeholder="如 C语言-指针" /></div>
+              <div class="field" style="flex:1"><label>难度</label><select v-model.number="bankEdit.difficulty"><option v-for="n in [1,2,3,4,5]" :key="n" :value="n">{{ n }}</option></select></div>
+            </div>
+            <div class="field" style="margin-bottom:10px"><label>标签（逗号分隔）</label><input class="inp" v-model="bankEdit.tags" placeholder="如 指针, 易错" /></div>
             <label class="lbl">题干（支持 Markdown / LaTeX，行内公式用 $…$ 需成对）</label>
             <textarea class="inp" v-model="bankEdit.stem" rows="5"></textarea>
             <template v-if="isChoiceType(bankEdit.type) && bankEdit.type!=='true_false'">
