@@ -18,10 +18,11 @@ const TPL_VIEW_STATS = `
         </div>
         <div v-if="!statTotals.totalQ" class="empty"><p>暂无题目。请到导入页面添加题目。</p><button class="btn" @click=\"go('ingest')\">前往导入</button></div>
         <template v-else>
-          <h3 style="margin:6px 0 12px">按科目统计正确率</h3>
+          <h3 style="margin:6px 0 4px">按科目掌握度</h3>
+          <p class="muted" style="margin:0 0 12px;font-size:12px">掌握率 = 当前做对的题数 ÷ 已作答题数（按题计，反复答同一题不重复累计）；总体 <b :style="overallRate>=60?'color:var(--ok)':'color:var(--bad)'">{{ overallRate }}%</b>。</p>
           <div v-for="r in stats.bySubject" :key="r.subject" class="subj-row">
-            <div class="top"><span>{{ subjName(r.subject) }}</span><span class="muted">{{ rate(r) }}% · 正确 {{ r.right_sum||0 }} / 已答 {{ (r.right_sum||0)+(r.wrong_sum||0) }}</span></div>
-            <div class="bar"><span :style="{width:rate(r)+'%', background: rate(r)>=60?'var(--ok)':'var(--bad)'}"></span></div>
+            <div class="top"><span>{{ subjName(r.subject) }}</span><span class="muted">{{ rateQ(r) }}% · 做对 {{ r.right_q||0 }} / 已做 {{ r.seen||0 }} 题</span></div>
+            <div class="bar"><span :style="{width:rateQ(r)+'%', background: rateQ(r)>=60?'var(--ok)':'var(--bad)'}"></span></div>
             <div class="muted" style="margin-top:6px">总数 {{ r.total_q }} · <span title="仍需复习的题总数（答错未掌握）">错题 {{ r.wrong_open||0 }}</span> · <b :style="r.due?'color:var(--bad)':''" title="按记忆曲线排到今天该复习的题数">今日到期 {{ r.due||0 }}</b> · 收藏 {{ r.favorited||0 }}</div>
           </div>
           <template v-if="heatCells.length">
@@ -43,6 +44,7 @@ const TPL_VIEW_STATS = `
               <div class="top"><span :title="'当次测试得分，历史存档'">{{ subjName(m.subject) }} · {{ m.score!=null?m.score:m.correct }}/{{ m.total }}<span v-if="m.score!=null&&m.score!==m.correct" class="muted" style="font-size:12px">（含半分）</span></span>
                 <span class="muted">{{ fmtTime(m.duration_seconds) }}
                   <button class="btn subtle" style="margin-left:8px;padding:2px 10px;font-size:12px" @click="reviewMock(m)">错题回顾</button>
+                  <button class="bk-del-min" style="margin-left:4px" @click="deleteMock(m)" title="删除这条测试记录">✕</button>
                 </span></div>
               <div class="bar"><span :style="{width:(m.total?Math.round((m.score!=null?m.score:m.correct)/m.total*100):0)+'%', background:(m.total&&(m.score!=null?m.score:m.correct)/m.total>=0.6)?'var(--ok)':'var(--bad)'}"></span></div>
             </div>

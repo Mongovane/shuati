@@ -31,11 +31,13 @@ export async function onRequestGet({ request, env }) {
               SUM(CASE WHEN pr.right_count > 0 OR pr.wrong_count > 0 THEN 1 ELSE 0 END) AS seen,
               SUM(IFNULL(pr.right_count, 0)) AS right_sum,
               SUM(IFNULL(pr.wrong_count, 0)) AS wrong_sum,
+              SUM(CASE WHEN pr.last_correct = 1 THEN 1 ELSE 0 END) AS right_q,
               SUM(CASE WHEN pr.wrong_count > 0 AND IFNULL(pr.mastered,0)=0 THEN 1 ELSE 0 END) AS wrong_open,
               SUM(CASE WHEN IFNULL(pr.mastered, 0) = 1 THEN 1 ELSE 0 END) AS mastered,
               SUM(CASE WHEN IFNULL(pr.favorited, 0) = 1 THEN 1 ELSE 0 END) AS favorited,
               SUM(CASE WHEN IFNULL(pr.mastered,0)=0 AND pr.due_at IS NOT NULL AND pr.due_at <= unixepoch() THEN 1 ELSE 0 END) AS due
        FROM questions q LEFT JOIN progress pr ON pr.question_id = q.id
+       WHERE IFNULL(q.status,'') <> 'draft'
        GROUP BY q.subject`
     ).all();
 
@@ -240,5 +242,23 @@ export async function onRequestPost({ request, env }) {
     return json({ error: '未知 action' }, 400);
   } catch (e) {
     return json({ error: '写入失败：' + e.message }, 500);
+  }
+}
+
+// DELETE /api/progress?mock_id=X —— 删除一条模考历史记录（及其逐题明细）
+// 只动 mock_results / mock_answers，不碰题库与 SRS 进度，属安全操作
+export async function onRequestDelete({ request, env }) {
+  const auth = await checkAuth(request, env);
+  if (!auth.ok) return auth.resp;
+  const mid = parseInt(new URL(request.url).searchParams.get('mock_id') || '', 10);
+  if (!Number.isInteger(mid)) return json({ error: '缺少 mock_id' }, 400);
+  try {
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM mock_answers WHERE mock_id = ?`).bind(mid),
+      env.DB.prepare(`DELETE FROM mock_results WHERE id = ?`).bind(mid),
+    ]);
+    return json({ ok: true });
+  } catch (e) {
+    return json({ error: '删除失败：' + e.message }, 500);
   }
 }
