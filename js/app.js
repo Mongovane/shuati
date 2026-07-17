@@ -210,6 +210,7 @@ _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catc
 onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
 go(v){
       const prev=this.view;
+      if(this.pdfv && this.pdfv.open && typeof this.pdfvClose==='function'){ this.pdfvClose(); }
       if(['practice','wrong','favorite'].includes(prev) && this.queue.length){
         qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
       }

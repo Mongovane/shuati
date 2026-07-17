@@ -37,14 +37,8 @@ const TPL_VIEW_BOOKS = `
         <div v-if="pdfv.open" class="pdfv" :class="{inv: pdfv.invert, 'bars-off': pdfv.barsOff}" style="margin-top:14px">
           <div class="pdfv-bar">
             <div class="ttl">{{ pdfv.title }}</div>
-            <div class="bk-nav">
-              <button :disabled="pdfv.cur<=1" @click="pdfvPrev">← 上一页</button>
-              <button :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext">下一页 →</button>
-            </div>
-            <span class="muted">{{ pdfv.cur }} / {{ pdfv.pages }}</span>
-            <input class="bk-jump inp" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value)" placeholder="跳页" />
             <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvTocOpen=true" title="目录">☰ 目录</button>
-            <button v-if="!pdfvMobile" class="btn subtle" :style="pdfv.invert?'color:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5)':''" @click="pdfvToggleInvert" title="夜间反色">🌙</button>
+            <span class="pdfv-title" v-if="!pdfvMobile">{{ pdfv.title }}</span>
             <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
             <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
             <button class="btn subtle" @click="pdfAiOpen" title="就当前页内容问 AI">✨ 问 AI</button>
@@ -102,12 +96,15 @@ const TPL_VIEW_BOOKS = `
           <div v-if="list.length" class="bk-shelf">
             <div class="bk-shelf-label fold-head" @click="bookFold[sub]=!bookFold[sub]"><span>{{ subjName(sub)==='other'? '其他' : subjName(sub) }} <span class="muted" style="font-weight:400;font-size:12px">{{ list.length }} 本</span></span><span class="fold-arrow" :class="{open:!bookFold[sub]}">▾</span></div>
             <div v-show="!bookFold[sub]" class="bk-grid">
-              <button v-for="b in list" :key="b.key" class="bk-card" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">
-                <span v-if="bookReadPct(b)" class="bk-pct">{{ bookReadPct(b) }}</span>
-                <span class="spine"></span>
-                <span class="t">{{ b.title }}</span>
-                <span class="m">{{ b.pages.length }} 页</span>
-              </button>
+              <div v-for="b in list" :key="b.key" class="bk-card-wrap">
+                <button class="bk-card" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">
+                  <span v-if="bookReadPct(b)" class="bk-pct">{{ bookReadPct(b) }}</span>
+                  <span class="spine"></span>
+                  <span class="t">{{ b.title }}</span>
+                  <span class="m">{{ b.pages.length }} 页</span>
+                </button>
+                <select class="bk-card-subj" :value="sub" @change="setBookSubjectByKey(b, $event.target.value)" @click.stop title="修改本书所属科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+              </div>
             </div>
           </div>
         </template>
@@ -152,7 +149,6 @@ const TPL_VIEW_BOOKS = `
                 <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
               </div>
-              <label class="bk-subjpick"><span>本书科目</span><select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改整本书归属的科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></label>
               <div class="bk-foot-ops">
                 <button class="btn" :disabled="bookExtract.busy" @click="localExtractPage" title="用规则解析本页现成的习题+解答，直接入题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>本页抽题入库（不花 AI）</button>
                 <button class="btn subtle" :disabled="bookExtract.busy" @click="localExtractBook" title="把整本书的习题一次性抽进题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>整本抽题入库</button>
