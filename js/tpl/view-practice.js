@@ -60,7 +60,7 @@ const TPL_VIEW_PRACTICE = `
           </transition>
           <div class="q-nav-bar">
             <button class="btn subtle" :disabled="qi<=0" @click="prev">← 上一题</button>
-            <button class="btn" @click="next">{{ qi>=queue.length-1 ? '换一批 ↻' : '下一题 →' }}</button>
+            <button class="btn" @click="next">{{ qi>=queue.length-1 ? (reviewSession ? '完成回顾 ✓' : '换一批 ↻') : '下一题 →' }}</button>
           </div>
           <div class="kbd-hint muted">快捷键：A–D / 1–4 选选项（判断题 1=对 2=错）· Enter 提交/下一题 · ← → 切题 · 揭晓后 F 收藏 · M 掌握 · 自评 1 重来 2 困难 3 良好 4 简单</div>
           <div v-if="queue.length>1" class="qnav-wrap">

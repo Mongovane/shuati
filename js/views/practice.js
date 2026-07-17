@@ -63,14 +63,25 @@ cleanPageMd(md){
     },
 prev(){ if(this.qi>0)this.qi--; },
 qnavCls(q,i){ const c=[]; if(i===this.qi)c.push('cur'); const a=this.sessionAns[q.id]; if(a===true)c.push('ok'); else if(a===false)c.push('bad'); else if(q.mastered)c.push('ok'); else if(q.wrong_count>0)c.push('bad'); else if(q.right_count>0)c.push('done'); else c.push('un'); return c; },
-next(){ if(this.qi<this.queue.length-1)this.qi++; else this.startSession(true); },
+next(){ if(this.qi<this.queue.length-1){ this.qi++; return; }
+      // 错题回顾是封闭集：翻到最后一题不再自动续拉普通题，而是结束会话回到常规错题本
+      if(this.reviewSession){ this.flash('本次错题已回顾完毕'); this.exitReviewSession(); return; }
+      this.startSession(true); },
 async deleteCurrentQuestion(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('这会从「题库」彻底删除这道题（不只是移出复习），且无法恢复。\n\n只是不想再复习它？请改用「移出复习」。\n\n确定要永久删除吗？'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true; this.flash('已从题库删除本题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
 // 移出复习：标记为已掌握，从待复习队列剔除，但题目保留在题库（可在设置/题库处找回）
 async dropFromReview(){ const q=this.cur; if(!q)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:q.id,value:1})});
         q.mastered=true;
-        this.queue.splice(this.qi,1); if(this.qi>this.queue.length-1)this.qi=Math.max(0,this.queue.length-1); if(!this.queue.length)this.batchDone=true;
+        this.queue.splice(this.qi,1);
+        delete this.sessionAns[q.id];
+        if(this.reviewSession) this.reviewSession.count=this.queue.length;
+        if(!this.queue.length){
+          if(this.reviewSession){ this.flash('已移出，本次错题已清空'); this.exitReviewSession(); return; }
+          this.batchDone=true;
+        } else if(this.qi>this.queue.length-1){ this.qi=this.queue.length-1; }
         this.flash('已移出复习（标记为掌握，题目仍在题库）'); this.statsDirty=true;
+        // 后台刷新一次统计：让顶栏 Review 徽标立刻跟着错题数下降，而不是停在旧值
+        try{ this.stats=await this.api('/api/progress'); this.statsDirty=false; }catch(_){ }
       }catch(e){ if(e.message!=='unauth')this.flash('操作失败：'+e.message,true); } },
 // 退出「错题回顾」独立会话，回到常规错题本
 exitReviewSession(){ this.reviewSession=null; this.filterLock=false; this.startSession(); },
