@@ -22,15 +22,17 @@ const ReaderMixin = {
         this.flash('已复制 '+parts.length+' 块'); }catch(_){}
       this.readerSegToggle(); },
     // —— 阅读页问 AI（底部抽屉，选段可作引用）——
-    bookAskAI(){ // 内联章节阅读（Books 页，未进沉浸模式）就整篇材料问 AI
+    bookAskAI(){ // Books 内联章节阅读点「问 AI」：就地弹出 AI 面板（内联页自带一份，不必进沉浸）
+      if(!this.currentBook||!this.currentPageMat){ this.flash('请先选择一本书',true); return; }
       this.rdAi.quote=''; this.rdAi.open=true;
-      this.$nextTick(()=>{ const el=this.$refs.rdAiInp; if(el)el.focus(); }); },
+      this.$nextTick(()=>{ const el=this.$refs.rdAiInpInline||this.$refs.rdAiInp; if(el)el.focus(); }); },
         readerAskAI(){ const parts=this.readerSegTexts(); if(parts.length)this.rdAi.quote=parts.join(' ').slice(0,3000);
       if(this.reader.segMode)this.readerSegToggle();
       this.rdAi.open=true; this.reader.barsHidden=false;
       this.$nextTick(()=>{ const el=this.$refs.rdAiInp; if(el){ el.focus(); const n=el.value.length; try{ el.setSelectionRange(n,n); }catch(_){} } }); },
     rdAiRetry(i){ const c=this.rdAi.chat[i]; if(!c||!c.err||this.rdAi.asking)return;
       const q=c.q; this.rdAi.chat.splice(i,1); this.rdAi.input=q; return this.rdAiSend(); },
+    rdAiStop(){ if(this._rdCtrl){ try{ this._rdCtrl.abort(); }catch(_){} } const last=this.rdAi.chat[this.rdAi.chat.length-1]; if(last && this.rdAi.asking && !last.a) last.a='_（已停止）_'; this.rdAi.asking=false; },
     async rdAiSend(){ const q=(this.rdAi.input||'').trim(); if(!q||this.rdAi.asking)return;
       if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const mat=this.currentPageMat; if(!mat)return;

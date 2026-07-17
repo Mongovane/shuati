@@ -53,7 +53,8 @@ const TPL_SHELL_CLOSE = `
       </div>
       <div class="rai-in">
         <input ref="rdAiInp" v-model="rdAi.input" :disabled="rdAi.asking" placeholder="就本页 / 选段提问（Enter 发送）…" @keyup.enter="rdAiSend" />
-        <button class="rbtn" :disabled="rdAi.asking||!rdAi.input.trim()" @click="rdAiSend"><span v-if="rdAi.asking" class="spin"></span>{{ rdAi.asking?'回答中':'发送' }}</button>
+        <button v-if="rdAi.asking" class="rbtn" @click="rdAiStop" title="停止本次回答">■ 停止</button>
+        <button v-else class="rbtn" :disabled="!rdAi.input.trim()" @click="rdAiSend">发送</button>
       </div>
     </div>
     <div v-if="reader.panel" class="r-panel-backdrop" @click="reader.panel=false"></div>
@@ -122,7 +123,8 @@ const TPL_SHELL_CLOSE = `
       </div>
       <div class="rai-in">
         <input ref="pdfAiInp" v-model="pdfAi.input" :disabled="pdfAi.asking" :placeholder="'就第 '+pdfv.cur+' 页提问（Enter 发送）…'" @keyup.enter="pdfAiSend" />
-        <button class="rbtn" :disabled="pdfAi.asking||!pdfAi.input.trim()" @click="pdfAiSend"><span v-if="pdfAi.asking" class="spin"></span>{{ pdfAi.asking?'回答中':'发送' }}</button>
+        <button v-if="pdfAi.asking" class="rbtn" @click="pdfAiStop" title="停止本次回答">■ 停止</button>
+        <button v-else class="rbtn" :disabled="!pdfAi.input.trim()" @click="pdfAiSend">发送</button>
       </div>
     </div>
 

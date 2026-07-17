@@ -113,9 +113,15 @@ const TPL_VIEW_BOOKS = `
         </template>
         <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen,'toc-open':bookTocOpen}">
           <aside class="bk-toc">
-            <h4>目录 <span class="muted">{{ currentBook.pages.length }} 篇</span><button class="toc-close" @click="bookTocOpen=false" title="关闭">✕</button></h4>
-            <div class="tip">按每页正文标题/首行生成，点击跳转</div>
-            <div v-for="(m,i) in currentBook.pages" :key="m.id" class="bk-toc-item" :class="{on:i===bookIdx}" @click="bookGoto(i); bookTocOpen = (window.innerWidth>860)">{{ pageLabel(m) }}</div>
+            <h4>目录 <span class="muted">{{ bookOutline.length ? bookOutline.length+' 章节' : currentBook.pages.length+' 篇' }}</span><button class="toc-close" @click="bookTocOpen=false" title="关闭">✕</button></h4>
+            <template v-if="bookOutline.length">
+              <div class="tip">按书本目录页解析，点击跳到对应页</div>
+              <div v-for="(o,oi) in bookOutline" :key="'bo'+oi" class="toc-row" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="bookGotoBookPage(o.page)"><span class="toc-t">{{ o.title }}</span><span class="toc-p">{{ o.page }}</span></div>
+            </template>
+            <template v-else>
+              <div class="tip">按每页正文标题/首行生成，点击跳转</div>
+              <div v-for="(m,i) in currentBook.pages" :key="m.id" class="bk-toc-item" :class="{on:i===bookIdx}" @click="bookGoto(i); bookTocOpen = (window.innerWidth>860)">{{ pageLabel(m) }}</div>
+            </template>
           </aside>
           <div class="bk-toc-backdrop" @click="bookTocOpen=false"></div>
           <div class="bk-page">
@@ -158,6 +164,28 @@ const TPL_VIEW_BOOKS = `
               <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
               <button class="bk-del" style="margin-left:auto" @click="deleteCurrentBook">删除本书</button>
             </div>
+          </div>
+        </div>
+        <div v-if="rdAi.open && !reader.open" class="bk-inline-backdrop" @click="rdAi.open=false"></div>
+        <div v-if="!reader.open" class="r-ai bk-inline-ai" :class="{open:rdAi.open}">
+          <div class="rai-h"><b>✨ 问 AI · 本页</b><span style="flex:1"></span>
+            <button class="ricon" v-if="rdAi.chat.length||rdAi.quote" @click="rdAi.chat=[]; rdAi.quote=''" title="清空对话与引用">🗑</button>
+            <button class="ricon" @click="rdAi.open=false">✕</button></div>
+          <div v-if="rdAi.quote" class="rai-quote">已引用选段：{{ rdAi.quote.slice(0,120) }}{{ rdAi.quote.length>120?'…':'' }}</div>
+          <div class="rai-list">
+            <div v-for="(c,i) in rdAi.chat" :key="'brai'+i" class="chat-round">
+              <div class="chat-bub chat-q"><div class="chat-tag">🙋 你</div>{{ c.q }}</div>
+              <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+                <div v-if="c.err && !rdAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" style="flex:none;padding:4px 14px" @click="rdAiRetry(i)">⟳ 重试</button></div>
+              </div>
+              <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
+            </div>
+            <div v-if="!rdAi.chat.length" class="muted" style="font-size:13px;padding:6px 0">就本页内容提问，例如：这页在讲什么？这个公式怎么来的？</div>
+          </div>
+          <div class="rai-in">
+            <input ref="rdAiInpInline" v-model="rdAi.input" :disabled="rdAi.asking" placeholder="就本页提问（Enter 发送）…" @keyup.enter="rdAiSend" />
+            <button v-if="rdAi.asking" class="rbtn" @click="rdAiStop" title="停止本次回答">■ 停止</button>
+            <button v-else class="rbtn" :disabled="!rdAi.input.trim()" @click="rdAiSend">发送</button>
           </div>
         </div>
       </template>

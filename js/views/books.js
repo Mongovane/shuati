@@ -35,6 +35,14 @@ bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(
 bookPrev(){ this.bookGoto(this.bookIdx-1); },
 bookNext(){ this.bookGoto(this.bookIdx+1); },
 bookJumpPage(p){ const b=this.currentBook; if(!b)return; const n=parseInt(p,10); if(!Number.isFinite(n))return; const idx=b.pages.findIndex(m=>Number(m.page)===n); if(idx>=0)this.bookGoto(idx); else this.flash('没有第 '+n+' 页',true); },
+// 跳到「书内页码」最接近 n 的那一篇（目录里的页码常和整理后的分篇页码不完全一致，取 ≤n 的最大页）
+bookGotoBookPage(n){ const b=this.currentBook; if(!b||!Number.isFinite(n))return; let best=-1,bestPg=-1; b.pages.forEach((m,i)=>{ const pg=Number(m.page)||0; if(pg<=n && pg>bestPg){ bestPg=pg; best=i; } }); if(best<0){ best=0; } this.bookGoto(best); this.bookTocOpen=false; },
+parseBookOutline(tocText){ if(!tocText)return []; const items=[]; const re=/([^\n.\u2026]{2,60}?)\s*[.\u2026]{2,}\s*(\d{1,4})/g; let mm;
+      while((mm=re.exec(tocText))!==null){ const title=mm[1].replace(/^[\s*#>]+/,'').trim(); const page=parseInt(mm[2],10);
+        if(!title||!Number.isFinite(page))continue;
+        const level=/^第[一二三四五六七八九十百零\d]+\s*[章篇]/.test(title)?0:(/^\*?(习题|总习题)/.test(title)?1:0);
+        items.push({ title:title.slice(0,50), page, level }); if(items.length>=400)break; }
+      return items; },
 async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI && !(this.explainCfg&&this.explainCfg.base&&this.explainCfg.key)){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; } this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(false),subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; },
 async pdfvPageText(n){ try{ const doc=this._pdfvDoc; if(!doc)return ''; const page=await doc.getPage(n||this.pdfv.cur);
     const tc=await page.getTextContent(); let last=null, out='';
@@ -82,6 +90,8 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
     }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('提问失败：'+msg,true); } }
     this.pdfAi.asking=false; if(this._pdfAiCtrl===ctrl)this._pdfAiCtrl=null; },
 pdfAiRetry(i){ const c=this.pdfAi.chat[i]; if(!c||!c.err||this.pdfAi.asking)return; const q=c.q; this.pdfAi.chat.splice(i,1); this.pdfAi.input=q; return this.pdfAiSend(); },
+// 停止：中止进行中的 PDF 问答请求（已流式返回的部分内容保留）
+pdfAiStop(){ if(this._pdfAiCtrl){ try{ this._pdfAiCtrl.abort(); }catch(_){} } const last=this.pdfAi.chat[this.pdfAi.chat.length-1]; if(last && this.pdfAi.asking && !last.a) last.a='_（已停止）_'; this.pdfAi.asking=false; },
 async pdfvOpenLocal(e){ const f=e.target.files&&e.target.files[0]; if(!f)return; await this.pdfvOpenSrc(await f.arrayBuffer(), f.name.replace(/\.pdf$/i,'')); },
 _isMobile(){ try{ const coarse=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches; return !!coarse && (window.innerWidth||9999)<=900; }catch(_){ return (window.innerWidth||9999)<=820; } },
 async pdfvOpenSrc(buf,title){ this.pdfv.loading=true; this.pdfv.msg=this.pdfv.msg||'解析中…'; try{ await this.ensurePdfjs(); const task=window.pdfjsLib.getDocument({data:buf}); if(task.onProgress!==undefined){ task.onProgress=(p)=>{ if(p&&p.total)this.pdfv.msg='解析中 '+Math.round(p.loaded/p.total*100)+'%'; }; } const doc=await task.promise; this._pdfvDoc=doc; this.pdfv.pages=doc.numPages; this.pdfv.title=title||'PDF'; this.pdfvMobile=this._isMobile(); this.pdfvLoadOutline(); try{ this.pdfv.invert=localStorage.getItem('zb_pdf_invert')==='1'; }catch(_){}

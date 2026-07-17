@@ -683,3 +683,13 @@ a{color:var(--accent)}
 .ing-group{display:flex;flex-direction:column;gap:5px}
 .ing-glabel{font-size:11px;font-weight:600;color:var(--ink-soft);letter-spacing:.04em;padding-left:2px}
 @media (max-width:640px){ .ing-tabs{gap:12px} .ing-group .seg{max-width:100%;overflow-x:auto} }
+
+/* Books 内联页的「问 AI」面板（复用 .r-ai 底部滑出；其遮罩不在 .reader 内需自定位） */
+.bk-inline-ai{z-index:210}
+.bk-inline-backdrop{position:fixed;inset:0;z-index:205;background:rgba(0,0,0,.28)}
+
+/* Books 内联目录的结构化章节导航（复用 PDF 目录的行样式） */
+.bk-toc .toc-row{display:flex;align-items:center;gap:8px;padding:8px 10px;line-height:1.35;cursor:pointer;border-radius:8px;font-size:13px}
+.bk-toc .toc-row:hover{background:var(--surface-2,rgba(0,0,0,.04))}
+.bk-toc .toc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-toc .toc-p{flex:none;font-size:11px;color:var(--muted,#888)}

@@ -89,6 +89,11 @@ const App={
     curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id) ? this.aiX.text : ''; },
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.chat||[]) : []; },
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
+    // 从当前书的「目录页」解析出「章节标题 → 页码」列表，供内嵌目录导航（像 PDF 书签那样可点跳转）
+    // 目录页判定：pageLabel 或正文里出现「目录」，且含多处「…… 数字」页码引导。解析不出则返回 []（回退按篇列目录）
+    bookOutline(){ const b=this.currentBook; if(!b||!b.pages||!b.pages.length)return [];
+      let tocText=''; for(const m of b.pages){ const c=String(m.content_md||''); if(/目\s*录|CONTENTS/i.test(c.slice(0,40)) || (c.match(/\.{3,}\s*\d+/g)||[]).length>=4){ tocText=c; break; } }
+      return this.parseBookOutline(tocText); },
     curAiModel(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.model||'') : ''; },
     mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.score/t*100); },
     streakDays(){ /* 🔥 连续学习天数：今天有记录从今天起算，否则从昨天起算 */
