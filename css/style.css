@@ -666,3 +666,14 @@ a{color:var(--accent)}
 .model-chip:hover{border-color:var(--accent);color:var(--accent)}
 .model-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 @media (prefers-reduced-motion: no-preference){ .model-chip:active{transform:scale(.96)} }
+
+/* 错题回顾独立会话横幅 */
+.review-banner{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft)}
+.review-banner .rb-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+.review-banner .rb-txt{flex:1;font-size:13.5px;color:var(--ink)}
+.review-banner .rb-txt b{color:var(--accent)}
+@media (prefers-reduced-motion: no-preference){ .review-banner{animation:vpop .22s ease} }
+
+/* 删除按钮弱化（复习流里的高危操作降到最低视觉权重，避免误点） */
+.bk-del-min{border:none;background:none;color:var(--ink-soft);font-size:12px;cursor:pointer;padding:4px 6px;opacity:.55;transition:.15s}
+.bk-del-min:hover{color:var(--bad);opacity:1}

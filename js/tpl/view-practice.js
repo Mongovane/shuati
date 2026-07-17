@@ -39,15 +39,21 @@ const TPL_VIEW_PRACTICE = `
       <div v-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
       <template v-else>
         <div v-if="cur">
+          <div v-if="reviewSession" class="review-banner">
+            <span class="rb-dot"></span>
+            <span class="rb-txt">错题回顾 · <b>{{ reviewSession.title }}</b> · 共 {{ reviewSession.count }} 题</span>
+            <button class="btn subtle xs" @click="exitReviewSession">退出回顾</button>
+          </div>
           <div class="row" style="margin-bottom:12px;align-items:center;gap:10px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
-            <span class="muted" v-if="view==='wrong'">· 复习（最不熟优先）</span>
-            <span class="muted" v-if="view==='wrong' && queueTotal">· 本范围待复习 {{ queueTotal }} 题</span>
+            <span class="muted" v-if="view==='wrong' && !reviewSession">· 复习（最不熟优先）</span>
+            <span class="muted" v-if="view==='wrong' && !reviewSession && queueTotal">· 本范围待复习 {{ queueTotal }} 题</span>
             <span class="muted" v-if="view==='favorite'">· 收藏</span>
             <span v-if="curStatus" class="q-badge" :style="{color:curStatus.c,borderColor:curStatus.c}">{{ curStatus.t }}</span>
             <span v-if="view==='practice' && queueTotal" class="muted">· {{ f._mode==='unseen'?'未做剩 '+queueTotal:'本范围共 '+queueTotal }} 题</span>
             <span v-if="streak>=2" style="color:var(--accent);font-weight:600;font-size:13px">🔥 连对 {{ streak }}</span>
             <span class="muted" style="margin-left:auto;font-size:12px">归类</span><select class="bk-mini" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="发现分类错了？直接改，立即生效"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-            <button class="bk-del xs" @click="deleteCurrentQuestion" title="从题库删除本题（OCR 坏题顺手清理）">删除本题</button>
+            <button class="btn subtle xs" v-if="view==='wrong'" @click="dropFromReview" title="标记为已掌握，从待复习队列移除；题目仍保留在题库">✓ 移出复习</button>
+            <button class="bk-del-min" @click="deleteCurrentQuestion" title="从题库彻底删除本题（用于清理 OCR 坏题，不可恢复）">删除</button>
           </div>
           <transition name="qfade" mode="out-in">
           <question-card ref="curCard" :q="cur" :key="cur.id" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" />
