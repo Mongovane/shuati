@@ -127,7 +127,7 @@ const TPL_VIEW_BOOKS = `
           <div class="bk-page">
             <div class="bk-bar">
               <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" title="目录">☰ 目录</button>
-              <div style="flex:1;min-width:160px">
+              <div class="bk-tophead" style="flex:1;min-width:160px">
                 <div class="ttl">{{ pageLabel(currentPageMat) }}</div>
                 <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
               </div>

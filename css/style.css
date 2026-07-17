@@ -269,19 +269,24 @@ a{color:var(--accent)}
 .bk-body .rich .katex-display>.katex{white-space:nowrap}
 .rich .katex-display{overflow:hidden;max-width:100%}
 .bk-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px 20px;border-top:1px solid var(--line)}
-/* —— 移动端 Books 阅读器：顶栏/底栏按钮触摸友好、排布整齐 —— */
+/* 桌面：主操作（抽题/出题）成组居中，删除靠右，导航+科目在左 */
+.bk-foot .bk-mini{max-width:180px}
+.bk-foot>.btn{white-space:nowrap;height:38px;display:inline-flex;align-items:center;justify-content:center}
+.bk-foot .bk-nav{margin-right:2px}
+.bk-foot .bk-del{margin-left:auto}
+/* —— 移动端 Books 阅读器：顶栏标题独占首行，操作按钮整齐分行、触摸友好 —— */
 @media(max-width:600px){
-  .bk-bar{padding:12px 14px;gap:10px}
-  .bk-bar>div[style*="flex:1"]{flex-basis:100%;order:-1}
+  .bk-bar{padding:12px 14px;gap:8px 10px}
+  .bk-bar .bk-tophead{flex-basis:100%;order:-1;min-width:0}
   .bk-bar .ttl{font-size:15.5px}
-  .bk-bar .bk-nav{flex:1}
+  .bk-bar .bk-toctoggle{height:40px}
+  .bk-bar .bk-nav{flex:1;order:1}
   .bk-bar .bk-nav button{flex:1;height:40px}
-  .bk-bar .bk-toctoggle{height:40px;flex:1;justify-content:center}
-  .bk-jump{height:40px;flex:1;min-width:0}
+  .bk-bar .bk-jump{height:40px;flex:1;min-width:0;order:2}
   .bk-foot{padding:14px;gap:10px}
   .bk-foot .bk-nav{flex-basis:100%}
   .bk-foot .bk-nav button{flex:1;height:42px}
-  .bk-foot .bk-mini{flex-basis:100%;height:42px}
+  .bk-foot .bk-mini{flex-basis:100%;max-width:none;height:42px}
   .bk-foot>.btn{flex-basis:100%;justify-content:center;height:44px}
   .bk-foot .bk-del{flex-basis:100%;margin-left:0 !important;text-align:center}
 }
