@@ -41,6 +41,7 @@ const TPL_VIEW_BOOKS = `
             <span class="pdfv-title" v-if="!pdfvMobile">{{ pdfv.title }}</span>
             <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
             <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
+            <button v-if="pdfvMobile" class="btn subtle" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5)':''" title="夜间反色">🌙</button>
             <button class="btn subtle" @click="pdfAiOpen" title="就当前页内容问 AI">✨ 问 AI</button>
             <button class="btn subtle" @click="pdfvClose">关闭</button>
           </div>
@@ -59,11 +60,13 @@ const TPL_VIEW_BOOKS = `
           </div>
           <div class="pdfv-foot" :class="{ic:pdfvMobile}">
             <button v-if="pdfvMobile" class="pf-ic" @click="pdfvTocOpen=true" title="目录">☰</button>
+            <button v-if="pdfvMobile" class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI">✨</button>
+            <span v-if="pdfvMobile" class="pf-spacer"></span>
             <button class="pf-ic pf-nav" :disabled="pdfv.cur<=1" @click="pdfvPrev" title="上一页">‹</button>
             <span class="muted pf-pg">{{ pdfv.cur }} <i>/</i> {{ pdfv.pages }}</span>
             <button class="pf-ic pf-nav" :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext" title="下一页">›</button>
-            <button class="pf-ic" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5)':''" title="夜间反色">🌙</button>
-            <button class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI">✨</button>
+            <button v-if="!pdfvMobile" class="pf-ic" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5)':''" title="夜间反色">🌙</button>
+            <button v-if="!pdfvMobile" class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI">✨</button>
           </div>
           <div class="pdfv-drawer" :class="{open:pdfvTocOpen}">
             <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">{{ pdfv.outline.length? pdfv.outline.length+' 章节' : ('共 '+pdfv.pages+' 页') }}</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>

@@ -568,7 +568,8 @@ a{color:var(--accent)}
 .pdfv-drawer-list .toc-p{flex:none;font-size:11px;color:var(--muted,#888)}
 
 /* v45：PDF 底栏图标化 + 沉浸隐藏工具栏 */
-.pdfv-foot.ic{gap:6px;justify-content:space-around;padding:6px 10px calc(6px + env(safe-area-inset-bottom,0px))}
+.pdfv-foot.ic{gap:8px;justify-content:flex-start;align-items:center;padding:6px 12px calc(6px + env(safe-area-inset-bottom,0px))}
+.pdfv-foot.ic .pf-spacer{flex:1}
 .pdfv-foot .pf-ic{flex:none;width:46px;height:42px;display:flex;align-items:center;justify-content:center;font-size:17px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:12px;background:var(--card-bg,#fff);white-space:nowrap;padding:0}
 .pdfv-foot .pf-nav{font-size:26px;font-weight:600;line-height:1;padding-bottom:3px}
 .pdfv-foot .pf-ic:disabled{opacity:.35}
