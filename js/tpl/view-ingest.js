@@ -3,23 +3,31 @@
 const TPL_VIEW_INGEST = `
     <div v-else-if="view==='ingest'">
       <h2 style="margin:.2em 0 .5em">导入</h2>
-      <div class="seg" style="margin-bottom:14px">
-        <button :class="{on:ingest.tab==='manual'}" @click="ingest.tab='manual'">手动录入</button>
-        <button :class="{on:ingest.tab==='photo'}" @click="ingest.tab='photo'">拍照辅助</button>
-        <button :class="{on:ingest.tab==='json'}" @click="ingest.tab='json'">导入 JSON</button>
-        <button :class="{on:ingest.tab==='excel'}" @click="ingest.tab='excel'">Excel/CSV</button>
-        <button :class="{on:ingest.tab==='pdf'}" @click="ingest.tab='pdf'">PDF 文本</button>
-        <button :class="{on:ingest.tab==='md'}" @click="ingest.tab='md'">Markdown</button>
-        <button :class="{on:ingest.tab==='mineru'}" @click="ingest.tab='mineru'">MinerU</button>
-        <button :class="{on:ingest.tab==='ai'}" @click="ingest.tab='ai'">AI 整理</button>
+      <div class="ing-tabs">
+        <div class="ing-group">
+          <span class="ing-glabel">免费导入</span>
+          <div class="seg">
+            <button :class="{on:ingest.tab==='manual'}" @click="ingest.tab='manual'">手动录入</button>
+            <button :class="{on:ingest.tab==='json'}" @click="ingest.tab='json'">JSON</button>
+            <button :class="{on:ingest.tab==='excel'}" @click="ingest.tab='excel'">Excel/CSV</button>
+          </div>
+        </div>
+        <div class="ing-group">
+          <span class="ing-glabel">AI / 额度</span>
+          <div class="seg">
+            <button :class="{on:ingest.tab==='pdf'}" @click="ingest.tab='pdf'">PDF 文档</button>
+            <button :class="{on:ingest.tab==='mineru'}" @click="ingest.tab='mineru'">MinerU</button>
+            <button :class="{on:ingest.tab==='ai'}" @click="ingest.tab='ai'">AI 整理</button>
+          </div>
+        </div>
       </div>
       <div class="toolbar">
-        <div class="field" v-if="!['manual','json','md','mineru'].includes(ingest.tab)"><label>导入类型</label>
+        <div class="field" v-if="!['manual','json','mineru'].includes(ingest.tab)"><label>导入类型</label>
           <select v-model="ingest.kind"><option value="auto">自动分辨（题库 / 教材）</option><option value="questions">只当题库</option><option value="material">只当教材</option></select></div>
         <div class="field"><label>默认科目</label>
           <select v-model="ingest.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
-        <div class="field" v-if="['photo','pdf','ai','md','mineru'].includes(ingest.tab)"><label>教材名称（转教材时用作书名，按科目归类）</label><input class="inp" v-model="ingest.bookTitle" placeholder="如 谭浩强C程序设计（选 PDF/MD 会自动填）" /></div>
-        <template v-if="!['json','md','mineru'].includes(ingest.tab)">
+        <div class="field" v-if="['pdf','ai','mineru'].includes(ingest.tab)"><label>教材名称（转教材时用作书名，按科目归类）</label><input class="inp" v-model="ingest.bookTitle" placeholder="如 谭浩强C程序设计（选 PDF 会自动填）" /></div>
+        <template v-if="!['json','mineru'].includes(ingest.tab)">
           <div class="field"><label>章节预设</label>
             <select v-model="ingest.chapter"><option value="">选择 / 下方自定义</option><option v-for="c in ingestChapterOptions" :key="c.chapter" :value="c.chapter">{{ c.chapter }} {{ c.n ? '('+c.n+')' : '' }}</option></select></div>
           <div class="field"><label>自定义章节</label><input class="inp" v-model="ingest.chapter" placeholder="例如：C语言-指针" /></div>
@@ -33,9 +41,9 @@ const TPL_VIEW_INGEST = `
           </template>
           <div class="field" v-else><label>来源</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
         </template>
-        <div class="field" v-else-if="['photo','ai'].includes(ingest.tab)"><label>来源（可选，作题目出处）</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
+        <div class="field" v-else-if="['ai'].includes(ingest.tab)"><label>来源（可选，作题目出处）</label><input class="inp" v-model="ingest.source" placeholder="例如：2023 真题" /></div>
       </div>
-      <div class="hint" v-if="!['json','md','mineru'].includes(ingest.tab)">当前分类： <b>{{ subjName(ingest.subject) }}</b><span v-if="ingest.chapter"> · {{ ingest.chapter }}</span><span v-if="['photo','pdf','ai'].includes(ingest.tab) && ingest.bookTitle"> · 教材：{{ ingest.bookTitle }}</span><br>题目来源： <code>{{ currentSource() || '（无）' }}</code></div>
+      <div class="hint" v-if="!['json','mineru'].includes(ingest.tab)">当前分类： <b>{{ subjName(ingest.subject) }}</b><span v-if="ingest.chapter"> · {{ ingest.chapter }}</span><span v-if="['pdf','ai'].includes(ingest.tab) && ingest.bookTitle"> · 教材：{{ ingest.bookTitle }}</span><br>题目来源： <code>{{ currentSource() || '（无）' }}</code></div>
       <template v-if="ingest.tab==='excel'">
         <div class="card">
           <p class="muted" style="margin:0 0 10px">上传 .xlsx / .xls / .csv，表头需含「题干」，其余列（题型 / 答案 / 选项A…H / 科目 / 章节 / 解析 / 难度 / 标签 / 材料）可选。本机解析、预览确认后入库；选择题答案写 A 或 AC，判断写 对/错，填空多写法用「；」分隔。</p>
@@ -56,16 +64,18 @@ const TPL_VIEW_INGEST = `
         </div>
       </template>
 
-      <template v-if="ingest.tab==='manual' || ingest.tab==='photo'">
-        <div v-if="ingest.tab==='photo'" class="card" style="margin-bottom:14px">
-          <label class="btn subtle" style="cursor:pointer">拍摄 / 选择照片
-            <input type="file" accept="image/*" capture="environment" @change="onPhotoFile" style="display:none" />
-          </label>
-          <div class="hint">照片先存本机。「AI OCR」发给你的视觉模型识题入库；模型不支持图片就用「本地 OCR 存为教材」，全程本机、零额度。</div>
-          <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><button class="btn" :disabled="ingest.busy || ingest.local.busy || !ingest.photoDataUrl" @click="aiPhotoImport"><span v-if="ingest.busy" class="spin"></span>AI OCR 识别并导入</button><button class="btn subtle" :disabled="ingest.busy || ingest.local.busy || !ingest.photoDataUrl" @click="photoToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>本地 OCR 存为教材（不调用 AI）</button></div>
-          <div class="hint" v-if="ingest.local.busy || ingest.local.prog">{{ ingest.local.prog || '处理中…' }}</div>
-          <img v-if="ingest.photoUrl" :src="ingest.photoUrl" style="max-width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line)" />
-        </div>
+      <template v-if="ingest.tab==='manual'">
+        <details class="card" style="margin-bottom:14px" :open="!!ingest.photoUrl">
+          <summary style="cursor:pointer;font-weight:600">📷 拍照 / 选图，AI 识别填入题干（可选）</summary>
+          <div style="margin-top:12px">
+            <label class="btn subtle" style="cursor:pointer">拍摄 / 选择照片
+              <input type="file" accept="image/*" capture="environment" @change="onPhotoFile" style="display:none" />
+            </label>
+            <span class="hint" style="display:inline-block;margin-left:10px">识别结果自动填进下面的题干，可再手动订正后保存</span>
+            <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><button class="btn" :disabled="ingest.busy || !ingest.photoDataUrl" @click="aiPhotoImport"><span v-if="ingest.busy" class="spin"></span>AI 识图并导入</button></div>
+            <img v-if="ingest.photoUrl" :src="ingest.photoUrl" style="max-width:100%;margin-top:12px;border-radius:12px;border:1px solid var(--line)" />
+          </div>
+        </details>
         <div class="toolbar">
           <div class="field"><label>题型</label><select v-model="ingest.manual.type"><option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option></select></div>
           <div class="field"><label>难度</label><select v-model.number="ingest.manual.difficulty"><option v-for="n in [1,2,3,4,5]" :key="n" :value="n">{{ n }}</option></select></div>
@@ -73,7 +83,8 @@ const TPL_VIEW_INGEST = `
         <textarea v-model="ingest.manual.passage" style="min-height:80px;margin-bottom:10px" placeholder="可选：材料 / 阅读文本"></textarea>
         <textarea v-model="ingest.manual.stem" placeholder="题干。数学可用 $...$；代码可用 Markdown 代码块。"></textarea>
         <div v-if="ingest.manual.type==='single_choice'||ingest.manual.type==='multiple_choice'" style="margin-top:10px">
-          <div v-for="o in ingest.manual.options" :key="o.key" class="row" style="margin-bottom:8px"><span class="chip">{{ o.key }}</span><input class="inp" style="flex:1" v-model="o.text" :placeholder="'选项 '+o.key" /></div>
+          <div v-for="(o,oi) in ingest.manual.options" :key="o.key" class="row" style="margin-bottom:8px"><span class="chip">{{ o.key }}</span><input class="inp" style="flex:1" v-model="o.text" :placeholder="'选项 '+o.key" /><button class="bk-del-min" @click="delManualOption(oi)" title="删除该选项" v-if="ingest.manual.options.length>2">✕</button></div>
+          <button class="btn subtle xs" @click="addManualOption" v-if="ingest.manual.options.length<8">+ 选项</button>
         </div>
         <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.answer" placeholder="答案：单选填 A；多选填 A,C；判断填 T 或 F；填空每行一个；主观题填写参考答案" />
         <textarea v-model="ingest.manual.analysis" style="min-height:90px;margin-top:10px" placeholder="解析 / 分析（可选）"></textarea>
@@ -100,20 +111,19 @@ const TPL_VIEW_INGEST = `
           <input type="file" accept="application/pdf,.pdf" @change="onPdfFile" style="display:none" />
         </label>
         <span v-if="ingest.pdf.pages" class="muted" style="margin-left:10px">已加载，{{ ingest.pdf.pages }} 页</span>
-        <div class="hint">扫描版选 OCR 引擎：中转站视觉模型最准（计费）；Scribe / tesseract 免费本地但公式弱；Workers AI 走免费额度（每天约 {{ cfocr.limit }} 页）。公式输出 LaTeX。先拿 1–3 页试效果。</div>
+        <div class="hint">文字版 PDF 直接读文字层免费；扫描版勾「OCR」后选引擎——中转站视觉模型最准（计费），Workers AI 走每日免费额度（约 {{ cfocr.limit }} 页）。公式输出 LaTeX。先拿 1–3 页试效果。</div>
         <div class="toolbar" style="margin-top:12px" v-if="ingest.pdf.pages">
           <div class="field"><label>开始页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.start" /></div>
           <div class="field"><label>结束页</label><input class="inp" type="number" min="1" :max="ingest.pdf.pages" v-model.number="ingest.pdf.end" /></div>
           <div class="field"><label>清晰度</label><input class="inp" type="number" step="0.1" min="1" max="2.5" v-model.number="ingest.pdf.scale" /></div>
         </div>
         <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px" v-if="ingest.pdf.pages">
-          <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfExtractText"><span v-if="ingest.pdf.busy" class="spin"></span>本地提取文本</button>
           <button class="btn" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfByImages"><span v-if="ingest.pdf.busy" class="spin"></span>AI OCR 当前页范围并导入（题库）</button>
           <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfToMaterialLocal"><span v-if="ingest.local.busy" class="spin"></span>当前页范围转教材存入 Books（不调用 AI）</button>
           <button class="btn subtle" :disabled="ingest.pdf.busy || ingest.local.busy" @click="pdfAllToMaterialLocal">全部页转教材（共 {{ ingest.pdf.pages }} 页）</button>
           <button v-if="ingest.local.busy" class="btn subtle" @click="ingest.local.stop=true">停止</button>
           <label class="row" style="height:40px;cursor:pointer;gap:6px"><input type="checkbox" v-model="ingest.local.ocr" /> <span class="muted">扫描页用本地 OCR</span></label>
-          <div class="field" v-if="ingest.local.ocr" style="margin:0"><label>OCR 引擎</label><select v-model="ingest.local.engine" @change="ingest.local.engine==='cfai' && loadCfUsage()"><option value="relay" :disabled="!ai.hasAI && !ocrCfg.key && !(explainCfg.base && explainCfg.key)">中转站·你的视觉模型（最准）</option><option value="scribe">Scribe.js（免费·较慢）</option><option value="tesseract">tesseract（免费·一般）</option><option value="cfai" :disabled="!ai.hasCfAI">Workers AI（免费额度{{ ai.hasCfAI?'':'·未绑定' }}）</option></select></div>
+          <div class="field" v-if="ingest.local.ocr" style="margin:0"><label>OCR 引擎</label><select v-model="ingest.local.engine" @change="ingest.local.engine==='cfai' && loadCfUsage()"><option value="relay" :disabled="!ai.hasAI && !ocrCfg.key && !(explainCfg.base && explainCfg.key)">中转站·你的视觉模型（最准）</option><option value="cfai" :disabled="!ai.hasCfAI">Workers AI（免费额度{{ ai.hasCfAI?'':'·未绑定' }}）</option></select></div>
           <template v-if="ingest.local.ocr && ingest.local.engine==='relay'">
             <div class="field" style="margin:0;min-width:260px"><label>视觉模型（须支持看图，如 gpt-4o / qwen-vl-max / gemini-1.5-pro）</label><input class="inp" v-model="ocrCfg.model" @change="saveOcrCfg" placeholder="留空用服务端 AI_VISION_MODEL" /></div>
             <details style="flex-basis:100%;margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:13px">高级：自定义 Base URL / API Key（可选）</summary>
@@ -156,19 +166,6 @@ const TPL_VIEW_INGEST = `
           <div class="bar accent"><span :style="{width:(ingest.pdf.total ? Math.round(ingest.pdf.done/ingest.pdf.total*100) : 0)+'%'}"></span></div>
           <div class="hint" style="margin-top:10px"><span v-if="ingest.pdf.busy" class="spin"></span> {{ ingest.pdf.prog || '等待开始' }} · {{ ingest.pdf.done }}/{{ ingest.pdf.total || 0 }} 页 · 已导入 {{ ingest.pdf.inserted }} 题</div>
         </div>
-        <textarea v-if="ingest.pdf.extracted" class="code" style="margin-top:10px" v-model="ingest.pdf.extracted" placeholder="提取出的 PDF 文本会显示在这里"></textarea><div class="hint" style="margin-top:10px">文字 PDF：复制文本给「AI 整理」；扫描版：直接「AI OCR 当前页范围」。</div>
-      </template>
-      <template v-else-if="ingest.tab==='md'">
-        <label class="btn subtle" style="cursor:pointer">选择 Markdown 文件（可多选）
-          <input type="file" accept=".md,.markdown,text/markdown" multiple @change="onMdFiles" style="display:none" />
-        </label>
-        <span v-if="ingest.mdFiles.length" class="muted" style="margin-left:10px">已选 {{ ingest.mdFiles.length }} 个文件</span>
-        <div class="hint">选入本地转好的章节 Markdown，按「## 第 N 页」自动拆页进 Books——免费、文本干净。</div>
-        <div class="hint">书名取上方「教材名称」，多文件按页码并成一本。引用 <code>public/textbooks-pages/…</code> 的原图需随部署放进 <code>public/</code>。</div>
-        <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
-          <button class="btn" :disabled="ingest.local.busy || !ingest.mdFiles.length" @click="importMarkdown"><span v-if="ingest.local.busy" class="spin"></span>导入到 Books</button>
-        </div>
-        <div class="hint" v-if="ingest.local.busy || ingest.local.prog">{{ ingest.local.prog || '处理中…' }} · {{ ingest.local.done }}/{{ ingest.local.total || 0 }}</div>
       </template>
       <template v-else-if="ingest.tab==='mineru'">
         <label class="btn subtle" style="cursor:pointer">选择 PDF<input type="file" accept="application/pdf,.pdf" @change="onMineruFile" style="display:none" /></label>
@@ -196,6 +193,10 @@ const TPL_VIEW_INGEST = `
         <div class="muted">题目 {{ ingest.result.inserted_questions ?? ingest.result.inserted ?? 0 }} 道<span v-if="ingest.result.inserted_materials"> · 教材 {{ ingest.result.inserted_materials }} 段（已进「教材阅读」）</span></div>
         <div v-for="(s,i) in ingest.result.sample" :key="i" class="muted">· [{{ subjName(s.subject) }} / {{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
         <div v-for="(s,i) in (ingest.result.material_sample||[])" :key="'m'+i" class="muted">· [{{ subjName(s.subject) }} / 教材] {{ s.title }}</div>
+        <div v-if="ingest.result.answer_warns && ingest.result.answer_warns.length" style="margin-top:8px;color:var(--bad);font-size:12.5px">
+          <div style="font-weight:600">⚠ 答案疑点（已入库，建议到题库核对）：</div>
+          <div v-for="(w,i) in ingest.result.answer_warns" :key="'w'+i">· {{ w }}</div>
+        </div>
       </div>
     </div>
 `;

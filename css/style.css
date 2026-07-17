@@ -677,3 +677,9 @@ a{color:var(--accent)}
 /* 删除按钮弱化（复习流里的高危操作降到最低视觉权重，避免误点） */
 .bk-del-min{border:none;background:none;color:var(--ink-soft);font-size:12px;cursor:pointer;padding:4px 6px;opacity:.55;transition:.15s}
 .bk-del-min:hover{color:var(--bad);opacity:1}
+
+/* 导入页 tab 分组（免费 / 耗 AI 两组，降低认知负担） */
+.ing-tabs{display:flex;flex-wrap:wrap;gap:16px 24px;align-items:flex-end;margin-bottom:16px}
+.ing-group{display:flex;flex-direction:column;gap:5px}
+.ing-glabel{font-size:11px;font-weight:600;color:var(--ink-soft);letter-spacing:.04em;padding-left:2px}
+@media (max-width:640px){ .ing-tabs{gap:12px} .ing-group .seg{max-width:100%;overflow-x:auto} }

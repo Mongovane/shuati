@@ -17,6 +17,36 @@ export function stableQid(subject, stem) {
   return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
 }
 
+// —— 按题型规范化 + 校验答案 ——
+// 返回 { answer:[...], warn:'...'|null }。策略保守：能修的修（大写/去重/限定选项内），
+// 修不了的（如多选只给 1 个、答案不在选项里）保留原值但给出 warn，交由前端提示，不静默吞掉错题。
+export function normalizeAnswer(type, rawAnswer, options) {
+  const arr = Array.isArray(rawAnswer) ? rawAnswer : (rawAnswer != null && rawAnswer !== '' ? [rawAnswer] : []);
+  const optKeys = (Array.isArray(options) ? options : []).map((o) => String(o && o.key || '').trim().toUpperCase()).filter(Boolean);
+  if (type === 'single_choice' || type === 'multiple_choice') {
+    let keys = [...new Set(arr.map((x) => String(x).trim().toUpperCase()).filter(Boolean))];
+    let warn = null;
+    if (optKeys.length) {
+      const bad = keys.filter((k) => !optKeys.includes(k));
+      if (bad.length) warn = `答案 ${bad.join('/')} 不在选项内`;
+      const inRange = keys.filter((k) => optKeys.includes(k));
+      if (inRange.length) keys = inRange;   // 有合法项就只留合法项；全不合法则保留原值供人工检查
+    }
+    if (!keys.length) warn = warn || '缺少答案';
+    else if (type === 'single_choice' && keys.length > 1) { warn = '单选题有多个答案，已取第一个'; keys = [keys[0]]; }
+    else if (type === 'multiple_choice' && keys.length < 2) warn = warn || '多选题只有一个答案';
+    return { answer: keys, warn };
+  }
+  if (type === 'true_false') {
+    const v = String(arr[0] != null ? arr[0] : '').trim();
+    if (!v) return { answer: [], warn: '缺少答案' };
+    return { answer: [/^(t|true|对|正确|是|√|1)$/i.test(v) ? 'T' : 'F'], warn: null };
+  }
+  // 填空 / 主观 / 代码：去空白空项，不强改
+  const kept = arr.map((x) => String(x).trim()).filter(Boolean);
+  return { answer: kept, warn: kept.length ? null : '缺少参考答案' };
+}
+
 // —— 结构特征判科目（代码语法 / 数学 TeX 符号 / 英文占比）——
 export function structuralSubject(s) {
   if (/#include|void\s+main|int\s+main|printf\s*\(|scanf\s*\(|cout\s*<<|cin\s*>>|System\.out|public\s+(class|static|void)|def\s+\w+\s*\(|console\.log|malloc|struct\s+\w+|for\s*\([^;]*;|while\s*\(/.test(s)) return 'computer';
@@ -111,6 +141,7 @@ export async function onRequestPost({ request, env }) {
 
   // —— 校验 + 入库：题目 ——
   const cleanedQ = [];
+  const answerWarns = [];
   for (const q of questions) {
     if (!q || !q.stem) continue;
     const type = VALID_TYPES.includes(q.type) ? q.type : 'single_choice';
@@ -124,6 +155,9 @@ export async function onRequestPost({ request, env }) {
       subj = guessed || (validCodes.has(q.subject) ? q.subject : subject);
     }
     const id = (q.id && String(q.id).trim()) || `${subj}-${stableQid(subj, q.stem)}`;
+    const optArr = Array.isArray(q.options) ? q.options : [];
+    const na = normalizeAnswer(type, q.answer, optArr);
+    if (na.warn) answerWarns.push(`「${String(q.stem).slice(0, 24)}…」${na.warn}`);
     cleanedQ.push({
       id,
       subject: subj,
@@ -134,8 +168,8 @@ export async function onRequestPost({ request, env }) {
       page: Number.isInteger(q.page) ? q.page : (Number.isInteger(q._page) ? q._page : null),
       passage: (q.passage || '').trim() || null,
       stem: String(q.stem),
-      options: JSON.stringify(Array.isArray(q.options) ? q.options : []),
-      answer: JSON.stringify(Array.isArray(q.answer) ? q.answer : (q.answer != null ? [q.answer] : [])),
+      options: JSON.stringify(optArr),
+      answer: JSON.stringify(na.answer),
       analysis: (q.analysis || '').trim() || null,
       tags: JSON.stringify(Array.isArray(q.tags) ? q.tags : []),
       status: trusted ? null : 'draft',   // AI 整理的先进「待审核」，人工过目再发布；JSON 直导视为已校对
@@ -215,6 +249,7 @@ export async function onRequestPost({ request, env }) {
     inserted_questions: cleanedQ.length,
     inserted_materials: cleanedM.length,
     inserted_drafts: cleanedQ.filter((q) => q.status === 'draft').length,   // 其中进「待审核」的数量（AI 整理路径）
+    answer_warns: answerWarns.slice(0, 8),   // 答案疑点（不在选项内/单选多答/多选单答等），前端提示，不阻断入库
     sample: cleanedQ.slice(0, 3).map((q) => ({ subject: q.subject, type: q.type, stem: q.stem.slice(0, 60) })),
     material_sample: cleanedM.slice(0, 3).map((m) => ({ subject: m.subject, title: m.title })),
   });
