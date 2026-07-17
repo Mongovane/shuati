@@ -131,13 +131,8 @@ const TPL_VIEW_BOOKS = `
                 <div class="ttl">{{ pageLabel(currentPageMat) }}</div>
                 <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
               </div>
-              <div class="bk-nav">
-                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-              </div>
               <button v-if="readerCanAi" class="bk-toctoggle" @click="bookAskAI" title="就本篇内容问 AI">✨ 问 AI</button>
               <button class="bk-toctoggle" @click="readerOpen" title="全屏沉浸阅读：可调字号、行距、主题，点两侧翻篇">📖 沉浸阅读</button>
-              <input class="bk-jump inp" type="number" min="1" @keyup.enter="bookJumpPage($event.target.value)" placeholder="跳页" title="输入页码回车跳转" />
               <button class="btn subtle" @click="currentBookId=''" style="flex:none">关闭</button>
             </div>
             <div class="bk-body">
@@ -157,11 +152,13 @@ const TPL_VIEW_BOOKS = `
                 <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
               </div>
-              <select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改本书科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-              <button class="btn" :disabled="bookExtract.busy" @click="localExtractPage" title="用规则解析本页现成的习题+解答，直接入题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>本页抽题入库（不花 AI）</button>
-              <button class="btn subtle" :disabled="bookExtract.busy" @click="localExtractBook" title="把整本书的习题一次性抽进题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>整本抽题入库</button>
-              <button v-if="!genq.busy" class="btn subtle" :disabled="!(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）">AI 出题</button>
-              <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
+              <label class="bk-subjpick"><span>本书科目</span><select class="bk-mini" :value="currentPageMat.subject" @change="setBookSubject($event.target.value)" title="修改整本书归属的科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></label>
+              <div class="bk-foot-ops">
+                <button class="btn" :disabled="bookExtract.busy" @click="localExtractPage" title="用规则解析本页现成的习题+解答，直接入题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>本页抽题入库（不花 AI）</button>
+                <button class="btn subtle" :disabled="bookExtract.busy" @click="localExtractBook" title="把整本书的习题一次性抽进题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>整本抽题入库</button>
+                <button v-if="!genq.busy" class="btn subtle" :disabled="!(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）">✨ AI 出题</button>
+                <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
+              </div>
               <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
               <button class="bk-del" style="margin-left:auto" @click="deleteCurrentBook">删除本书</button>
             </div>
