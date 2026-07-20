@@ -21,5 +21,5 @@ const TPL_SHELL_OPEN = `
 
   <div v-if="offline" class="offline-bar">离线模式 · 显示已缓存内容，作答将在联网后自动同步<span v-if="offlineQueued>0">（待同步 {{ offlineQueued }} 条）</span></div>
 
-  <div class="wrap">
+  <div class="wrap" :class="{'has-bottombar':hasBottomBar}">
 `;
