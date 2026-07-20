@@ -160,10 +160,6 @@ const TPL_VIEW_BOOKS = `
               </template>
             </div>
             <div class="bk-foot">
-              <div class="bk-nav">
-                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
-              </div>
               <div class="bk-foot-ops">
                 <button class="btn" :disabled="bookExtract.busy" @click="localExtractPage" title="用规则解析本页现成的习题+解答，直接入题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>本页抽题入库（不花 AI）</button>
                 <button class="btn subtle" :disabled="bookExtract.busy" @click="localExtractBook" title="把整本书的习题一次性抽进题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>整本抽题入库</button>
@@ -171,6 +167,10 @@ const TPL_VIEW_BOOKS = `
                 <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
               </div>
               <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
+              <div class="bk-nav">
+                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
+                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
+              </div>
             </div>
           </div>
         </div>

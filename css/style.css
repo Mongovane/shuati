@@ -272,9 +272,7 @@ a{color:var(--accent)}
 .bk-foot{align-items:center}
 .bk-foot-ops{display:inline-flex;gap:8px;flex-wrap:wrap}
 .bk-foot>.btn,.bk-foot-ops>.btn{white-space:nowrap;height:38px;display:inline-flex;align-items:center;justify-content:center}
-.bk-foot .bk-del{margin-left:auto}
-.bk-foot .bk-nav{order:5}
-.bk-foot .bk-del{order:4}
+.bk-foot .bk-nav{margin-left:auto}   /* 翻页组靠右 */
 /* —— 移动端 Books 阅读器：顶栏标题独占首行，操作按钮整齐分行、触摸友好 —— */
 @media(max-width:600px){
   .bk-bar{padding:12px 14px;gap:8px 10px}
@@ -283,12 +281,11 @@ a{color:var(--accent)}
   .bk-bar .bk-nav{display:none}          /* 顶栏翻页在手机上与底栏重复，隐藏，避免被挤成竖排 */
   .bk-bar .bk-toctoggle{height:40px;flex:1;justify-content:center}
   .bk-foot{padding:14px;gap:10px}
-  .bk-foot .bk-nav{flex-basis:100%;order:0}
+  .bk-foot .bk-nav{flex-basis:100%;order:-1;margin-left:0}
   .bk-foot .bk-nav button{flex:1;height:42px}
   .bk-foot-ops{flex-basis:100%;margin-left:0;display:flex;flex-wrap:wrap;gap:8px}
   .bk-foot-ops>.btn:first-child{flex-basis:100%;height:44px}   /* 本页抽题：主操作独占一行 */
   .bk-foot-ops>.btn:not(:first-child){flex:1;min-width:0;height:42px;font-size:13px}   /* 整本抽题/AI出题：横向平分 */
-  .bk-foot .bk-del{flex-basis:100%;margin-left:0 !important;text-align:center;order:9}
 }
 @media(max-width:600px){.bk-body{padding:18px 16px 22px}.bk-body .rich{font-size:15px;line-height:1.85}}
 /* —— 沉浸式阅读（番茄/七猫风格：可调字号、阅读主题、点击/滑动翻篇）—— */
@@ -746,7 +743,7 @@ a{color:var(--accent)}
 
 /* 书架卡片删除按钮（右上角，hover 显现） */
 .bk-card{position:relative}
-.bk-card-del{position:absolute;top:8px;right:8px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:7px;font-size:13px;opacity:0;transition:opacity .15s,background .15s;color:var(--ink-soft)}
+.bk-card-del{position:absolute;bottom:10px;right:10px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;font-size:14px;opacity:0;transition:opacity .15s,background .15s;color:var(--ink-soft)}
 .bk-card:hover .bk-card-del{opacity:.7}
 .bk-card-del:hover{opacity:1 !important;background:rgba(220,53,69,.12);color:#dc3545}
 @media(max-width:768px){ .bk-card-del{opacity:.55} }   /* 触摸设备无 hover，常显 */
