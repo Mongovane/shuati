@@ -4,35 +4,36 @@
    - CDN 静态资源（Vue / marked / highlight.js / KaTeX 的 CSS·JS·字体）：缓存优先 → 只下一次，之后离线可用
    - /api/*：始终走网络（题目/统计等动态数据、带鉴权，不缓存）
    改了应用文件想强制刷新预缓存时，把下面 VERSION 加一即可（联网时其实已自动拿最新）。 */
-const VERSION = 'v77';
+const VERSION = 'v82';
 const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
   './', './index.html', './manifest.json',
-  './css/style.css?v=77',
-  './js/constants.js?v=77',
-  './js/components/rich-text.js?v=77',
-  './js/components/question-card.js?v=77',
-  './js/api.js?v=77',
-  './js/components/reader.js?v=77',
-  './js/views/practice.js?v=77',
-  './js/views/bank.js?v=77',
-  './js/views/mock-stats.js?v=77',
-  './js/views/ingest.js?v=77',
-  './js/views/mineru.js?v=77',
-  './js/views/books.js?v=77',
-  './js/views/settings.js?v=77',
-  './js/tpl/shell-open.js?v=77',
-  './js/tpl/view-practice.js?v=77',
-  './js/tpl/view-books.js?v=77',
-  './js/tpl/view-mock.js?v=77',
-  './js/tpl/view-bank.js?v=77',
-  './js/tpl/view-stats.js?v=77',
-  './js/tpl/view-ingest.js?v=77',
-  './js/tpl/view-settings.js?v=77',
-  './js/tpl/shell-close.js?v=77',
-  './js/app-template.js?v=77',
-  './js/app.js?v=77',
+  './css/style.css?v=82',
+  './js/constants.js?v=82',
+  './js/components/rich-text.js?v=82',
+  './js/components/question-card.js?v=82',
+  './js/api.js?v=82',
+  './js/components/reader.js?v=82',
+  './js/views/practice.js?v=82',
+  './js/views/bank.js?v=82',
+  './js/views/saved.js?v=82',
+  './js/views/mock-stats.js?v=82',
+  './js/views/ingest.js?v=82',
+  './js/views/mineru.js?v=82',
+  './js/views/books.js?v=82',
+  './js/views/settings.js?v=82',
+  './js/tpl/shell-open.js?v=82',
+  './js/tpl/view-practice.js?v=82',
+  './js/tpl/view-books.js?v=82',
+  './js/tpl/view-mock.js?v=82',
+  './js/tpl/view-bank.js?v=82',
+  './js/tpl/view-stats.js?v=82',
+  './js/tpl/view-ingest.js?v=82',
+  './js/tpl/view-settings.js?v=82',
+  './js/tpl/shell-close.js?v=82',
+  './js/app-template.js?v=82',
+  './js/app.js?v=82',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 

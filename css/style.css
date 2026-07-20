@@ -743,3 +743,23 @@ a{color:var(--accent)}
 @media(max-width:768px){
   .fab-top.above-bar{bottom:calc(80px + env(safe-area-inset-bottom,0px))}
 }
+
+/* 书架卡片删除按钮（右上角，hover 显现） */
+.bk-card{position:relative}
+.bk-card-del{position:absolute;top:8px;right:8px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:7px;font-size:13px;opacity:0;transition:opacity .15s,background .15s;color:var(--ink-soft)}
+.bk-card:hover .bk-card-del{opacity:.7}
+.bk-card-del:hover{opacity:1 !important;background:rgba(220,53,69,.12);color:#dc3545}
+@media(max-width:768px){ .bk-card-del{opacity:.55} }   /* 触摸设备无 hover，常显 */
+
+/* 继续阅读入口卡 */
+.bk-continue{display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:20px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,var(--surface)),var(--surface));border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:14px;cursor:pointer;transition:transform .16s,box-shadow .16s}
+.bk-continue:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.1)}
+.bkc-ic{font-size:26px;flex:none}
+.bkc-main{flex:1;min-width:0}
+.bkc-label{font-size:12px;color:var(--accent);font-weight:600}
+.bkc-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:2px 0}
+.bkc-pct{font-size:12px}
+.bkc-go{font-size:26px;color:var(--ink-soft);flex:none}
+
+/* 书架搜索框 */
+.bk-search{width:100%;max-width:360px;margin-bottom:18px;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}

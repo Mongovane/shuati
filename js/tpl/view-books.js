@@ -95,6 +95,16 @@ const TPL_VIEW_BOOKS = `
         </div>
       </template>
       <template v-else>
+        <div v-if="lastReadBook && !currentBookId" class="bk-continue" @click="currentBookId=lastReadBook.key">
+          <div class="bkc-ic">📖</div>
+          <div class="bkc-main">
+            <div class="bkc-label">继续阅读</div>
+            <div class="bkc-title">{{ lastReadBook.title }}</div>
+            <div class="bkc-pct muted">{{ bookReadPct(lastReadBook) }}</div>
+          </div>
+          <div class="bkc-go">›</div>
+        </div>
+        <input v-if="booksTotalCount>=3 && !currentBookId" class="bk-search inp" v-model="bookSearch" placeholder="🔍 搜索书名…" />
         <template v-for="(list,sub) in booksBySubject" :key="sub">
           <div v-if="list.length" class="bk-shelf">
             <div class="bk-shelf-label fold-head" @click="bookFold[sub]=!bookFold[sub]"><span>{{ subjName(sub)==='other'? '其他' : subjName(sub) }} <span class="muted" style="font-weight:400;font-size:12px">{{ list.length }} 本</span></span><span class="fold-arrow" :class="{open:!bookFold[sub]}">▾</span></div>
@@ -103,14 +113,16 @@ const TPL_VIEW_BOOKS = `
                 <button class="bk-card" :class="{on:currentBookId===b.key}" @click="currentBookId=b.key">
                   <span v-if="bookReadPct(b)" class="bk-pct">{{ bookReadPct(b) }}</span>
                   <span class="spine"></span>
-                  <span class="t">{{ b.title }}</span>
+                  <span class="t" :title="b.title">{{ b.title }}</span>
                   <span class="m">{{ b.pages.length }} 页</span>
+                  <span class="bk-card-del" @click.stop="deleteBook(b)" title="删除本书">🗑</span>
                 </button>
                 <select class="bk-card-subj" :value="sub" @change="setBookSubjectByKey(b, $event.target.value)" @click.stop title="修改本书所属科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
               </div>
             </div>
           </div>
         </template>
+        <div v-if="bookSearchEmpty" class="empty"><p class="muted">没有匹配「{{ bookSearch }}」的书</p></div>
         <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen,'toc-open':bookTocOpen}">
           <aside class="bk-toc">
             <h4>目录 <span class="muted">{{ bookOutline.length ? bookOutline.length+' 章节' : currentBook.pages.length+' 篇' }}</span><button class="toc-close" @click="bookTocOpen=false" title="关闭">✕</button></h4>
@@ -159,7 +171,6 @@ const TPL_VIEW_BOOKS = `
                 <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
               </div>
               <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
-              <button class="bk-del" style="margin-left:auto" @click="deleteCurrentBook">删除本书</button>
             </div>
           </div>
         </div>

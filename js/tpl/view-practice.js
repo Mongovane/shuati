@@ -28,6 +28,11 @@ const TPL_VIEW_PRACTICE = `
             <option value="wrong">仅错题</option>
             <option value="favorite">仅收藏</option>
           </select></div>
+        <div class="field" v-if="view==='wrong'"><label>范围</label>
+          <select v-model="reviewScope" @change="onFilter">
+            <option value="due">今日到期（SRS）</option>
+            <option value="all">全部错题</option>
+          </select></div>
         <div class="field" v-if="view!=='wrong'"><label>顺序</label>
           <select v-model="f.order" @change="onFilter">
             <option value="random">随机</option>
@@ -36,7 +41,37 @@ const TPL_VIEW_PRACTICE = `
         <button class="btn subtle" @click="startSession" style="margin-left:auto">↻ 刷新</button>
       </div>
 
-      <div v-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
+      <!-- Saved 收藏清单模式 -->
+      <template v-if="view==='favorite' && fav.listMode">
+        <div v-if="fav.loading && !fav.items.length" class="empty"><span class="spin"></span> 加载中…</div>
+        <template v-else-if="fav.items.length">
+          <div class="bank-toolbar">
+            <label class="bank-check"><input type="checkbox" :checked="fav.items.length && fav.items.every(q=>fav.sel.includes(q.id))" @change="favAllOnPage" /> 全选本页</label>
+            <span class="muted">已选 {{ fav.sel.length }} · 共 {{ fav.total }} 收藏(已加载 {{ fav.items.length }})</span>
+            <button class="btn subtle" @click="favPractice" title="把收藏的题作为一轮练习逐题刷">▶ 开始刷这些收藏</button>
+            <button class="btn subtle" v-if="!fav.sel.length" @click="favExportSel" title="导出当前收藏为 JSON">⬇ 导出本页</button>
+            <template v-if="fav.sel.length">
+              <button class="btn subtle" @click="favExportSel" title="导出选中为 JSON">⬇ 导出 ({{ fav.sel.length }})</button>
+              <button class="bk-del" @click="favUnstarSel">取消收藏 ({{ fav.sel.length }})</button>
+            </template>
+          </div>
+          <div v-for="q in fav.items" :key="q.id" class="bank-row" :class="{sel:fav.sel.includes(q.id)}">
+            <input type="checkbox" class="bank-rowck" :checked="fav.sel.includes(q.id)" @change="favToggleSel(q.id)" />
+            <div class="bank-main">
+              <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span v-if="q.chapter" class="muted">{{ q.chapter }}</span></div>
+              <div class="bank-stem"><rich-text :content="q.stem || '（空题干）'" /></div>
+            </div>
+            <button class="bk-del-min" @click="favUnstarOne(q)" title="取消收藏" style="color:var(--accent)">★</button>
+          </div>
+          <div v-if="fav.items.length < fav.total" class="row" style="justify-content:center;margin-top:14px"><button class="btn subtle" :disabled="fav.loading" @click="favLoadMore"><span v-if="fav.loading" class="spin"></span>加载更多（{{ fav.items.length }}/{{ fav.total }}）</button></div>
+        </template>
+        <div v-else class="empty">
+          <div class="big">☆</div><p>暂无收藏题。刷题时点题目上的 ★ 可收藏。</p>
+          <div class="row" style="justify-content:center;margin-top:14px"><button class="btn" @click="go('practice')">去刷题</button></div>
+        </div>
+      </template>
+
+      <div v-else-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
       <template v-else>
         <div v-if="cur">
           <div v-if="reviewSession" class="review-banner">
@@ -45,8 +80,8 @@ const TPL_VIEW_PRACTICE = `
             <button class="btn subtle xs" @click="exitReviewSession">退出回顾</button>
           </div>
           <div class="row" style="margin-bottom:12px;align-items:center;gap:10px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
-            <span class="muted" v-if="view==='wrong' && !reviewSession">· 复习（最不熟优先）</span>
-            <span class="muted" v-if="view==='wrong' && !reviewSession && queueTotal">· 本范围待复习 {{ queueTotal }} 题</span>
+            <span class="muted" v-if="view==='wrong' && !reviewSession">· {{ reviewScope==='due' ? '今日到期（按到期先后）' : '全部错题（最不熟优先）' }}</span>
+            <span class="muted" v-if="view==='wrong' && !reviewSession && queueTotal">· {{ reviewScope==='due' ? '今日待复习 ' : '待复习共 ' }}{{ queueTotal }} 题</span>
             <span class="muted" v-if="view==='favorite'">· 收藏</span>
             <span v-if="curStatus" class="q-badge" :style="{color:curStatus.c,borderColor:curStatus.c}">{{ curStatus.t }}</span>
             <span v-if="view==='practice' && queueTotal" class="muted">· {{ f._mode==='unseen'?'未做剩 '+queueTotal:'本范围共 '+queueTotal }} 题</span>
@@ -93,8 +128,25 @@ const TPL_VIEW_PRACTICE = `
             </div>
           </template>
           <template v-else-if="view==='wrong'">
-            <div class="big">✓</div><p>暂无错题，做得不错。</p>
-            <div class="row" style="justify-content:center;margin-top:14px"><button class="btn" @click="go('practice')">去刷题</button></div>
+            <template v-if="reviewScope==='due'">
+              <div class="big">🎉</div>
+              <p>今日到期的复习已全部完成！</p>
+              <p class="muted" v-if="stats && stats.dueTomorrow">明日还有 <b style="color:var(--accent)">{{ stats.dueTomorrow }}</b> 题到期，明天见。</p>
+              <p class="muted" v-else-if="stats">明天暂无到期复习，保持住 👍</p>
+              <p class="muted" v-if="bestStreak">本次最高连对 {{ bestStreak }}</p>
+              <div class="row" style="justify-content:center;margin-top:16px;gap:8px;flex-wrap:wrap">
+                <button class="btn" v-if="statTotals.wrongOpen" @click="reviewScope='all'; startSession()">继续复习全部错题（{{ statTotals.wrongOpen }}）</button>
+                <button class="btn subtle" @click="go('practice')">去刷新题</button>
+                <button class="btn subtle" @click="go('stats')">查看统计</button>
+              </div>
+            </template>
+            <template v-else>
+              <div class="big">✓</div><p>{{ statTotals.wrongOpen ? '这个范围没有错题了。' : '暂无错题，做得不错。' }}</p>
+              <div class="row" style="justify-content:center;margin-top:14px;gap:8px;flex-wrap:wrap">
+                <button class="btn subtle" v-if="stats && stats.dueTomorrow" @click="reviewScope='due'; startSession()">看今日到期</button>
+                <button class="btn" @click="go('practice')">去刷题</button>
+              </div>
+            </template>
           </template>
           <template v-else-if="view==='favorite'">
             <div class="big">☆</div><p>暂无收藏题。刷题时点题目上的 ★ 可收藏。</p>

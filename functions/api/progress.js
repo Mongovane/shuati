@@ -74,7 +74,16 @@ export async function onRequestGet({ request, env }) {
       if (_pruneDay !== day) { _pruneDay = day; await env.DB.prepare(`DELETE FROM answer_log WHERE ts < unixepoch() - 86400 * 400`).run(); }
     } catch (_) {}
 
-    return json({ bySubject: bySubject.results, mocks: mocks.results, heat, dur });
+    // 明日到期数：现在~未来 24h 内到期、未掌握（今天做完后预告"明天还有多少"）
+    let dueTomorrow = 0;
+    try {
+      const r = await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM progress WHERE IFNULL(mastered,0)=0 AND due_at IS NOT NULL AND due_at > unixepoch() AND due_at <= unixepoch() + 86400`
+      ).first();
+      dueTomorrow = (r && r.n) || 0;
+    } catch (_) {}
+
+    return json({ bySubject: bySubject.results, mocks: mocks.results, heat, dur, dueTomorrow });
   } catch (e) {
     return json({ error: '统计失败：' + e.message }, 500);
   }

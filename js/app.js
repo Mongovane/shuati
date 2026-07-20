@@ -3,7 +3,7 @@ const APP_VER = 'v4.4';
 // 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
 let qCache = {};
 const App={
-  mixins: [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin, IngestMixin, MineruMixin, BooksMixin, SettingsMixin],
+  mixins: [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin, IngestMixin, MineruMixin, BooksMixin, SavedMixin, SettingsMixin],
   components:{ QuestionCard, RichText },
   data(){ return {
     token: localStorage.getItem('zb_token')||'',
@@ -11,7 +11,7 @@ const App={
     appName: localStorage.getItem('zb_appname')||'刷题文档',
     stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
     tokenInput:'', view:'practice',
-    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:false,
+    subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:false, bookSearch:'',
     f:{ subject:'all', chapter:'', type:'', order:'random', tag:'', _mode:'all' }, filterLock:false,
     reviewSession:null,  // 「回顾某次模考错题」独立会话：{title, count} —— 非空时 wrong 视图显示横幅、不被常规队列覆盖
     meta:{ subjects:[], chapters:[] },
@@ -57,15 +57,21 @@ const App={
     mockSaved:null,               // 未完成模考的快照（供「继续上次考试」横幅）
     restoring:false, restoreReplace:false,  // 备份恢复：进行中标记 / 覆盖式开关
     toast:null, toastTimer:null, showTop:false, segActive:false,
+    fav:{ items:[], total:0, loading:false, offset:0, limit:30, sel:[], listMode:true, loadedOnce:false }, favDirty:false,
+    reviewScope:'due',   // 错题页范围：due=今日到期(SRS) / all=全部错题
     exporting:false,
   }; },
   computed:{
     materialBooks(){ const map=new Map(); for(const m of (this.materials.items||[])){ const key=this.bookKeyOf(m); if(!map.has(key))map.set(key,{key,subject:m.subject,title:this.bookTitleOf(m),pages:[]}); map.get(key).pages.push(m); } const out=[]; for(const b of map.values()){ const byPage=new Map(); const noPage=[]; for(const m of b.pages){ const pg=Number(m.page)||0; if(pg>0){ const ex=byPage.get(pg); if(!ex||(m.created_at||0)>=(ex.created_at||0))byPage.set(pg,m); } else noPage.push(m); } let pages=[...byPage.values()].sort((a,b)=>(a.page||0)-(b.page||0)); pages=pages.concat(noPage.sort((a,b)=>(a.created_at||0)-(b.created_at||0))); b.pages=pages; b.subject=pages[0]?.subject||b.subject; out.push(b); } return out; },
-    booksBySubject(){ const groups={math:[],computer:[],politics:[],english:[],other:[]}; for(const b of this.materialBooks){ (groups[b.subject]||groups.other).push(b); } return groups; },
+    booksBySubject(){ const groups={math:[],computer:[],politics:[],english:[],other:[]}; const kw=(this.bookSearch||'').trim().toLowerCase(); for(const b of this.materialBooks){ if(kw && !String(b.title||'').toLowerCase().includes(kw))continue; (groups[b.subject]||groups.other).push(b); } return groups; },
+    booksTotalCount(){ return this.materialBooks.length; },
+    bookSearchEmpty(){ const kw=(this.bookSearch||'').trim().toLowerCase(); if(!kw||this.currentBookId)return false; return !this.materialBooks.some(b=>String(b.title||'').toLowerCase().includes(kw)); },
+    // 继续阅读：上次打开(zb_bookid)且仍存在、有阅读进度的书
+    lastReadBook(){ let id=''; try{ id=localStorage.getItem('zb_bookid')||''; }catch(_){ } if(!id)return null; const b=this.materialBooks.find(x=>x.key===id); if(!b)return null; let pos=0; try{ pos=parseInt(localStorage.getItem('zb_readpos:'+id),10)||0; }catch(_){ } if(pos<=0)return null; return b; },
     currentBook(){ if(!this.currentBookId)return null; return this.materialBooks.find(b=>b.key===this.currentBookId)||null; },
     currentPageMat(){ const b=this.currentBook; if(!b||!b.pages.length)return null; const i=Math.min(Math.max(0,this.bookIdx),b.pages.length-1); return b.pages[i]; },
     ocrModelName(){ return this.ai.visionModel || this.ai.model || '未读取模型'; },
-    sessionMode(){ if(this.view==='wrong')return'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
+    sessionMode(){ if(this.view==='wrong')return this.reviewScope==='due'?'due':'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
     chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
     mockChapters(){ const seen=new Set(); const out=[];
       for(const c of this.meta.chapters){ if(this.mock.subject!=='all'&&c.subject!==this.mock.subject)continue; if(!seen.has(c.chapter)){ seen.add(c.chapter); out.push(c.chapter); } }
@@ -217,12 +223,17 @@ _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catc
 onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
 go(v){
       const prev=this.view;
+      if(prev==='favorite' && v!=='favorite' && this.fav) this.fav.listMode=true;
       if(this.pdfv && this.pdfv.open && typeof this.pdfvClose==='function'){ this.pdfvClose(); }
       if(['practice','wrong','favorite'].includes(prev) && this.queue.length){
         qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
       }
       this.view=v;
-      if(['practice','wrong','favorite'].includes(v)){
+      if(v==='favorite' && this.fav.listMode){
+        if(!this.meta.subjects.length)this.loadMeta();
+        this.loading=false;
+        if(!this.fav.loadedOnce || this.favDirty){ this.favDirty=false; this.loadFav(true); }
+      } else if(['practice','wrong','favorite'].includes(v)){
         if(v==='practice'&&!this.meta.subjects.length)this.loadMeta();
         const c=qCache[v];
         if(this.sessionView===v && this.queue.length){
