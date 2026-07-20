@@ -56,12 +56,14 @@ const ReaderMixin = {
     readerTocShow(){ this.reader.tocOpen=true; this.$nextTick(()=>{ try{
       const box=document.querySelector('.r-toc .list'); const cur=box&&box.querySelector('.on');
       if(cur)cur.scrollIntoView({block:'center'}); }catch(_){ } }); },
-    readerOpen(){ if(!this.currentBook||!this.currentPageMat){ this.flash('请先选择一本书',true); return; } this.readerLoadCfg(); this.reader.barsHidden=false; this.reader.panel=false; this.reader.tocOpen=false; this.reader.open=true; try{ document.body.style.overflow='hidden'; }catch(_){ } this.$nextTick(()=>this.readerScrollTop()); },
-    readerClose(){ this.reader.open=false; this.reader.panel=false; this.reader.tocOpen=false; try{ document.body.style.overflow=''; }catch(_){ } },
+    readerOpen(){ if(!this.currentBook||!this.currentPageMat){ this.flash('请先选择一本书',true); return; } this.readerLoadCfg(); this.reader.barsHidden=false; this.reader.panel=false; this.reader.tocOpen=false; this.reader.open=true; this._readerBarColor(); try{ document.body.style.overflow='hidden'; }catch(_){ } this.$nextTick(()=>this.readerScrollTop()); },
+    readerClose(){ this.reader.open=false; this.reader.panel=false; this.reader.tocOpen=false; try{ document.body.style.overflow=''; }catch(_){ } if(typeof this.applyTheme==='function')this.applyTheme(); },
+    // 状态栏跟随阅读主题背景色（PWA black-translucent 下透出的就是它）
+    _readerBarColor(){ try{ const map={paper:'#f6f5f1',sepia:'#ecdcc0',green:'#cfe4cf',night:'#16161a'}; const c=map[this.reader.theme]||map.paper; const m=document.getElementById('theme-color-dynamic'); if(m)m.setAttribute('content',c); }catch(_){ } },
     readerScrollTop(){ const el=this.$refs.readerScroll; if(el)el.scrollTop=0; },
     readerFont(d){ this.reader.fontSize=Math.min(30,Math.max(15,this.reader.fontSize+d)); this.readerSaveCfg(); },
     readerSetGap(g){ this.reader.lineGap=g; this.readerSaveCfg(); },
-    readerSetTheme(t){ this.reader.theme=t; this.readerSaveCfg(); },
+    readerSetTheme(t){ this.reader.theme=t; this.readerSaveCfg(); this._readerBarColor(); },
     readerSetSerif(v){ this.reader.serif=!!v; this.readerSaveCfg(); },
     readerToggleBars(){ this.reader.barsHidden=!this.reader.barsHidden; if(this.reader.barsHidden)this.reader.panel=false; },
     readerSavePos(){ try{ const b=this.currentBook; if(b)localStorage.setItem('zb_readpos:'+b.key, String(this.bookIdx)); }catch(_){ } },

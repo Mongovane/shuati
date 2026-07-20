@@ -91,6 +91,8 @@ const App={
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
     hasBottomBar(){ return !!this.cur && ['practice','wrong','favorite'].includes(this.view); },
+    // 任何全屏浮层/弹窗/沉浸阅读打开时，回顶按钮应隐藏，避免遮挡浮层内的操作按钮
+    anyOverlayOpen(){ return !!(this.extractPreview&&this.extractPreview.open) || !!(this.bankEdit&&this.bankEdit.open) || !!(this.dup&&this.dup.open) || !!(this.reader&&this.reader.open) || !!(this.pdfv&&this.pdfv.open) || !!(this.rdAi&&this.rdAi.open) || !!(this.stealth&&this.stealth.hidden); },
     // 从当前书的「目录页」解析出「章节标题 → 页码」列表，供内嵌目录导航（像 PDF 书签那样可点跳转）
     // 目录页判定：pageLabel 或正文里出现「目录」，且含多处「…… 数字」页码引导。解析不出则返回 []（回退按篇列目录）
     bookOutline(){ const b=this.currentBook; if(!b||!b.pages||!b.pages.length)return [];
