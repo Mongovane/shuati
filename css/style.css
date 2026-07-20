@@ -60,7 +60,8 @@ textarea{width:100%;min-height:160px;padding:12px 14px;border-radius:12px;border
 textarea.code{font-family:var(--mono);font-size:13.5px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 22px 20px}
 .card img,.stem img,.rich img{max-width:100%;height:auto}
-.q-nav-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:16px}
+.q-nav-bar{position:fixed;bottom:0;left:0;right:0;margin:0;background:var(--bg);z-index:90;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 18px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.q-nav-bar>.btn{flex:0 0 auto}
 .q-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .chip{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-soft)}
 .chip.accent{background:var(--accent-soft);color:var(--accent)}
@@ -159,11 +160,10 @@ a{color:var(--accent)}
   textarea{min-height:120px;font-size:15px}
   .hint{font-size:12.5px}
 }
-/* 刷题「上一题/下一题」栏：所有手机+竖屏平板都固定贴底（≤820px），大屏才随内容流 */
-@media(max-width:820px){
-  .q-nav-bar{position:fixed;bottom:0;left:0;right:0;margin:0;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg);z-index:90}
-  .wrap.has-bottombar{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
-}
+/* 刷题固定底栏为内容预留空间 + 回顶按钮避让（全设备，仅刷题视图有 .has-bottombar） */
+.wrap.has-bottombar{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+/* 宽屏：底栏按钮与内容区(max 860)对齐居中，不贴到屏幕两端 */
+@media(min-width:900px){ .q-nav-bar{padding-left:calc((100vw - 824px)/2);padding-right:calc((100vw - 824px)/2)} }
 /* —— 教材阅读 Books 美化 —— */
 .bk-shelf{margin-bottom:20px}
 .bk-shelf-label{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--ink-soft);margin:0 0 10px;display:flex;align-items:center;gap:10px}
@@ -750,9 +750,7 @@ a{color:var(--accent)}
 .fab-top:active{transform:translateY(0)}
 @keyframes fabIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 [data-theme=dark] .fab-top{background:var(--surface-2)}
-@media(max-width:768px){
-  .fab-top.above-bar{bottom:calc(80px + env(safe-area-inset-bottom,0px))}
-}
+.fab-top.above-bar{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 
 /* 书架卡片删除按钮（右上角，hover 显现） */
 .bk-card{position:relative}
