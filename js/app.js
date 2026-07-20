@@ -59,14 +59,22 @@ const App={
     toast:null, toastTimer:null, showTop:false, segActive:false,
     fav:{ items:[], total:0, loading:false, offset:0, limit:30, sel:[], listMode:true, loadedOnce:false }, favDirty:false,
     reviewScope:'due',   // 错题页范围：due=今日到期(SRS) / all=全部错题
-    bookSubjPick:{ open:false, book:null },
+    bookSubjPick:{ open:false, book:null, custom:'' },
     exporting:false,
   }; },
   computed:{
     materialBooks(){ const map=new Map(); for(const m of (this.materials.items||[])){ const key=this.bookKeyOf(m); if(!map.has(key))map.set(key,{key,subject:m.subject,title:this.bookTitleOf(m),pages:[]}); map.get(key).pages.push(m); } const out=[]; for(const b of map.values()){ const byPage=new Map(); const noPage=[]; for(const m of b.pages){ const pg=Number(m.page)||0; if(pg>0){ const ex=byPage.get(pg); if(!ex||(m.created_at||0)>=(ex.created_at||0))byPage.set(pg,m); } else noPage.push(m); } let pages=[...byPage.values()].sort((a,b)=>(a.page||0)-(b.page||0)); pages=pages.concat(noPage.sort((a,b)=>(a.created_at||0)-(b.created_at||0))); b.pages=pages; b.subject=pages[0]?.subject||b.subject; out.push(b); } return out; },
-    booksBySubject(){ const groups={math:[],computer:[],politics:[],english:[],other:[]}; const kw=(this.bookSearch||'').trim().toLowerCase(); for(const b of this.materialBooks){ if(kw && !String(b.title||'').toLowerCase().includes(kw))continue; (groups[b.subject]||groups.other).push(b); } return groups; },
+    booksBySubject(){ const kw=(this.bookSearch||'').trim().toLowerCase();
+      const groups={}; const order=['math','computer','politics','english']; // 四科固定顺序在前
+      for(const k of order)groups[k]=[];
+      for(const b of this.materialBooks){ if(kw && !String(b.title||'').toLowerCase().includes(kw))continue; const k=b.subject||'other'; if(!groups[k])groups[k]=[]; groups[k].push(b); }
+      // 移除空的固定科目组（无书就不显示空组），保留有书的自定义组
+      const out={}; for(const k of Object.keys(groups)){ if(groups[k].length)out[k]=groups[k]; }
+      return out; },
     booksTotalCount(){ return this.materialBooks.length; },
     bookSearchEmpty(){ const kw=(this.bookSearch||'').trim().toLowerCase(); if(!kw||this.currentBookId)return false; return !this.materialBooks.some(b=>String(b.title||'').toLowerCase().includes(kw)); },
+    // 已存在的自定义分类（materials 里非四科的 subject 值），供分类弹窗快捷复用
+    customCategories(){ const fixed=new Set(['math','computer','politics','english']); const s=new Set(); for(const b of this.materialBooks){ const k=b.subject; if(k && !fixed.has(k))s.add(k); } return [...s]; },
     // 继续阅读：上次打开(zb_bookid)且仍存在、有阅读进度的书
     lastReadBook(){ let id=''; try{ id=localStorage.getItem('zb_bookid')||''; }catch(_){ } if(!id)return null; const b=this.materialBooks.find(x=>x.key===id); if(!b)return null; let pos=0; try{ pos=parseInt(localStorage.getItem('zb_readpos:'+id),10)||0; }catch(_){ } if(pos<=0)return null; return b; },
     currentBook(){ if(!this.currentBookId)return null; return this.materialBooks.find(b=>b.key===this.currentBookId)||null; },
@@ -142,7 +150,7 @@ const App={
     view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); },
     mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
     currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender(); },
-    bookIdx(){ this.genq.result=null; },
+    bookIdx(v){ this.genq.result=null; try{ if(this.currentBookId)localStorage.setItem('zb_readpos:'+this.currentBookId, String(v)); }catch(_){ } },
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
   methods:{
@@ -152,7 +160,7 @@ const App={
     cycleTheme(){ this.theme = this.theme==='light'?'dark':(this.theme==='dark'?'auto':'light'); this.flash({light:'浅色主题',dark:'深色主题',auto:'跟随系统'}[this.theme]); },
     onScroll(){ const y=window.pageYOffset||document.documentElement.scrollTop||0; const show=y>600; if(show!==this.showTop)this.showTop=show; },
     scrollTop(){ try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){ window.scrollTo(0,0); } },
-bookReadPct(b){ try{ const s=localStorage.getItem('zb_readpos:'+b.key); if(s==null)return ''; const i=parseInt(s,10)||0;
+bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } else { const s=localStorage.getItem('zb_readpos:'+b.key); if(s==null)return ''; i=parseInt(s,10)||0; }
       if(!b.pages||!b.pages.length||i<=0)return ''; const pct=Math.min(100,Math.round((i+1)/b.pages.length*100));
       return pct>=100?'读完':('读到 '+pct+'%'); }catch(_){ return ''; } },
     async aiFetch(body, signal, onDelta){

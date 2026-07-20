@@ -727,9 +727,13 @@ a{color:var(--accent)}
 .subj-pick-card{background:var(--surface);border-radius:16px;padding:20px;width:min(340px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .spk-title{font-weight:600;font-size:15px;margin-bottom:14px}
 .spk-opts{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
-.spk-opt{text-align:left;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px;cursor:pointer;transition:.15s}
+.spk-opt{text-align:left;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px;cursor:pointer;transition:.15s;outline:none}
+.spk-opt:focus,.spk-opt:focus-visible{outline:none;box-shadow:none}
 .spk-opt:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
 .spk-opt.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--surface));color:var(--accent);font-weight:600}
+.spk-custom{display:flex;gap:8px;margin:10px 0 4px}
+.spk-custom input{flex:1;min-width:0;height:42px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px}
+.spk-custom .btn{flex:none;height:42px}
 
 /* PDF 顶栏书名（精简后新增） + 桌面底栏翻页协调 */
 .pdfv-title{flex:1;min-width:0;font-weight:600;font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

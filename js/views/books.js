@@ -6,7 +6,7 @@ async setBookSubject(subj){ const b=this.currentBook; if(!b)return; await this._
 // 书架层级改科目：对任意一本书（不必打开）修改其所有页的科目
 async setBookSubjectByKey(book,subj){ if(!book||!subj)return; await this._setBookSubjectPages(book,subj); },
 // 从科目选择弹窗确认
-async pickBookSubject(subj){ const b=this.bookSubjPick.book; this.bookSubjPick.open=false; if(!b||!subj||b.subject===subj)return; await this._setBookSubjectPages(b,subj); },
+async pickBookSubject(subj){ const b=this.bookSubjPick.book; const val=String(subj||'').trim(); if(!val){ this.flash('请输入分类名',true); return; } this.bookSubjPick.open=false; this.bookSubjPick.custom=''; if(!b||b.subject===val)return; await this._setBookSubjectPages(b,val); },
 async _setBookSubjectPages(b,subj){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.materials.loading=true; try{ for(const m of b.pages){ await this.saveOneMaterial({id:m.id,subject:subj,title:m.title,source:m.source||null,page:m.page||null,page_image:m.page_image||null,content_md:m.content_md,summary:m.summary||'',tags:Array.isArray(m.tags)?m.tags:[]}); } this.flash('已将《'+b.title+'》归到「'+this.subjName(subj)+'」'); await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('修改科目失败：'+e.message,true); } this.materials.loading=false; },
 rewriteMdImages(s){ return String(s||'').replace(/\]\(\s*\.?\/?public\//g,'](/').replace(/\]\(\s*textbooks-pages\//g,'](/textbooks-pages/').replace(/(<img[^>]*\bsrc=["'])\.?\/?public\//g,'$1/'); },
 bookTitleOf(m){ const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t || this.bookKeyOf(m); },
