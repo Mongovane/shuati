@@ -136,7 +136,8 @@ const App={
   },
   methods:{
     applyTheme(){ const v=this.theme==='auto' ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light') : this.theme;
-      document.documentElement.dataset.theme=v; },
+      document.documentElement.dataset.theme=v;
+      try{ const m=document.getElementById('theme-color-dynamic'); if(m)m.setAttribute('content', v==='dark'?'#10141B':'#F5F6F2'); }catch(_){} },
     cycleTheme(){ this.theme = this.theme==='light'?'dark':(this.theme==='dark'?'auto':'light'); this.flash({light:'浅色主题',dark:'深色主题',auto:'跟随系统'}[this.theme]); },
 bookReadPct(b){ try{ const s=localStorage.getItem('zb_readpos:'+b.key); if(s==null)return ''; const i=parseInt(s,10)||0;
       if(!b.pages||!b.pages.length||i<=0)return ''; const pct=Math.min(100,Math.round((i+1)/b.pages.length*100));
