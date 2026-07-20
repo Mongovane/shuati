@@ -146,7 +146,7 @@ const TPL_SHELL_CLOSE = `
       </template>
     </div>
     <div v-if="toast" class="toast" :class="{err:toast.err}">{{ toast.msg }}</div>
-  <teleport to="body"><button v-show="showTop" class="fab-top" @click="scrollTop" title="回到顶部" aria-label="回到顶部">↑</button></teleport>
+  <teleport to="body"><button v-show="showTop" class="fab-top" :class="{'above-bar':hasBottomBar}" @click="scrollTop" title="回到顶部" aria-label="回到顶部">↑</button></teleport>
   <div v-if="stealth.hidden" class="stealth" @click="stealthShow">
     <div class="stealth-vane">Vane</div>
   </div>
