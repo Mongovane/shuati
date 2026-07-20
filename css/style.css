@@ -31,7 +31,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-
 button{font-family:inherit;cursor:pointer}
 input,select,textarea{font-family:inherit;font-size:15px}
 .topbar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.topbar-in{max-width:860px;margin:0 auto;padding:12px 18px;padding-top:calc(12px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:12px}
+.topbar-in{max-width:860px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:12px}
 .brand{display:flex;align-items:baseline;gap:9px;font-weight:700;letter-spacing:-.02em;font-size:18px}
 .brand .dot{width:9px;height:9px;border-radius:2px;background:var(--accent);transform:rotate(45deg);display:inline-block;position:relative;top:-1px}
 .brand small{font-weight:500;color:var(--ink-soft);font-size:12px;letter-spacing:0}
@@ -318,7 +318,7 @@ a{color:var(--accent)}
 .reader .rich .mathwrap{display:block;max-width:100%;overflow-x:auto;margin:6px 0}
 .reader .rich .figcap,.reader .rich figure.fig figcaption{text-align:center;font-size:13px;color:var(--rsoft)}
 .reader .r-top,.reader .r-bot{position:absolute;left:0;right:0;background:color-mix(in srgb,var(--rbg) 90%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);z-index:6;transition:transform .26s ease}
-.reader .r-top{top:0;display:flex;align-items:center;gap:8px;padding:11px 12px;padding-top:calc(11px + env(safe-area-inset-top,0px));border-bottom:1px solid var(--rline)}
+.reader .r-top{top:0;display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid var(--rline)}
 .reader .r-bot{bottom:0;padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--rline)}
 .reader.bars-hidden .r-top{transform:translateY(-100%)}
 .reader.bars-hidden .r-bot{transform:translateY(100%)}
@@ -426,7 +426,7 @@ a{color:var(--accent)}
 /* 手机端 PDF 全屏阅读 */
 @media(max-width:560px){
   .pdfv{position:fixed!important;inset:0!important;z-index:200;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;margin:0!important}
-  .pdfv .pdfv-bar{flex:none;padding:6px 10px;padding-top:calc(6px + env(safe-area-inset-top,0px));border-bottom:1px solid var(--line);background:var(--surface);gap:6px;flex-wrap:wrap;z-index:1;font-size:13px}
+  .pdfv .pdfv-bar{flex:none;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--surface);gap:6px;flex-wrap:wrap;z-index:1;font-size:13px}
   .pdfv .pdfv-bar .ttl{font-size:14px;max-width:45vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pdfv .pdfv-body{flex:1;overflow:hidden}
   .pdfv .pdfv-single{height:100%;overflow:auto;display:flex;align-items:center;justify-content:center;padding:0;-webkit-overflow-scrolling:touch}
