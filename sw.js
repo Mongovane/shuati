@@ -4,35 +4,35 @@
    - CDN 静态资源（Vue / marked / highlight.js / KaTeX 的 CSS·JS·字体）：缓存优先 → 只下一次，之后离线可用
    - /api/*：始终走网络（题目/统计等动态数据、带鉴权，不缓存）
    改了应用文件想强制刷新预缓存时，把下面 VERSION 加一即可（联网时其实已自动拿最新）。 */
-const VERSION = 'v72';
+const VERSION = 'v73';
 const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
   './', './index.html', './manifest.json',
-  './css/style.css?v=72',
-  './js/constants.js?v=72',
-  './js/components/rich-text.js?v=72',
-  './js/components/question-card.js?v=72',
-  './js/api.js?v=72',
-  './js/components/reader.js?v=72',
-  './js/views/practice.js?v=72',
-  './js/views/bank.js?v=72',
-  './js/views/mock-stats.js?v=72',
-  './js/views/ingest.js?v=72',
-  './js/views/mineru.js?v=72',
-  './js/views/books.js?v=72',
-  './js/views/settings.js?v=72',
-  './js/tpl/shell-open.js?v=72',
-  './js/tpl/view-practice.js?v=72',
-  './js/tpl/view-books.js?v=72',
-  './js/tpl/view-mock.js?v=72',
-  './js/tpl/view-bank.js?v=72',
-  './js/tpl/view-stats.js?v=72',
-  './js/tpl/view-ingest.js?v=72',
-  './js/tpl/view-settings.js?v=72',
-  './js/tpl/shell-close.js?v=72',
-  './js/app-template.js?v=72',
-  './js/app.js?v=72',
+  './css/style.css?v=73',
+  './js/constants.js?v=73',
+  './js/components/rich-text.js?v=73',
+  './js/components/question-card.js?v=73',
+  './js/api.js?v=73',
+  './js/components/reader.js?v=73',
+  './js/views/practice.js?v=73',
+  './js/views/bank.js?v=73',
+  './js/views/mock-stats.js?v=73',
+  './js/views/ingest.js?v=73',
+  './js/views/mineru.js?v=73',
+  './js/views/books.js?v=73',
+  './js/views/settings.js?v=73',
+  './js/tpl/shell-open.js?v=73',
+  './js/tpl/view-practice.js?v=73',
+  './js/tpl/view-books.js?v=73',
+  './js/tpl/view-mock.js?v=73',
+  './js/tpl/view-bank.js?v=73',
+  './js/tpl/view-stats.js?v=73',
+  './js/tpl/view-ingest.js?v=73',
+  './js/tpl/view-settings.js?v=73',
+  './js/tpl/shell-close.js?v=73',
+  './js/app-template.js?v=73',
+  './js/app.js?v=73',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 
