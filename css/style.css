@@ -27,7 +27,8 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overscroll-behavior-y:none}
-body{background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.6}
+html{background:var(--bg)}
+body{background:var(--bg);min-height:100vh;color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.6}
 button{font-family:inherit;cursor:pointer}
 input,select,textarea{font-family:inherit;font-size:15px}
 .topbar{position:relative;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
@@ -771,3 +772,11 @@ a{color:var(--accent)}
 
 /* 书架搜索框 */
 .bk-search{width:100%;max-width:360px;margin-bottom:18px;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+
+/* 设置面板拖拽排序 */
+.sett-card{width:100%}
+.sett-drag,.subj-drag{cursor:grab;color:var(--ink-soft);opacity:.5;font-size:13px;user-select:none;margin-right:2px}
+.sett-drag:active,.subj-drag:active{cursor:grabbing}
+.sett-card:hover .sett-drag{opacity:.8}
+.subj-edit[draggable=true]{cursor:default}
+.subj-edit .subj-drag{margin-right:6px}
