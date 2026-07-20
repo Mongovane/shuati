@@ -733,3 +733,10 @@ a{color:var(--accent)}
   .pdfv-foot{gap:18px}
   .pdfv-foot .pf-ic{width:auto;min-width:46px;padding:0 14px}
 }
+
+/* 回到顶部悬浮按钮（滚过一屏淡入） */
+.fab-top{position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:70;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:20px;line-height:1;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.16);display:flex;align-items:center;justify-content:center;transition:transform .16s,box-shadow .16s,opacity .2s;animation:fabIn .2s ease}
+.fab-top:hover{transform:translateY(-2px);box-shadow:0 6px 22px rgba(0,0,0,.22);border-color:var(--accent);color:var(--accent)}
+.fab-top:active{transform:translateY(0)}
+@keyframes fabIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+[data-theme=dark] .fab-top{background:var(--surface-2)}

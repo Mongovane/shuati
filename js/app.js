@@ -56,7 +56,7 @@ const App={
     qimgInline:false,   /* 插图：小图内嵌 dataURL */
     mockSaved:null,               // 未完成模考的快照（供「继续上次考试」横幅）
     restoring:false, restoreReplace:false,  // 备份恢复：进行中标记 / 覆盖式开关
-    toast:null, toastTimer:null,
+    toast:null, toastTimer:null, showTop:false,
     exporting:false,
   }; },
   computed:{
@@ -139,6 +139,8 @@ const App={
       document.documentElement.dataset.theme=v;
       try{ const m=document.getElementById('theme-color-dynamic'); if(m)m.setAttribute('content', v==='dark'?'#10141B':'#F5F6F2'); }catch(_){} },
     cycleTheme(){ this.theme = this.theme==='light'?'dark':(this.theme==='dark'?'auto':'light'); this.flash({light:'浅色主题',dark:'深色主题',auto:'跟随系统'}[this.theme]); },
+    onScroll(){ const y=window.pageYOffset||document.documentElement.scrollTop||0; const show=y>600; if(show!==this.showTop)this.showTop=show; },
+    scrollTop(){ try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){ window.scrollTo(0,0); } },
 bookReadPct(b){ try{ const s=localStorage.getItem('zb_readpos:'+b.key); if(s==null)return ''; const i=parseInt(s,10)||0;
       if(!b.pages||!b.pages.length||i<=0)return ''; const pct=Math.min(100,Math.round((i+1)/b.pages.length*100));
       return pct>=100?'读完':('读到 '+pct+'%'); }catch(_){ return ''; } },
@@ -283,6 +285,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
       this._mq.addEventListener?this._mq.addEventListener('change',this._mqFn):this._mq.addListener(this._mqFn); }catch(_){ }
     try{ const bp=JSON.parse(localStorage.getItem('zb_mock_bp')||'null'); if(bp&&Array.isArray(bp.rows)&&bp.rows.length)this.mock.bp={on:!!bp.on,rows:bp.rows.slice(0,8)}; }catch(_){ }
     window.addEventListener('keydown', this.onKey);
+    window.addEventListener('scroll', this.onScroll, { passive:true });
     document.addEventListener('click', this.settBlankClick, true);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('focus', this.onFocus);
@@ -315,7 +318,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     // 开屏动画：等动画播完 + Vue 渲染完后淡出
     const sp=document.getElementById('splash'); if(sp){ const dismiss=()=>{ sp.classList.add('out'); setTimeout(()=>sp.remove(),600); }; const elapsed=performance.now(); const minTime=2000; if(elapsed>=minTime)dismiss(); else setTimeout(dismiss,minTime-elapsed); }
   },
-  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); document.removeEventListener('click', this.settBlankClick, true); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); window.removeEventListener('pagehide', this._mockPagehide); document.removeEventListener('visibilitychange', this._mockVis); clearInterval(this._flushTimer); },
+  beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('scroll', this.onScroll); document.removeEventListener('click', this.settBlankClick, true); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); window.removeEventListener('pagehide', this._mockPagehide); document.removeEventListener('visibilitychange', this._mockVis); clearInterval(this._flushTimer); },
   template:APP_TEMPLATE
 };
 
