@@ -721,8 +721,15 @@ a{color:var(--accent)}
 /* 书架卡片：底部科目选择器（书籍层级改科目，替代阅读器底栏的下拉） */
 .bk-card-wrap{display:flex;flex-direction:column;gap:6px}
 .bk-card-wrap .bk-card{width:100%}
-.bk-card-subj{width:100%;height:32px;font-size:12px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink-soft);cursor:pointer}
-.bk-card-subj:hover{border-color:var(--accent);color:var(--accent)}
+.bk-card-subjtag{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 10px;font-size:12px;border:1px solid var(--line);border-radius:99px;background:var(--surface-2);color:var(--ink-soft);cursor:pointer;transition:.15s;align-self:flex-start}
+.bk-card-subjtag:hover{border-color:var(--accent);color:var(--accent)}
+/* 科目选择弹窗 */
+.subj-pick-card{background:var(--surface);border-radius:16px;padding:20px;width:min(340px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.spk-title{font-weight:600;font-size:15px;margin-bottom:14px}
+.spk-opts{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.spk-opt{text-align:left;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px;cursor:pointer;transition:.15s}
+.spk-opt:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.spk-opt.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--surface));color:var(--accent);font-weight:600}
 
 /* PDF 顶栏书名（精简后新增） + 桌面底栏翻页协调 */
 .pdfv-title{flex:1;min-width:0;font-weight:600;font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

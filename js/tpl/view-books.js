@@ -117,7 +117,7 @@ const TPL_VIEW_BOOKS = `
                   <span class="m">{{ b.pages.length }} 页</span>
                   <span class="bk-card-del" @click.stop="deleteBook(b)" title="删除本书">🗑</span>
                 </button>
-                <select class="bk-card-subj" :value="sub" @change="setBookSubjectByKey(b, $event.target.value)" @click.stop title="修改本书所属科目"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+                <button class="bk-card-subjtag" @click.stop="bookSubjPick.book=b; bookSubjPick.open=true" title="点击修改本书所属科目">{{ subjName(sub)==='other'?'未分类':subjName(sub) }} ▾</button>
               </div>
             </div>
           </div>
@@ -197,6 +197,15 @@ const TPL_VIEW_BOOKS = `
           </div>
         </div>
       </template>
+      <div v-if="bookSubjPick.open" class="modal-mask" @click.self="bookSubjPick.open=false">
+        <div class="subj-pick-card">
+          <div class="spk-title">归类到科目<span class="muted" v-if="bookSubjPick.book"> · {{ bookSubjPick.book.title.slice(0,20) }}</span></div>
+          <div class="spk-opts">
+            <button v-for="s in subjects" :key="s.v" class="spk-opt" :class="{on:bookSubjPick.book && bookSubjPick.book.subject===s.v}" @click="pickBookSubject(s.v)">{{ s.t }}</button>
+          </div>
+          <button class="btn subtle" style="width:100%;margin-top:6px" @click="bookSubjPick.open=false">取消</button>
+        </div>
+      </div>
       </div>
     </div>
 `;

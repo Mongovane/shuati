@@ -59,6 +59,7 @@ const App={
     toast:null, toastTimer:null, showTop:false, segActive:false,
     fav:{ items:[], total:0, loading:false, offset:0, limit:30, sel:[], listMode:true, loadedOnce:false }, favDirty:false,
     reviewScope:'due',   // 错题页范围：due=今日到期(SRS) / all=全部错题
+    bookSubjPick:{ open:false, book:null },
     exporting:false,
   }; },
   computed:{
