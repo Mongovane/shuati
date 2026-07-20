@@ -19,7 +19,7 @@ const App={
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
     aiX:{ id:'', text:'', busy:false, chat:[], asking:false, model:'' },  // AI 解析：流式内容 + 追问对话（按题 id 归属）
-    stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ aicfg:true, mineru:true, offline:true, subjects:true },
+    stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
@@ -303,6 +303,7 @@ onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
 onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
   },
   mounted(){ try{ window.__hideSplash&&window.__hideSplash(); }catch(_){}
+    if(this.token)this.settFold.token=true;
     try{ console.log('[shuati] 前端版本 '+APP_VERSION); }catch(_){}
     this.applyTheme(); document.title=this.appName;
     try{ this._mq=window.matchMedia('(prefers-color-scheme: dark)'); this._mqFn=()=>{ if(this.theme==='auto')this.applyTheme(); };

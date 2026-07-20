@@ -4,6 +4,8 @@ const TPL_VIEW_SETTINGS = `
     <div v-else-if="view==='settings'">
       <h2 style="margin:.2em 0 .5em">设置</h2>
       <div class="card" style="max-width:680px">
+        <div class="fold-head" @click="settFold.token=!settFold.token"><span style="font-weight:700;font-size:15px">访问码<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px">{{ token?'已连接 ✓':'未连接' }}</span></span><span class="fold-arrow" :class="{open:!settFold.token}">▾</span></div>
+        <div v-show="!settFold.token" style="margin-top:14px">
         <div class="field" style="margin-bottom:14px"><label>访问码（APP_TOKEN）</label>
           <input class="inp" style="width:100%" type="password" v-model="tokenInput" :placeholder="token?'已设置（重新输入可修改）':'输入你在 Cloudflare 设置的 APP_TOKEN'" @keyup.enter="saveToken" />
         </div>
@@ -13,9 +15,10 @@ const TPL_VIEW_SETTINGS = `
           <span class="muted" v-if="token">状态：已连接 ✓</span>
         </div>
         <div class="hint" style="margin-top:16px">就是部署时设置的 <code>APP_TOKEN</code>，防止别人动你的数据和 AI 额度。只存在本机浏览器。</div>
+        </div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div class="fold-head" @click="settFold.mineru=!settFold.mineru"><span style="font-weight:700;font-size:15px">MinerU 用量护栏</span><span class="fold-arrow" :class="{open:!settFold.mineru}">▾</span></div>
+        <div class="fold-head" @click="settFold.mineru=!settFold.mineru"><span style="font-weight:700;font-size:15px">MinerU 用量护栏<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px">{{ mineruCfg.token?'自备 Token':(ai.hasMineru?'用服务端配置':'未配置') }}</span></span><span class="fold-arrow" :class="{open:!settFold.mineru}">▾</span></div>
         <div v-show="!settFold.mineru" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">给 MinerU 设每日用量上限、Token 临期提醒。可填自己的 Token（只存本机、只发官方接口），留空用服务端配置。用量为本机估算，以 MinerU 后台为准，每天 0 点归零。</div>
         <div class="row" style="gap:12px;flex-wrap:wrap;margin-bottom:12px">
@@ -35,17 +38,17 @@ const TPL_VIEW_SETTINGS = `
         </div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div class="fold-head" @click="settFold.aicfg=!settFold.aicfg"><span style="font-weight:700;font-size:15px">AI 中转站（全局）</span><span class="fold-arrow" :class="{open:!settFold.aicfg}">▾</span></div>
+        <div class="fold-head" @click="settFold.aicfg=!settFold.aicfg"><span style="font-weight:700;font-size:15px">AI 中转站（全局）<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px">{{ (explainCfg.base&&explainCfg.key)?'自备中转站':(ai.hasAI?'用服务端配置':'未配置') }}</span></span><span class="fold-arrow" :class="{open:!settFold.aicfg}">▾</span></div>
         <div v-show="!settFold.aicfg" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">全站 AI 功能统一走这里；拍照/看图用的视觉模型另在「导入 → OCR 设置」。留空用服务端配置。</div>
         <div class="toolbar">
           <div class="field" style="margin:0;min-width:280px"><label>Base URL（留空用服务端）</label><input class="inp" v-model="explainCfg.base" @change="saveExplainCfg" placeholder="https://你的中转站/v1" /></div>
           <div class="field" style="margin:0;min-width:280px"><label>API Key（自定义 Base 时必填）</label><input class="inp" type="password" v-model="explainCfg.key" @change="saveExplainCfg" placeholder="sk-..." /></div>
-          <div class="field" style="margin:0;min-width:220px"><label>模型（留空用服务端 AI_MODEL）</label><input class="inp" v-model="explainCfg.model" @change="saveExplainCfg" placeholder="gpt-4o / deepseek-v3 …" /></div>
+          <div class="field" style="margin:0;min-width:220px"><label>模型（留空用服务端 AI_MODEL）</label><input class="inp" v-model="explainCfg.model" @change="saveExplainCfg" list="ai-model-list" placeholder="gpt-4o / deepseek-v3 …" autocomplete="off" /><datalist id="ai-model-list"><option v-for="m in modelPick.list" :key="m" :value="m"></option></datalist></div>
         </div>
         <div class="row" style="gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn subtle xs" :disabled="modelPick.busy" @click="fetchModels" title="向中转站 /v1/models 拉取可用模型列表"><span v-if="modelPick.busy" class="spin"></span>⬇ 从端点拉取</button>
-          <span class="muted" style="font-size:12px">填好上面的 Base URL 与 Key 后点这里，自动列出该站支持的模型</span>
+          <span class="muted" style="font-size:12px">填好上面的 Base URL 与 Key 后点这里，自动列出该站支持的模型（列好后可直接在「模型」框打字搜索补全）</span>
         </div>
         <div v-if="modelPick.list.length" class="model-pick">
           <span v-for="m in modelPick.list" :key="m" class="model-chip" :class="{on:explainCfg.model===m}" @click="pickModel(m)" :title="m">{{ m }}</span>
@@ -55,7 +58,7 @@ const TPL_VIEW_SETTINGS = `
         </div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div class="fold-head" @click="settFold.offline=!settFold.offline"><span style="font-weight:700;font-size:15px">离线与数据备份</span><span class="fold-arrow" :class="{open:!settFold.offline}">▾</span></div>
+        <div class="fold-head" @click="settFold.offline=!settFold.offline"><span style="font-weight:700;font-size:15px">离线与数据备份<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px">{{ offlineSynced?('已缓存 '+offlineSynced.q+' 题'):'未下载离线包' }}</span></span><span class="fold-arrow" :class="{open:!settFold.offline}">▾</span></div>
         <div v-show="!settFold.offline" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">一键把全部题目和教材下载到本机，断网也能照常刷题、翻书、筛选；离线作答联网后自动补传。建议先「添加到主屏幕」。</div>
         <div class="row" style="gap:12px;align-items:center">
@@ -76,7 +79,7 @@ const TPL_VIEW_SETTINGS = `
         </div>
       </div>
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div class="fold-head" @click="settFold.subjects=!settFold.subjects"><span style="font-weight:700;font-size:15px">科目管理</span><span class="fold-arrow" :class="{open:!settFold.subjects}">▾</span></div>
+        <div class="fold-head" @click="settFold.subjects=!settFold.subjects"><span style="font-weight:700;font-size:15px">科目管理<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px" v-if="meta.subjects&&meta.subjects.length">{{ meta.subjects.length }} 个科目</span></span><span class="fold-arrow" :class="{open:!settFold.subjects}">▾</span></div>
         <div v-show="!settFold.subjects" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">增删改科目，全站下拉自动同步。「关键词」帮导入时自动归类（逗号分隔）；代码、公式、英文等特征已内置，不用填。</div>
         <div v-for="s in subjects" :key="s.v" class="subj-edit">
@@ -103,7 +106,8 @@ const TPL_VIEW_SETTINGS = `
       </div>
 
       <div class="card" style="max-width:680px;margin-top:14px">
-        <div style="font-weight:600;margin:2px 0 12px">个性化</div>
+        <div class="fold-head" @click="settFold.prefs=!settFold.prefs"><span style="font-weight:700;font-size:15px">个性化与外观<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px">{{ theme==='dark'?'深色':(theme==='auto'?'跟随系统':'浅色') }}</span></span><span class="fold-arrow" :class="{open:!settFold.prefs}">▾</span></div>
+        <div v-show="!settFold.prefs" style="margin-top:14px">
         <div class="field" style="margin-bottom:14px"><label>显示名称（浏览器标签页 + 页头）</label>
           <input class="inp" style="width:100%" v-model="appName" placeholder="例如：刷题 / 资料库 / 仪表盘 / 笔记" />
         </div>
@@ -116,6 +120,7 @@ const TPL_VIEW_SETTINGS = `
           <select class="bk-mini" v-model="theme"><option value="light">浅色 ☀</option><option value="dark">深色 ☾</option><option value="auto">跟随系统 🌗</option></select>
         </div>
         <label class="row" style="cursor:pointer"><input type="checkbox" v-model="stealth.autoHide" /> <span class="muted">窗口失焦时自动隐藏（返回时恢复）</span></label>
+        </div>
       </div>
       <div class="muted" style="max-width:680px;text-align:center;margin-top:28px;font-size:12px;opacity:.4">刷题文档 {{ appVer }}</div>
     </div>

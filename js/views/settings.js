@@ -34,7 +34,7 @@ async fetchModels(){ if(this.modelPick.busy)return;
   }catch(e){ if(e.message!=='unauth')this.flash('拉取失败：'+e.message,true); }
   this.modelPick.busy=false;
 },
-pickModel(m){ this.explainCfg.model=m; this.saveExplainCfg(); this.modelPick.list=[]; this.flash('已选用模型：'+m); },
+pickModel(m){ this.explainCfg.model=m; this.saveExplainCfg(); this.flash('已选用模型：'+m); },
 saveExplainStable(){ try{ localStorage.setItem('zb_explain_stable', this.explainStable?'1':'0'); }catch(_){} },
 async loadConfig(){ if(!this.token)return; try{ const c=await this.api('/api/config'); this.ai.model=c.ai_model||''; this.ai.visionModel=c.ai_vision_model||''; this.ai.hasAI=!!c.has_ai; this.ai.hasCfAI=!!c.has_cf_ai; this.ai.hasMineru=!!c.has_mineru; }catch(e){} },
 saveToken(){ const t=this.tokenInput.trim(); if(!t){ this.flash('请输入访问码',true); return; }
