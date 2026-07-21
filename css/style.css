@@ -135,7 +135,7 @@ textarea.code{font-family:var(--mono);font-size:13.5px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .seg button{padding:8px 16px;background:var(--surface);border:none;color:var(--ink-soft);font-weight:600;font-size:14px}
 .seg button.on{background:var(--accent);color:#fff}
-.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 20px;border-radius:999px;font-size:14px;font-weight:600;z-index:50;box-shadow:var(--shadow);max-width:90vw}
+.toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 20px;border-radius:999px;font-size:14px;font-weight:600;z-index:120;box-shadow:var(--shadow);max-width:90vw}
 .stealth{position:fixed;inset:0;z-index:9999;background:var(--bg);display:grid;place-items:center;cursor:default}
 .stealth-vane{font-family:'Sacramento',cursive;font-size:clamp(56px,14vw,88px);color:#2E45C4;white-space:nowrap;letter-spacing:3px;animation:stV 3s ease infinite}
 [data-theme=dark] .stealth-vane{color:#6B8AFF}
@@ -773,10 +773,8 @@ a{color:var(--accent)}
 /* 书架搜索框 */
 .bk-search{width:100%;max-width:360px;margin-bottom:18px;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
 
-/* 设置面板拖拽排序 */
+/* 设置面板 */
 .sett-card{width:100%}
-.sett-drag,.subj-drag{cursor:grab;color:var(--ink-soft);opacity:.5;font-size:13px;user-select:none;margin-right:2px}
-.sett-drag:active,.subj-drag:active{cursor:grabbing}
-.sett-card:hover .sett-drag{opacity:.8}
+.subj-drag{cursor:grab;color:var(--ink-soft);opacity:.5;font-size:13px;user-select:none;margin-right:6px}
+.subj-drag:active{cursor:grabbing}
 .subj-edit[draggable=true]{cursor:default}
-.subj-edit .subj-drag{margin-right:6px}
