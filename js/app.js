@@ -24,7 +24,7 @@ const App={
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
     explainCfg:{ base:'', key:'', model:'' },  // AI 解析中转站（本机 localStorage，留空用服务端）
-    modelPick:{ busy:false, list:[] },  // 「从端点拉取」到的模型候选列表
+    modelPick:{ busy:false, list:[] }, modelBoxOpen:false,  // 「从端点拉取」到的模型候选列表
     explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
     materials:{ subject:'all', items:[], loading:false, loaded:false }, loadProgMsg:'',
     booksMode:'notes', bookFold:{},
@@ -75,6 +75,7 @@ const App={
     bookSearchEmpty(){ const kw=(this.bookSearch||'').trim().toLowerCase(); if(!kw||this.currentBookId)return false; return !this.materialBooks.some(b=>String(b.title||'').toLowerCase().includes(kw)); },
     // 已存在的自定义分类（materials 里非四科的 subject 值），供分类弹窗快捷复用
     customCategories(){ const fixed=new Set(['math','computer','politics','english']); const s=new Set(); for(const b of this.materialBooks){ const k=b.subject; if(k && !fixed.has(k))s.add(k); } return [...s]; },
+    modelSuggest(){ const list=this.modelPick.list||[]; if(!list.length)return []; const kw=String(this.explainCfg.model||'').trim().toLowerCase(); const hit=kw? list.filter(m=>String(m).toLowerCase().includes(kw)) : list; return hit.slice(0,20); },
     // 继续阅读：上次打开(zb_bookid)且仍存在、有阅读进度的书
     lastReadBook(){ let id=''; try{ id=localStorage.getItem('zb_bookid')||''; }catch(_){ } if(!id)return null; const b=this.materialBooks.find(x=>x.key===id); if(!b)return null; let pos=0; try{ pos=parseInt(localStorage.getItem('zb_readpos:'+id),10)||0; }catch(_){ } if(pos<=0)return null; return b; },
     currentBook(){ if(!this.currentBookId)return null; return this.materialBooks.find(b=>b.key===this.currentBookId)||null; },

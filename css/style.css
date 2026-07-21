@@ -775,6 +775,13 @@ a{color:var(--accent)}
 
 /* 设置面板 */
 .sett-card{width:100%}
-.subj-drag{cursor:grab;color:var(--ink-soft);opacity:.5;font-size:13px;user-select:none;margin-right:6px}
-.subj-drag:active{cursor:grabbing}
-.subj-edit[draggable=true]{cursor:default}
+.subj-move{display:inline-flex;flex-direction:column;gap:1px;margin-right:6px}
+.subj-mv-btn{width:22px;height:16px;line-height:1;padding:0;font-size:9px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink-soft);cursor:pointer}
+.subj-mv-btn:disabled{opacity:.3;cursor:default}
+.subj-mv-btn:not(:disabled):hover{border-color:var(--accent);color:var(--accent)}
+
+/* 模型输入建议下拉 */
+.model-suggest{position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.16);max-height:260px;overflow-y:auto;z-index:30}
+.model-suggest-item{display:block;width:100%;text-align:left;padding:10px 14px;background:none;border:none;color:var(--ink);font-size:14px;cursor:pointer;border-bottom:1px solid var(--line)}
+.model-suggest-item:last-child{border-bottom:none}
+.model-suggest-item:hover,.model-suggest-item:active{background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--accent)}

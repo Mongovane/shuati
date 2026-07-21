@@ -44,7 +44,12 @@ const TPL_VIEW_SETTINGS = `
         <div class="toolbar">
           <div class="field" style="margin:0;min-width:280px"><label>Base URL（留空用服务端）</label><input class="inp" v-model="explainCfg.base" @change="saveExplainCfg" placeholder="https://你的中转站/v1" /></div>
           <div class="field" style="margin:0;min-width:280px"><label>API Key（自定义 Base 时必填）</label><input class="inp" type="password" v-model="explainCfg.key" @change="saveExplainCfg" placeholder="sk-..." /></div>
-          <div class="field" style="margin:0;min-width:220px"><label>模型（留空用服务端 AI_MODEL）</label><input class="inp" v-model="explainCfg.model" @change="saveExplainCfg" list="ai-model-list" placeholder="gpt-4o / deepseek-v3 …" autocomplete="off" /><datalist id="ai-model-list"><option v-for="m in modelPick.list" :key="m" :value="m"></option></datalist></div>
+          <div class="field" style="margin:0;min-width:220px;position:relative"><label>模型（留空用服务端 AI_MODEL）</label>
+            <input class="inp" v-model="explainCfg.model" @change="saveExplainCfg" @focus="modelBoxOpen=true" @input="modelBoxOpen=true" placeholder="gpt-4o / deepseek-v3 …" autocomplete="off" />
+            <div v-if="modelBoxOpen && modelSuggest.length" class="model-suggest">
+              <button v-for="m in modelSuggest" :key="m" class="model-suggest-item" @click="explainCfg.model=m; saveExplainCfg(); modelBoxOpen=false">{{ m }}</button>
+            </div>
+          </div>
         </div>
         <div class="row" style="gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn subtle xs" :disabled="modelPick.busy" @click="fetchModels" title="向中转站 /v1/models 拉取可用模型列表"><span v-if="modelPick.busy" class="spin"></span>⬇ 从端点拉取</button>
@@ -81,10 +86,10 @@ const TPL_VIEW_SETTINGS = `
       <div class="card sett-card" style="max-width:680px;margin-top:14px;order:2">
         <div class="fold-head" @click="settFold.subjects=!settFold.subjects"><span style="font-weight:700;font-size:15px">科目管理<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px" v-if="meta.subjects&&meta.subjects.length">{{ meta.subjects.length }} 个科目</span></span><span class="fold-arrow" :class="{open:!settFold.subjects}">▾</span></div>
         <div v-show="!settFold.subjects" class="fold-body" style="margin-top:10px">
-        <div class="hint" style="margin-bottom:14px">增删改科目，全站下拉自动同步。拖动左侧 ⠿ 手柄可调整顺序。「关键词」帮导入时自动归类（逗号分隔）；代码、公式、英文等特征已内置，不用填。</div>
-        <div v-for="(s,si) in subjects" :key="s.v" class="subj-edit" draggable="true" @dragstart="subjDragStart(si)" @dragover="subjDragOver(si,$event)" @drop="subjDrop(si)">
+        <div class="hint" style="margin-bottom:14px">增删改科目，全站下拉自动同步。用 ▲▼ 调整顺序。「关键词」帮导入时自动归类（逗号分隔）；代码、公式、英文等特征已内置，不用填。</div>
+        <div v-for="(s,si) in subjects" :key="s.v" class="subj-edit">
           <div class="subj-row">
-            <span class="subj-drag" title="拖动调整顺序">⠿</span>
+            <span class="subj-move"><button class="subj-mv-btn" :disabled="si===0" @click="subjMove(si,-1)" title="上移">▲</button><button class="subj-mv-btn" :disabled="si===subjects.length-1" @click="subjMove(si,1)" title="下移">▼</button></span>
             <span class="subj-code">{{ s.v }}</span>
             <input class="inp" style="width:140px" v-model="s.t" placeholder="科目名称" />
             <button class="btn subtle xs" @click="subjSave(s)">保存</button>

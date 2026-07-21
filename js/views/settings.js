@@ -11,10 +11,8 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
 async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); } }catch(e){} },
 async subjAdd(){ const m=this.subjMgr; const code=String(m.code||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,''); const name=String(m.name||'').trim(); if(!code){ this.flash('科目代码只能用小写字母/数字/下划线',true); return; } if(!name){ this.flash('请填写科目名称',true); return; } m.busy=true; try{ await this.api('/api/subjects',{method:'POST',body:JSON.stringify({code,name,sort:Number(m.sort)||(this.subjects.length+1),keywords:m.keywords||''})}); this.flash('已新增科目「'+name+'」'); this.subjMgr={ code:'', name:'', sort:'', keywords:'', busy:false }; await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('新增失败：'+e.message,true); } m.busy=false; },
 async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:Number(s.sort)||0,keywords:s.keywords||''})}); this.flash('已保存「'+s.t+'」'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } },
-// 科目拖拽排序：拖动结束后按新次序重排并批量写回 sort
-subjDragStart(i){ this._subjDragI=i; },
-subjDragOver(i,e){ e.preventDefault(); },
-async subjDrop(i){ const from=this._subjDragI; this._subjDragI=null; if(from==null||from===i)return; const arr=[...this.subjects]; const [m]=arr.splice(from,1); arr.splice(i,0,m); this.subjects=arr; await this.subjReorder(); },
+// 科目排序：上移/下移一格后批量写回 sort（触摸端比拖拽可靠）
+async subjMove(i,dir){ const j=i+dir; if(j<0||j>=this.subjects.length)return; const arr=[...this.subjects]; const t=arr[i]; arr[i]=arr[j]; arr[j]=t; this.subjects=arr; await this.subjReorder(); },
 async subjReorder(){ try{ for(let i=0;i<this.subjects.length;i++){ const s=this.subjects[i]; const ns=(i+1)*10; if(s.sort!==ns){ s.sort=ns; await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:ns,keywords:s.keywords||''})}); } } this.flash('科目顺序已更新'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('排序保存失败：'+e.message,true); } },
 async subjDelete(s){ const others=this.subjects.filter(x=>x.v!==s.v); let moveTo=''; if(confirm('删除科目「'+s.t+'」。\n\n点「确定」=同时把该科目下的题目转移到其他科目；点「取消」=只删科目、旧题保留原标记（下拉不再显示该科目）。')){ const names=others.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const pick=prompt('把「'+s.t+'」的题目转到哪个科目？输入序号：\n'+names); const idx=parseInt(pick,10)-1; if(others[idx])moveTo=others[idx].v; else { this.flash('序号无效，已取消',true); return; } } try{ await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,moveTo})}); this.flash('已删除科目「'+s.t+'」'+(moveTo?('，题目已转到「'+this.subjName(moveTo)+'」'):'')); await this.loadSubjects(); this.loadMeta&&this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
 guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
@@ -24,6 +22,7 @@ saveExplainCfg(){ try{ localStorage.setItem('zb_explaincfg', JSON.stringify(this
 settBlankClick(e){
   if(this.view!=='settings') return;
   const t=e.target;
+  if(this.modelBoxOpen && t && t.closest && !t.closest('.model-suggest') && !(t.tagName==='INPUT' && t.closest('.field'))) this.modelBoxOpen=false;
   if(t && t.closest && t.closest('.fold-head, .fold-body')) return;
   for(const k in this.settFold){ if(!this.settFold[k]) this.settFold[k]=true; }
 },
