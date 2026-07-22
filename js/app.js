@@ -115,6 +115,7 @@ const App={
       let tocText=''; for(const m of b.pages){ const c=String(m.content_md||''); if(/目\s*录|CONTENTS/i.test(c.slice(0,40)) || (c.match(/\.{3,}\s*\d+/g)||[]).length>=4){ tocText=c; break; } }
       return this.parseBookOutline(tocText); },
     curAiModel(){ const q=this.cur; if(!q||this.aiX.id!==q.id)return ''; return this.aiX.view==='concept' ? (this.aiX.cardsModel||'') : (this.aiX.model||''); },
+    curAllFlipped(){ const q=this.cur; if(!q||this.aiX.id!==q.id)return false; const cards=this.aiX.cards||[]; return cards.length>0 && cards.every((c,i)=>this.aiX.flip&&this.aiX.flip[i]); },
     mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.score/t*100); },
     streakDays(){ /* 🔥 连续学习天数：今天有记录从今天起算，否则从昨天起算 */
       const heat=(this.stats&&this.stats.heat)||[]; if(!heat.length)return 0;

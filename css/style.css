@@ -787,19 +787,28 @@ a{color:var(--accent)}
 .model-suggest-item:hover,.model-suggest-item:active{background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--accent)}
 
 /* 知识点卡片（Anki 式点击翻转 + 入场动画） */
-.kcard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin:6px 0 4px}
-.kcard{min-height:200px;perspective:1400px;cursor:pointer;opacity:0;animation:kcardIn .45s ease forwards}
-@keyframes kcardIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-.kcard-inner{position:relative;display:grid;width:100%;min-height:200px;transition:transform .55s cubic-bezier(.4,.2,.2,1);transform-style:preserve-3d}
+.kcard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin:8px 0 4px;align-items:start}
+.kcard{height:240px;perspective:1600px;cursor:pointer;opacity:0;animation:kcardIn .5s cubic-bezier(.22,1,.36,1) forwards}
+@keyframes kcardIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+.kcard-inner{position:relative;width:100%;height:100%;transition:transform .6s cubic-bezier(.34,1.2,.44,1);transform-style:preserve-3d}
 .kcard.flipped .kcard-inner{transform:rotateY(180deg)}
-.kcard-face{grid-area:1/1;min-width:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:14px;padding:16px 16px 34px;display:flex;flex-direction:column;border:1px solid var(--line)}
-.kcard-front{background:linear-gradient(150deg,color-mix(in srgb,var(--accent) 12%,var(--surface)),var(--surface));align-items:center;justify-content:center;text-align:center}
-.kcard-back{background:var(--surface);transform:rotateY(180deg)}
-.kcard-idx{position:absolute;top:10px;right:12px;font-size:11px;color:var(--ink-soft);opacity:.7}
-.kcard-term{font-size:17px;font-weight:700;margin-bottom:8px}
-.kcard-formula{font-size:14px;opacity:.9;margin-bottom:6px}
-.kcard-hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:11px;color:var(--ink-soft);opacity:.6}
-.kcard-plain{font-size:14px;line-height:1.7;padding-bottom:4px}
-.kcard-eg{margin-top:8px;font-size:13px;color:var(--ink-soft);display:flex;gap:6px;padding-bottom:16px}
+.kcard:hover .kcard-inner{transform:translateY(-3px)}
+.kcard.flipped:hover .kcard-inner{transform:rotateY(180deg) translateY(3px)}
+.kcard-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:16px;padding:18px 16px 36px;display:flex;flex-direction:column;border:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.05);transition:box-shadow .2s}
+.kcard:hover .kcard-face{box-shadow:0 8px 24px rgba(0,0,0,.1)}
+.kcard-front{background:linear-gradient(155deg,color-mix(in srgb,var(--accent) 14%,var(--surface)),var(--surface) 70%);align-items:center;justify-content:center;text-align:center}
+.kcard-back{background:var(--surface);transform:rotateY(180deg);overflow-y:auto}
+.kcard-idx{position:absolute;top:11px;right:13px;font-size:11px;color:var(--ink-soft);opacity:.65;font-variant-numeric:tabular-nums}
+.kcard-term{font-size:18px;font-weight:700;margin-bottom:10px;line-height:1.35}
+.kcard-formula{font-size:15px;opacity:.92}
+.kcard-hint{position:absolute;bottom:11px;left:0;right:0;text-align:center;font-size:11px;color:var(--ink-soft);opacity:.55}
+.kcard-back .kcard-hint{position:sticky;bottom:-18px;background:linear-gradient(to top,var(--surface) 60%,transparent);padding-top:8px}
+.kcard-plain{font-size:13.5px;line-height:1.75}
+.kcard-eg{margin-top:10px;font-size:12.5px;color:var(--ink-soft);display:flex;gap:6px}
 .kcard-eg-tag{flex:none;width:20px;height:20px;border-radius:5px;background:color-mix(in srgb,var(--accent) 16%,var(--surface));color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
-@media(max-width:560px){ .kcard-grid{grid-template-columns:1fr} }
+.kcard-back::-webkit-scrollbar{width:5px}
+.kcard-back::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+.kcard-tools{display:flex;justify-content:flex-end;margin:2px 0 -2px}
+.kcard-flipall{font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:7px}
+.kcard-flipall:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+@media(max-width:560px){ .kcard-grid{grid-template-columns:1fr;gap:12px} .kcard{height:auto;min-height:210px} .kcard-inner{min-height:210px} .kcard-face{position:relative;min-height:210px} .kcard-front{position:absolute;inset:0} }

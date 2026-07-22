@@ -6,8 +6,8 @@ const normAns=(v)=>String(v==null?'':v)
 
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip'],
+  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, examReveal:Boolean },
+  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all'],
   data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
@@ -156,7 +156,9 @@ const QuestionCard={
             <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
         <h5>{{ aiKind==='concept' ? '📚 知识点讲解' : 'AI 解析' }} <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <textarea v-if="showRaw" readonly :value="aiText" style="width:100%;min-height:220px;font:12px/1.5 ui-monospace,monospace" @focus="$event.target.select()"></textarea>
-        <div v-else-if="aiKind==='concept' && aiCards.length" class="kcard-grid">
+        <template v-else-if="aiKind==='concept' && aiCards.length">
+        <div class="kcard-tools"><button class="kcard-flipall" @click="$emit('cards-flip-all')">{{ allFlipped ? '⇕ 全部收起（看题目）' : '⇕ 全部翻开（看讲解）' }}</button></div>
+        <div class="kcard-grid">
           <div v-for="(c,i) in aiCards" :key="'kc'+i" class="kcard" :class="{flipped:aiFlip[i]}" :style="{animationDelay:(i*90)+'ms'}" @click="$emit('card-flip',i)">
             <div class="kcard-inner">
               <div class="kcard-face kcard-front">
@@ -173,6 +175,7 @@ const QuestionCard={
             </div>
           </div>
         </div>
+        </template>
         <rich-text v-else-if="aiText" :content="aiText" />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <button class="btn subtle" v-if="!aiBusy" :style="aiKind!=='concept'&&(aiText)?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 看解题解析':'✨ 解题解析') : '✨ AI 解析本题' }}</button>
