@@ -101,7 +101,20 @@ const RichText={
     // katex 已在 html 生成阶段预渲染；下面仅为 auto-render 兜底
     if(!window.katex&&window.renderMathInElement){ try{ renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false,strict:false}); }catch(e){} }
     if(window.hljs){ el.querySelectorAll('pre code').forEach(b=>{ try{hljs.highlightElement(b);}catch(e){} }); }
+    this.semanticMark();
     this.fitMath();
+  },
+  semanticMark(){ const el=this.$el; if(!el || !el.closest || !el.closest('.ref')) return;
+    const WARN=/^\s*(?:\u26a0\ufe0f?\s*)?(?:\u6613\u9519|\u6ce8\u610f|\u8b66\u544a|\u5751|\u5e38\u89c1\u9519\u8bef|\u8bef\u533a|\u9677\u9631|\u9519\u8bef|\u5c0f\u5fc3|\u5207\u8bb0|\u4e0d\u8981|\u522b|\u52ff)/;
+    const TIP=/^\s*(?:\ud83d\udca1?\s*)?(?:\u601d\u8def|\u5206\u6790|\u89e3\u6790|\u65b9\u6cd5|\u6b65\u9aa4|\u6280\u5de7|\u63d0\u793a|\u603b\u7ed3|\u7ed3\u8bba|\u8981\u70b9|\u6838\u5fc3|\u5173\u952e\u5728\u4e8e|\u672c\u8d28)/;
+    const KEY=/^\s*(?:\ud83d\udccc?\s*)?(?:\u5b9a\u4e49|\u5b9a\u7406|\u516c\u5f0f|\u6027\u8d28|\u6cd5\u5219|\u6982\u5ff5|\u8bb0\u4f4f|\u91cd\u70b9)/;
+    el.querySelectorAll('p,li').forEach(node=>{
+      if(node.closest('.seg-tip,.seg-warn,.seg-key')) return;
+      const t=(node.textContent||'').trim(); if(!t) return;
+      let cls='';
+      if(WARN.test(t)) cls='seg-warn'; else if(TIP.test(t)) cls='seg-tip'; else if(KEY.test(t)) cls='seg-key';
+      if(cls) node.classList.add(cls);
+    });
   },
   fitMath(){ const el=this.$el; if(!el)return; const FLOOR=0.5; const fit=(k,avail)=>{ k.style.fontSize=''; const w=k.scrollWidth||k.offsetWidth; if(!w||avail<=0||w<=avail+1)return null; let s=avail/w, scroll=false; if(s<FLOOR){ s=FLOOR; scroll=true; } const cur=parseFloat(getComputedStyle(k).fontSize)||16; k.style.fontSize=(cur*s)+'px'; return {scroll}; };
     const run=()=>{ el.querySelectorAll('.katex-display').forEach(d=>{ const k=d.querySelector('.katex'); if(!k)return; d.style.overflowX='hidden'; const r=fit(k, d.clientWidth||el.clientWidth); d.style.overflowX=(r&&r.scroll)?'auto':'hidden'; });

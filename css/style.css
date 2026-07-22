@@ -830,3 +830,20 @@ a{color:var(--accent)}
   .ai-acts-main{gap:8px}
   .ai-chip{padding:8px 15px;font-size:13px}
 }
+
+/* ===== AI 解析 / 知识点：语义高亮（前端自动上色，不依赖 AI 标记）===== */
+/* 关键词（加粗）淡色高亮 —— 仅 AI 解析区与卡片，避免影响题干/阅读器 */
+.ref .rich strong{background:linear-gradient(transparent 55%,color-mix(in srgb,var(--accent) 22%,transparent) 0);padding:0 1px;border-radius:2px;font-weight:700}
+.kcard .rich strong{background:linear-gradient(transparent 55%,color-mix(in srgb,var(--accent) 24%,transparent) 0);padding:0 1px;font-weight:700}
+/* 行内公式淡底 —— 让公式在文字中更醒目 */
+.ref .rich .katex{background:color-mix(in srgb,var(--accent) 7%,transparent);border-radius:4px;padding:1px 3px}
+.ref .rich .katex-display{background:color-mix(in srgb,var(--accent) 6%,transparent);border-radius:8px;padding:8px 10px;margin:8px 0}
+/* 卡片公式高亮（正面公式 + 背面行内公式）*/
+.kcard-formula .katex{background:color-mix(in srgb,var(--accent) 14%,transparent);border-radius:6px;padding:3px 8px;font-size:1.05em}
+.kcard-plain .katex,.kcard-eg .katex{background:color-mix(in srgb,var(--accent) 9%,transparent);border-radius:4px;padding:1px 3px}
+/* 区块语义色：段落/区块按语义加左边框 + 淡背景 */
+.ref .rich .seg-tip{border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0}
+.ref .rich .seg-warn{border-left:3px solid #e0564f;background:color-mix(in srgb,#e0564f 8%,transparent);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0}
+.ref .rich .seg-warn strong{background:linear-gradient(transparent 55%,color-mix(in srgb,#e0564f 24%,transparent) 0)}
+.ref .rich .seg-key{border-left:3px solid #d4952a;background:color-mix(in srgb,#d4952a 8%,transparent);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0}
+[data-theme=dark] .ref .rich .katex,[data-theme=dark] .kcard-plain .katex{background:color-mix(in srgb,var(--accent) 16%,transparent)}
