@@ -30,7 +30,7 @@ export async function onRequestPost({ request, env }) {
   const stem = String(q.stem || '').trim().slice(0, 6000);
   const pageImage = typeof b.image === 'string' && /^data:image\//.test(b.image) ? b.image : '';
   if (!stem && !pageImage) return json({ error: '缺少题目内容' }, 400);
-  const wantStream = b.stream !== false && b.kind !== 'concept';
+  const wantStream = b.stream !== false;
 
   const typeMap = { single_choice: '单选题', multiple_choice: '多选题', true_false: '判断题', fill_blank: '填空题', short_answer: '简答题', code: '编程题' };
   const parts = [];

@@ -177,6 +177,10 @@ const QuestionCard={
           </div>
         </div>
         </template>
+        <div v-else-if="aiKind==='concept' && aiBusy" class="kcard-loading">
+          <div class="kcard-skel" v-for="n in 3" :key="'sk'+n"></div>
+          <div class="muted" style="text-align:center;font-size:12.5px;margin-top:4px;grid-column:1/-1">正在整理知识点卡片…</div>
+        </div>
         <rich-text v-else-if="aiText" :content="aiText" />
         <div class="ai-acts">
           <div class="ai-acts-main">
