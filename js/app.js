@@ -18,7 +18,7 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'',
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    aiX:{ id:'', text:'', busy:false, chat:[], asking:false, model:'', kind:'', cards:[], flip:{} },  // AI 解析：流式内容 + 追问对话（按题 id 归属）；concept 模式用 cards 存知识卡片
+    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} },  // AI 解析(text/chat)与知识点(cards)各存各的；view='explain'|'concept' 控制当前显示，切换不互相清空
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
@@ -102,8 +102,8 @@ const App={
     overallRate(){ const t=this.statTotals; return t.seen? Math.round(t.rightQ/t.seen*100):0; },
     mockResult(){ const v=Object.values(this.mock.answers); const correct=v.filter(x=>x===true).length; const half=v.filter(x=>x===0.5).length;
       return { graded:v.filter(x=>x!==null).length, correct, half, score:correct+half*0.5, total:this.mock.questions.length }; },
-    curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id) ? this.aiX.text : ''; },
-    curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.chat||[]) : []; },
+    curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? this.aiX.text : ''; },
+    curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? (this.aiX.chat||[]) : []; },
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
     hasBottomBar(){ return !!this.cur && ['practice','wrong','favorite'].includes(this.view); },
@@ -114,7 +114,7 @@ const App={
     bookOutline(){ const b=this.currentBook; if(!b||!b.pages||!b.pages.length)return [];
       let tocText=''; for(const m of b.pages){ const c=String(m.content_md||''); if(/目\s*录|CONTENTS/i.test(c.slice(0,40)) || (c.match(/\.{3,}\s*\d+/g)||[]).length>=4){ tocText=c; break; } }
       return this.parseBookOutline(tocText); },
-    curAiModel(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.model||'') : ''; },
+    curAiModel(){ const q=this.cur; if(!q||this.aiX.id!==q.id)return ''; return this.aiX.view==='concept' ? (this.aiX.cardsModel||'') : (this.aiX.model||''); },
     mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.score/t*100); },
     streakDays(){ /* 🔥 连续学习天数：今天有记录从今天起算，否则从昨天起算 */
       const heat=(this.stats&&this.stats.heat)||[]; if(!heat.length)return 0;

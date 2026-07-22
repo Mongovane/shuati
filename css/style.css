@@ -788,11 +788,11 @@ a{color:var(--accent)}
 
 /* 知识点卡片（Anki 式点击翻转 + 入场动画） */
 .kcard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin:6px 0 4px}
-.kcard{height:180px;perspective:1200px;cursor:pointer;opacity:0;animation:kcardIn .45s ease forwards}
+.kcard{min-height:200px;perspective:1400px;cursor:pointer;opacity:0;animation:kcardIn .45s ease forwards}
 @keyframes kcardIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-.kcard-inner{position:relative;width:100%;height:100%;transition:transform .55s cubic-bezier(.4,.2,.2,1);transform-style:preserve-3d}
+.kcard-inner{position:relative;display:grid;width:100%;min-height:200px;transition:transform .55s cubic-bezier(.4,.2,.2,1);transform-style:preserve-3d}
 .kcard.flipped .kcard-inner{transform:rotateY(180deg)}
-.kcard-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:14px;padding:16px;display:flex;flex-direction:column;overflow:auto;border:1px solid var(--line)}
+.kcard-face{grid-area:1/1;min-width:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:14px;padding:16px 16px 34px;display:flex;flex-direction:column;border:1px solid var(--line)}
 .kcard-front{background:linear-gradient(150deg,color-mix(in srgb,var(--accent) 12%,var(--surface)),var(--surface));align-items:center;justify-content:center;text-align:center}
 .kcard-back{background:var(--surface);transform:rotateY(180deg)}
 .kcard-idx{position:absolute;top:10px;right:12px;font-size:11px;color:var(--ink-soft);opacity:.7}

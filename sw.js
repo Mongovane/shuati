@@ -4,36 +4,36 @@
    - CDN 静态资源（Vue / marked / highlight.js / KaTeX 的 CSS·JS·字体）：缓存优先 → 只下一次，之后离线可用
    - /api/*：始终走网络（题目/统计等动态数据、带鉴权，不缓存）
    改了应用文件想强制刷新预缓存时，把下面 VERSION 加一即可（联网时其实已自动拿最新）。 */
-const VERSION = 'v102';
+const VERSION = 'v103';
 const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
   './', './index.html', './manifest.json',
-  './css/style.css?v=102',
-  './js/constants.js?v=102',
-  './js/components/rich-text.js?v=102',
-  './js/components/question-card.js?v=102',
-  './js/api.js?v=102',
-  './js/components/reader.js?v=102',
-  './js/views/practice.js?v=102',
-  './js/views/bank.js?v=102',
-  './js/views/saved.js?v=102',
-  './js/views/mock-stats.js?v=102',
-  './js/views/ingest.js?v=102',
-  './js/views/mineru.js?v=102',
-  './js/views/books.js?v=102',
-  './js/views/settings.js?v=102',
-  './js/tpl/shell-open.js?v=102',
-  './js/tpl/view-practice.js?v=102',
-  './js/tpl/view-books.js?v=102',
-  './js/tpl/view-mock.js?v=102',
-  './js/tpl/view-bank.js?v=102',
-  './js/tpl/view-stats.js?v=102',
-  './js/tpl/view-ingest.js?v=102',
-  './js/tpl/view-settings.js?v=102',
-  './js/tpl/shell-close.js?v=102',
-  './js/app-template.js?v=102',
-  './js/app.js?v=102',
+  './css/style.css?v=103',
+  './js/constants.js?v=103',
+  './js/components/rich-text.js?v=103',
+  './js/components/question-card.js?v=103',
+  './js/api.js?v=103',
+  './js/components/reader.js?v=103',
+  './js/views/practice.js?v=103',
+  './js/views/bank.js?v=103',
+  './js/views/saved.js?v=103',
+  './js/views/mock-stats.js?v=103',
+  './js/views/ingest.js?v=103',
+  './js/views/mineru.js?v=103',
+  './js/views/books.js?v=103',
+  './js/views/settings.js?v=103',
+  './js/tpl/shell-open.js?v=103',
+  './js/tpl/view-practice.js?v=103',
+  './js/tpl/view-books.js?v=103',
+  './js/tpl/view-mock.js?v=103',
+  './js/tpl/view-bank.js?v=103',
+  './js/tpl/view-stats.js?v=103',
+  './js/tpl/view-ingest.js?v=103',
+  './js/tpl/view-settings.js?v=103',
+  './js/tpl/shell-close.js?v=103',
+  './js/app-template.js?v=103',
+  './js/app.js?v=103',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 
