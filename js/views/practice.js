@@ -122,7 +122,7 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
   // 换题：全清；同题：保留另一侧内容，只重置将要生成的这一侧
   if(this.aiX.id!==q.id){ this.aiX={ id:q.id, view:isConcept?'concept':'explain', text:'', busy:true, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }; }
-  else { this.aiX.view=isConcept?'concept':'explain'; this.aiX.busy=true; if(isConcept){ this.aiX.cards=[]; this.aiX.flip={}; } else { this.aiX.text=''; this.aiX.chat=[]; } }
+  else { this.aiX.view=isConcept?'concept':'explain'; this.aiX.busy=true; if(isConcept){ this.aiX.cards=[]; this.aiX.flip={}; if(this.aiX.text&&!force)this.flash('解题解析已保留，随时可切回'); } else { this.aiX.text=''; this.aiX.chat=[]; if(this.aiX.cards&&this.aiX.cards.length&&!force)this.flash('知识点卡片已保留，随时可切回'); } }
   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
   let acc='';
   try{
