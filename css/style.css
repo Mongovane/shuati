@@ -837,7 +837,7 @@ a{color:var(--accent)}
 .kcard .rich strong{background:linear-gradient(transparent 55%,color-mix(in srgb,var(--accent) 24%,transparent) 0);padding:0 1px;font-weight:700}
 /* 行内公式淡底 —— 让公式在文字中更醒目 */
 /* 行内公式不加底色（避免文字被切碎、满屏色块）；仅靠数学字体自然区分 */
-.ref .rich .katex-display{background:transparent;border-left:2px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:0;padding:2px 0 2px 14px;margin:10px 0}
+.ref .rich .katex-display{margin:10px 0;overflow-x:auto;overflow-y:hidden;max-width:100%;-webkit-overflow-scrolling:touch}
 /* 卡片正面核心公式：卡片主角，保留突出高亮 */
 .kcard-formula .katex{background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:6px;padding:4px 10px;font-size:1.05em}
 /* 区块语义色：段落/区块按语义加左边框 + 淡背景 */
