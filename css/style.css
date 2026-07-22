@@ -812,3 +812,21 @@ a{color:var(--accent)}
 .kcard-flipall{font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:7px}
 .kcard-flipall:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}
 @media(max-width:560px){ .kcard-grid{grid-template-columns:1fr;gap:12px} .kcard{height:auto;min-height:210px} .kcard-inner{min-height:210px} .kcard-face{position:relative;min-height:210px} .kcard-front{position:absolute;inset:0} }
+
+/* AI 解析操作区：主操作大按钮 + 次操作轻量 chip */
+.ai-acts{margin-top:12px}
+.ai-acts-main{display:flex;gap:10px;flex-wrap:wrap}
+.ai-btn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:12px 18px;font-size:14px;font-weight:600;cursor:pointer;transition:transform .12s ease,box-shadow .18s ease,border-color .18s,background .18s;flex:1 1 0;min-width:140px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.ai-btn:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.ai-btn:active{transform:translateY(0)}
+.ai-btn-primary.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--accent)}
+.ai-acts-sub{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.ai-chip{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink-soft);border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all .16s ease;display:inline-flex;align-items:center;gap:4px}
+.ai-chip:hover{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.ai-chip:active{transform:scale(.96)}
+.ai-chip.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+@media(max-width:560px){
+  .ai-btn{flex:1 1 100%;padding:14px 18px;font-size:15px}
+  .ai-acts-main{gap:8px}
+  .ai-chip{padding:8px 15px;font-size:13px}
+}

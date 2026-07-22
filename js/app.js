@@ -341,12 +341,19 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     try{ const mc=JSON.parse(localStorage.getItem('zb_mineru_cfg')||'null'); if(mc&&typeof mc==='object'){ if(mc.pageLimit!=null)this.mineruCfg.pageLimit=mc.pageLimit; if(mc.fileLimit!=null)this.mineruCfg.fileLimit=mc.fileLimit; this.mineruCfg.tokenExp=mc.tokenExp||''; this.mineruCfg.token=mc.token||''; } }catch(_){}
     this.mineruRefreshUsage();
     try{ if(localStorage.getItem('zb_mineru_tokenbad')==='1')this.mineruTokenBad=true; }catch(_){}
-    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage(); this.startSession();
+    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage();
+      const restored=this.restoreSession();
+      if(!restored) this.startSession();
       try{ const bm=localStorage.getItem('zb_booksmode'); if(bm==='notes'||bm==='pdf')this.booksMode=bm; }catch(_){ }
       try{ const sb=localStorage.getItem('zb_bookid'); if(sb)this.currentBookId=sb; }catch(_){ }
-      let startView=this._viewFromHash();
-      if(!startView){ try{ const sv=localStorage.getItem('zb_view'); if(sv && sv!=='settings')startView=sv; }catch(_){ } }
-      if(startView && startView!==this.view){ this.go(startView); } else { this._syncHash(this.view); }
+      if(restored){
+        // 会话已恢复：保持恢复的视图与队列，仅同步地址栏 hash，不再走 go() 覆盖
+        this._syncHash(this.view);
+      } else {
+        let startView=this._viewFromHash();
+        if(!startView){ try{ const sv=localStorage.getItem('zb_view'); if(sv && sv!=='settings')startView=sv; }catch(_){ } }
+        if(startView && startView!==this.view){ this.go(startView); } else { this._syncHash(this.view); }
+      }
       this.$nextTick(()=>this.mineruResume());
     } else { this.view='settings'; }
     window.addEventListener('hashchange', this.onHashChange);
@@ -357,6 +364,10 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     this.mockSaved=this.mockSnapPeek();
     window.addEventListener('pagehide', this._mockPagehide);
     document.addEventListener('visibilitychange', this._mockVis);
+    // 会话持久化：PWA 被系统在后台回收/重载后，切回来仍能恢复队列与 AI 内容
+    this._persistHandler=()=>{ try{ if(document.visibilityState==='hidden')this.persistSession(); }catch(_){} };
+    document.addEventListener('visibilitychange', this._persistHandler);
+    window.addEventListener('pagehide', ()=>{ try{ this.persistSession(); }catch(_){} });
     // 兜底：有积压的作答记录（离线或服务端 5xx 暂存的）每分钟尝试补传一次
     this._flushTimer=setInterval(()=>{ if(this.offlineQueued>0 && !this.offline)this._offFlush(); },60000);
     this._offQueueCount().then(n=>{ this.offlineQueued=n; if(n>0)this._offFlush(); }).catch(()=>{});

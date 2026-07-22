@@ -64,6 +64,41 @@ cleanPageMd(md){
     },
 prev(){ if(this.qi>0)this.qi--; },
 onSaveState(p){ if(p&&p.id){ this.qStates[p.id]=p.state; } },
+// —— 会话持久化：PWA 被系统在后台重载后，恢复队列/进度/作答/AI 内容 ——
+persistSession(){
+  try{
+    if(!['practice','wrong','favorite'].includes(this.view) || !this.queue.length) return;
+    // 先把当前显示题的 AI 内容存进 aiStates（含翻卡/追问最新态）
+    if(this.aiX && this.aiX.id){
+      const st=this.aiStates[this.aiX.id] || (this.aiStates[this.aiX.id]={ id:this.aiX.id });
+      st.view=this.aiX.view; st.text=this.aiX.text; st.chat=(this.aiX.chat||[]).slice(); st.model=this.aiX.model;
+      st.cards=(this.aiX.cards||[]).slice(); st.cardsModel=this.aiX.cardsModel; st.flip={ ...(this.aiX.flip||{}) };
+    }
+    const snap={ v:this.view, sv:this.sessionView, q:this.queue, i:this.qi, t:this.queueTotal, a:this.sessionAns, bo:this.batchDone, lo:this.loadedOnce, rs:this.reviewSession, qs:this.qStates, ai:this.aiStates, ts:Date.now() };
+    let s=JSON.stringify(snap);
+    // 体积保护：超 4MB 时丢弃 AI 内容（题目/进度更重要），仍超则不存
+    if(s.length>4_000_000){ const lite={ ...snap, ai:{} }; s=JSON.stringify(lite); }
+    if(s.length>4_500_000) return;
+    localStorage.setItem('zb_session', s);
+  }catch(_){}
+},
+restoreSession(){
+  try{
+    const raw=localStorage.getItem('zb_session'); if(!raw) return false;
+    const snap=JSON.parse(raw); if(!snap||!Array.isArray(snap.q)||!snap.q.length) return false;
+    // 超过 12 小时的旧会话不恢复（避免陈旧）
+    if(snap.ts && Date.now()-snap.ts > 12*3600*1000){ localStorage.removeItem('zb_session'); return false; }
+    if(!['practice','wrong','favorite'].includes(snap.v)) return false;
+    this.queue=snap.q; this.qi=snap.i||0; this.queueTotal=snap.t||snap.q.length;
+    this.sessionAns=snap.a||{}; this.batchDone=!!snap.bo; this.loadedOnce=!!snap.lo;
+    this.reviewSession=snap.rs||null; this.qStates=snap.qs||{}; this.aiStates=snap.ai||{};
+    this.sessionView=snap.sv||snap.v; this.view=snap.v; this.loading=false;
+    // 恢复当前题的 AI 显示
+    const cq=this.queue[this.qi];
+    if(cq && this.aiStates[cq.id]){ const s=this.aiStates[cq.id]; this.aiX={ id:cq.id, view:s.view||'', text:s.text||'', busy:false, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) } }; }
+    return true;
+  }catch(_){ return false; }
+},
 qnavCls(q,i){ const c=[]; if(i===this.qi)c.push('cur'); const a=this.sessionAns[q.id]; if(a===true)c.push('ok'); else if(a===false)c.push('bad'); else if(q.mastered)c.push('ok'); else if(q.wrong_count>0)c.push('bad'); else if(q.right_count>0)c.push('done'); else c.push('un'); return c; },
 next(){ if(this.qi<this.queue.length-1){ this.qi++; return; }
       // 错题回顾是封闭集：翻到最后一题不再自动续拉普通题，而是结束会话回到常规错题本

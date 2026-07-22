@@ -178,13 +178,17 @@ const QuestionCard={
         </div>
         </template>
         <rich-text v-else-if="aiText" :content="aiText" />
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn subtle" v-if="!aiBusy || aiKind==='concept'" :style="aiKind!=='concept'&&(aiText)?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 看解题解析':'✨ 解题解析') : '✨ AI 解析本题' }}</button>
-          <button class="btn subtle" v-if="!aiBusy || aiKind!=='concept'" :style="aiKind==='concept'?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）">{{ hasConcept ? (aiKind==='concept'?'📚 知识点卡片':'→ 看知识点卡片') : '📚 讲讲知识点' }}</button>
-          <button class="btn subtle" v-if="!aiBusy && aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片">↻ 重讲</button>
-          <button class="btn subtle" v-if="!aiBusy && aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解析">↻ 重解</button>
-          <button class="btn subtle" v-if="aiText && !aiBusy && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 保存进解析</button>
-          <button class="btn subtle" v-if="aiText && !aiBusy && aiKind!=='concept'" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="进入选段模式：像勾选复选框一样点选段落/公式/代码块，再合并复制或引用到追问">{{ segMode?'✕ 退出选段':'📝 选段' }}</button>
+        <div class="ai-acts">
+          <div class="ai-acts-main">
+            <button class="ai-btn ai-btn-primary" :class="{on:aiKind!=='concept'&&aiText}" v-if="!aiBusy || aiKind==='concept'" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 解题解析':'✨ 解题解析') : '✨ 解题解析' }}</button>
+            <button class="ai-btn ai-btn-primary" :class="{on:aiKind==='concept'}" v-if="!aiBusy || aiKind!=='concept'" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）">{{ hasConcept ? (aiKind==='concept'?'📚 知识点卡片':'📚 知识点卡片') : '📚 讲讲知识点' }}</button>
+          </div>
+          <div class="ai-acts-sub" v-if="!aiBusy && (aiText || (aiKind==='concept'&&hasConcept))">
+            <button class="ai-chip" v-if="aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片">↻ 重讲</button>
+            <button class="ai-chip" v-if="aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解析">↻ 重解</button>
+            <button class="ai-chip" v-if="aiText && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 存入解析</button>
+            <button class="ai-chip" v-if="aiText && aiKind!=='concept'" :class="{on:segMode}" @click="segToggle" title="进入选段模式：点选段落/公式/代码块，再合并复制或引用到追问">{{ segMode?'✕ 退出选段':'📝 选段' }}</button>
+          </div>
         </div>
         <template v-if="aiText && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" class="chat-round">
