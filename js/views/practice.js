@@ -107,19 +107,23 @@ async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash
 async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth')this.flash('笔记保存失败：'+e.message,true); } }
 
 ,
+// 解析 concept 返回的 JSON 卡片（健壮：剥代码围栏、截取数组片段、校验字段）
+_parseConceptCards(raw){ let s=String(raw||'').trim(); s=s.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim(); const a=s.indexOf('['), b=s.lastIndexOf(']'); if(a>=0&&b>a)s=s.slice(a,b+1); let arr; try{ arr=JSON.parse(s); }catch(_){ return []; } if(!Array.isArray(arr))return []; return arr.filter(x=>x&&typeof x==='object'&&(x.term||x.plain)).slice(0,8).map(x=>({ term:String(x.term||'').trim()||'知识点', formula:String(x.formula||'').trim(), plain:String(x.plain||'').trim(), example:String(x.example||'').trim() })); },
+toggleCard(i){ const f={ ...(this.aiX.flip||{}) }; f[i]=!f[i]; this.aiX.flip=f; },
 async aiExplain(kind){ const q=this.cur; if(!q)return;
   if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
   if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
   const isConcept=kind==='concept';
-  this.aiX={ id:q.id, text:'', busy:true, chat:[], asking:false, model:'', kind:isConcept?'concept':'' };
+  this.aiX={ id:q.id, text:'', busy:true, chat:[], asking:false, model:'', kind:isConcept?'concept':'', cards:[], flip:{} };
   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
   try{
-    const r=await this.aiFetch({ ...ov, ...(isConcept?{kind:'concept'}:{}), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }, ctrl.signal,
+    const r=await this.aiFetch({ ...ov, ...(isConcept?{kind:'concept',stream:false}:{}), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }, ctrl.signal,
       (d)=>{ if(this.aiX.id!==q.id)return; if(d.reset)this.aiX.text=''; if(d.model)this.aiX.model=d.model; if(d.text)this.aiX.text=d.acc; });
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
     if(this.aiX.id===q.id && !this.aiX.text) throw new Error('模型没有返回内容，可换个模型再试');
+    if(isConcept && this.aiX.id===q.id){ const cards=this._parseConceptCards(this.aiX.text); if(!cards.length) throw new Error('知识点解析失败，可点重讲再试'); this.aiX.cards=cards; }
   }catch(e){ if(e.name!=='AbortError' && this.aiX.id===q.id){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash('AI 解析失败：'+msg,true); } }
   if(this.aiX.id===q.id) this.aiX.busy=false;
   if(this._aiCtrl===ctrl) this._aiCtrl=null;
