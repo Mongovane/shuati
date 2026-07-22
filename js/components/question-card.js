@@ -179,8 +179,8 @@ const QuestionCard={
         </template>
         <rich-text v-else-if="aiText" :content="aiText" />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn subtle" v-if="!aiBusy || (aiKind==='concept'&&hasExplain)" :style="aiKind!=='concept'&&(aiText)?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 看解题解析':'✨ 解题解析') : '✨ AI 解析本题' }}</button>
-          <button class="btn subtle" v-if="!aiBusy || (aiKind!=='concept'&&hasConcept)" :style="aiKind==='concept'?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）">{{ hasConcept ? (aiKind==='concept'?'📚 知识点卡片':'→ 看知识点卡片') : '📚 讲讲知识点' }}</button>
+          <button class="btn subtle" v-if="!aiBusy || aiKind==='concept'" :style="aiKind!=='concept'&&(aiText)?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 看解题解析':'✨ 解题解析') : '✨ AI 解析本题' }}</button>
+          <button class="btn subtle" v-if="!aiBusy || aiKind!=='concept'" :style="aiKind==='concept'?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）">{{ hasConcept ? (aiKind==='concept'?'📚 知识点卡片':'→ 看知识点卡片') : '📚 讲讲知识点' }}</button>
           <button class="btn subtle" v-if="!aiBusy && aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片">↻ 重讲</button>
           <button class="btn subtle" v-if="!aiBusy && aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解析">↻ 重解</button>
           <button class="btn subtle" v-if="aiText && !aiBusy && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 保存进解析</button>

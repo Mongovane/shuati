@@ -18,7 +18,7 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view='explain'|'concept' 控制当前显示，切换不互相清空
+    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
@@ -137,16 +137,24 @@ const App={
     heatTotal(){ return this.heatCells.reduce((s,c)=>s+c.n,0); },
   },
   watch:{
-    'cur.id'(nid, oid){
-      // 保存旧题已生成的 AI 内容（未完成/生成中的不缓存，避免存半截）
-      if(oid && this.aiX.id===oid && !this.aiX.busy && (this.aiX.text || (this.aiX.cards&&this.aiX.cards.length))){
-        this.aiStates[oid]={ id:oid, view:this.aiX.view, text:this.aiX.text, chat:(this.aiX.chat||[]).slice(), model:this.aiX.model, cards:(this.aiX.cards||[]).slice(), cardsModel:this.aiX.cardsModel, flip:{ ...(this.aiX.flip||{}) } };
+    cur(nc, oc){
+      const nid=nc&&nc.id, oid=oc&&oc.id;
+      if(nid===oid) return;
+      if(oid && this.aiX.id===oid){
+        const st=this.aiStates[oid] || (this.aiStates[oid]={ id:oid });
+        st.view=this.aiX.view; st.text=this.aiX.text; st.chat=(this.aiX.chat||[]).slice(); st.model=this.aiX.model;
+        st.cards=(this.aiX.cards||[]).slice(); st.cardsModel=this.aiX.cardsModel; st.flip={ ...(this.aiX.flip||{}) };
       }
-      // 若正在为旧题生成，切走时中止请求
-      if(oid && this.aiX.busy && this.aiX.id===oid){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.busy=false; }
-      // 恢复新题缓存，否则清空
-      if(nid && this.aiStates[nid]){ const s=this.aiStates[nid]; this.aiX={ id:s.id, view:s.view, text:s.text, busy:false, chat:(s.chat||[]).slice(), asking:false, model:s.model, cards:(s.cards||[]).slice(), cardsModel:s.cardsModel, flip:{ ...(s.flip||{}) } }; }
-      else { this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }; }
+      const jobs=this._aiJobs||{};
+      const genE=!!jobs[nid+':e'], genC=!!jobs[nid+':c'];
+      const s=nid?this.aiStates[nid]:null;
+      if(s){
+        const view=s.view|| (genC?'concept':'explain');
+        const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
+        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) } };
+      } else {
+        this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} };
+      }
     },
     theme(v){ localStorage.setItem('zb_theme',v); this.applyTheme(); },
     examDate(v){ try{ v?localStorage.setItem('zb_examdate',v):localStorage.removeItem('zb_examdate'); }catch(_){ } },

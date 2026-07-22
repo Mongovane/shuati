@@ -115,28 +115,41 @@ toggleAllCards(){ const cards=this.aiX.cards||[]; if(!cards.length)return; const
 async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
   const isConcept=kind==='concept';
+  const qid=q.id;
   // 同题：若目标内容已生成且非强制重做，只切换显示、不重新请求
-  if(this.aiX.id===q.id && !force){
-    if(isConcept && this.aiX.cards && this.aiX.cards.length){ this.aiX.view='concept'; return; }
-    if(!isConcept && this.aiX.text){ this.aiX.view='explain'; return; }
+  if(this.aiX.id===qid && !force){
+    if(isConcept && this.aiX.cards && this.aiX.cards.length){ this.aiX.view='concept'; this.aiX.busy=!!(this._aiJobs&&this._aiJobs[qid+':c']); return; }
+    if(!isConcept && this.aiX.text){ this.aiX.view='explain'; this.aiX.busy=!!(this._aiJobs&&this._aiJobs[qid+':e']); return; }
   }
-  if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
-  const ctrl=new AbortController(); this._aiCtrl=ctrl;
-  // 换题：全清；同题：保留另一侧内容，只重置将要生成的这一侧
-  if(this.aiX.id!==q.id){ this.aiX={ id:q.id, view:isConcept?'concept':'explain', text:'', busy:true, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }; }
-  else { this.aiX.view=isConcept?'concept':'explain'; this.aiX.busy=true; if(isConcept){ this.aiX.cards=[]; this.aiX.flip={}; if(this.aiX.text&&!force)this.flash('解题解析已保留，随时可切回'); } else { this.aiX.text=''; this.aiX.chat=[]; if(this.aiX.cards&&this.aiX.cards.length&&!force)this.flash('知识点卡片已保留，随时可切回'); } }
+  // 该题该类型若已在生成中，仅切换显示（不重复发起）
+  if(!this._aiJobs)this._aiJobs={};
+  const jobKey=qid+':'+(isConcept?'c':'e');
+  if(this._aiJobs[jobKey] && !force){ if(this.aiX.id===qid) this.aiX.view=isConcept?'concept':'explain'; return; }
+  // 确保 aiStates 有该题条目（承载后台生成结果，切题也不丢）
+  const st=this.aiStates[qid] || (this.aiStates[qid]={ id:qid, view:'', text:'', chat:[], model:'', cards:[], cardsModel:'', flip:{} });
+  st.view=isConcept?'concept':'explain';
+  if(isConcept){ st.cards=[]; st.cardsModel=''; st.flip={}; } else { st.text=''; st.chat=[]; st.model=''; }
+  // 若当前正显示这道题，把显示切过去并标记生成中
+  const showing=()=> this.cur && this.cur.id===qid;
+  if(showing()){
+    this.aiX.id=qid; this.aiX.view=st.view; this.aiX.busy=true; this.aiX.asking=false;
+    if(isConcept){ this.aiX.cards=[]; this.aiX.cardsModel=''; this.aiX.flip={}; if(this.aiX.text&&!force)this.flash('解题解析已保留，随时可切回'); }
+    else { this.aiX.text=''; this.aiX.chat=[]; this.aiX.model=''; if(this.aiX.cards&&this.aiX.cards.length&&!force)this.flash('知识点卡片已保留，随时可切回'); }
+  }
+  const ctrl=new AbortController(); this._aiJobs[jobKey]=ctrl;
   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
   let acc='';
   try{
     const r=await this.aiFetch({ ...ov, ...(isConcept?{kind:'concept',stream:false}:{}), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }, ctrl.signal,
-      (d)=>{ if(this.aiX.id!==q.id)return; if(isConcept){ if(d.model)this.aiX.cardsModel=d.model; if(d.text)acc=d.acc; } else { if(d.reset)this.aiX.text=''; if(d.model)this.aiX.model=d.model; if(d.text)this.aiX.text=d.acc; } });
+      (d)=>{ if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=d.acc; } else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } } });
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
-    if(isConcept){ if(this.aiX.id===q.id){ const cards=this._parseConceptCards(acc); if(!cards.length) throw new Error('知识点解析失败，可点重讲再试'); this.aiX.cards=cards; } }
-    else if(this.aiX.id===q.id && !this.aiX.text) throw new Error('模型没有返回内容，可换个模型再试');
-  }catch(e){ if(e.name!=='AbortError' && this.aiX.id===q.id){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); } }
-  if(this.aiX.id===q.id) this.aiX.busy=false;
-  if(this._aiCtrl===ctrl) this._aiCtrl=null;
+    if(isConcept){ const cards=this._parseConceptCards(acc); if(!cards.length) throw new Error('知识点解析失败，可点重讲再试'); st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards; }
+    else if(!st.text) throw new Error('模型没有返回内容，可换个模型再试');
+  }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
+  if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
+  // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
+  if(showing() && this.aiX.id===qid){ if(!this._aiJobs[qid+':e'] && !this._aiJobs[qid+':c'])this.aiX.busy=false; else if((isConcept&&this.aiX.view==='concept')||(!isConcept&&this.aiX.view==='explain'))this.aiX.busy=false; }
 },
 async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this.aiX.text)return;
   let merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();
