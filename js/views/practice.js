@@ -15,7 +15,7 @@ qs(extra={}){ const p=new URLSearchParams();
 onFilter(){ if(this.filterLock)return; this.startSession(); },
 async startSession(keep){ if(!this.token)return;
       const forView=this.view;
-      this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0; this.sessionAns={}; this.sessionView=this.view;
+      this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0; this.sessionAns={}; this.qStates={}; this.aiStates={}; this.sessionView=this.view;
       this.reviewSession=null;  // 常规取题即离开「错题回顾」会话
       if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
       const dedup=(arr)=>{ const m=new Map(); for(const q of (arr||[])){ if(q&&q.id!=null&&!m.has(q.id))m.set(q.id,q); } return [...m.values()]; };
@@ -63,6 +63,7 @@ cleanPageMd(md){
       return lines.slice(start,end).join('\n').trim();
     },
 prev(){ if(this.qi>0)this.qi--; },
+onSaveState(p){ if(p&&p.id){ this.qStates[p.id]=p.state; } },
 qnavCls(q,i){ const c=[]; if(i===this.qi)c.push('cur'); const a=this.sessionAns[q.id]; if(a===true)c.push('ok'); else if(a===false)c.push('bad'); else if(q.mastered)c.push('ok'); else if(q.wrong_count>0)c.push('bad'); else if(q.right_count>0)c.push('done'); else c.push('un'); return c; },
 next(){ if(this.qi<this.queue.length-1){ this.qi++; return; }
       // 错题回顾是封闭集：翻到最后一题不再自动续拉普通题，而是结束会话回到常规错题本

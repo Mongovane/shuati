@@ -6,8 +6,8 @@ const normAns=(v)=>String(v==null?'':v)
 
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all'],
+  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
+  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state'],
   data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
@@ -44,7 +44,8 @@ const QuestionCard={
     graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
   },
   watch:{ q(){ this.reset(); }, segMode(v){ this.$emit('seg-mode', v); } },
-  mounted(){ this.reset(); },
+  mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); } },
+  beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){} },
   methods:{
     taGrow(e){ const el=e&&e.target; if(!el)return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight+2, Math.round(window.innerHeight*0.5))+'px'; },
     segToggle(){ this.segMode=!this.segMode; if(!this.segMode)this._segClear(); },
@@ -178,8 +179,8 @@ const QuestionCard={
         </template>
         <rich-text v-else-if="aiText" :content="aiText" />
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn subtle" v-if="!aiBusy" :style="aiKind!=='concept'&&(aiText)?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 看解题解析':'✨ 解题解析') : '✨ AI 解析本题' }}</button>
-          <button class="btn subtle" v-if="!aiBusy" :style="aiKind==='concept'?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）">{{ hasConcept ? (aiKind==='concept'?'📚 知识点卡片':'→ 看知识点卡片') : '📚 讲讲知识点' }}</button>
+          <button class="btn subtle" v-if="!aiBusy || (aiKind==='concept'&&hasExplain)" :style="aiKind!=='concept'&&(aiText)?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 看解题解析':'✨ 解题解析') : '✨ AI 解析本题' }}</button>
+          <button class="btn subtle" v-if="!aiBusy || (aiKind!=='concept'&&hasConcept)" :style="aiKind==='concept'?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）">{{ hasConcept ? (aiKind==='concept'?'📚 知识点卡片':'→ 看知识点卡片') : '📚 讲讲知识点' }}</button>
           <button class="btn subtle" v-if="!aiBusy && aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片">↻ 重讲</button>
           <button class="btn subtle" v-if="!aiBusy && aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解析">↻ 重解</button>
           <button class="btn subtle" v-if="aiText && !aiBusy && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 保存进解析</button>
