@@ -19,7 +19,7 @@ html,body{margin:0;background:#F5F6F2}
 @keyframes spR{to{opacity:1;clip-path:inset(0 0 0 0)}}
 </style>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-<link rel="stylesheet" href="css/style.css?v=103">
+<link rel="stylesheet" href="css/style.css?v=104">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" />
 <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" /></noscript>
 <link rel="manifest" href="manifest.json">
@@ -55,39 +55,51 @@ setTimeout(hide,1600);                    /* 兜底：即使应用挂载失败�
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/copy-tex.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
-<script src="js/constants.js?v=103"></script>
-<script src="js/components/rich-text.js?v=103"></script>
-<script src="js/components/question-card.js?v=103"></script>
-<script src="js/api.js?v=103"></script>
-<script src="js/components/reader.js?v=103"></script>
-<script src="js/views/practice.js?v=103"></script>
-<script src="js/views/bank.js?v=103"></script>
-<script src="js/views/saved.js?v=103"></script>
-<script src="js/views/mock-stats.js?v=103"></script>
-<script src="js/views/ingest.js?v=103"></script>
-<script src="js/views/mineru.js?v=103"></script>
-<script src="js/views/books.js?v=103"></script>
-<script src="js/views/settings.js?v=103"></script>
-<script src="js/tpl/shell-open.js?v=103"></script>
-<script src="js/tpl/view-practice.js?v=103"></script>
-<script src="js/tpl/view-books.js?v=103"></script>
-<script src="js/tpl/view-mock.js?v=103"></script>
-<script src="js/tpl/view-bank.js?v=103"></script>
-<script src="js/tpl/view-stats.js?v=103"></script>
-<script src="js/tpl/view-ingest.js?v=103"></script>
-<script src="js/tpl/view-settings.js?v=103"></script>
-<script src="js/tpl/shell-close.js?v=103"></script>
-<script src="js/app-template.js?v=103"></script>
-<script src="js/app.js?v=103"></script>
+<script src="js/constants.js?v=104"></script>
+<script src="js/components/rich-text.js?v=104"></script>
+<script src="js/components/question-card.js?v=104"></script>
+<script src="js/api.js?v=104"></script>
+<script src="js/components/reader.js?v=104"></script>
+<script src="js/views/practice.js?v=104"></script>
+<script src="js/views/bank.js?v=104"></script>
+<script src="js/views/saved.js?v=104"></script>
+<script src="js/views/mock-stats.js?v=104"></script>
+<script src="js/views/ingest.js?v=104"></script>
+<script src="js/views/mineru.js?v=104"></script>
+<script src="js/views/books.js?v=104"></script>
+<script src="js/views/settings.js?v=104"></script>
+<script src="js/tpl/shell-open.js?v=104"></script>
+<script src="js/tpl/view-practice.js?v=104"></script>
+<script src="js/tpl/view-books.js?v=104"></script>
+<script src="js/tpl/view-mock.js?v=104"></script>
+<script src="js/tpl/view-bank.js?v=104"></script>
+<script src="js/tpl/view-stats.js?v=104"></script>
+<script src="js/tpl/view-ingest.js?v=104"></script>
+<script src="js/tpl/view-settings.js?v=104"></script>
+<script src="js/tpl/shell-close.js?v=104"></script>
+<script src="js/app-template.js?v=104"></script>
+<script src="js/app.js?v=104"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
     navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(function(reg){
       reg.update();
-      setInterval(function(){ reg.update(); }, 60*60*1000);
+      setInterval(function(){ reg.update(); }, 30*60*1000);
+      reg.addEventListener('updatefound', function(){
+        var nw = reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', function(){
+          if(nw.state==='installed' && navigator.serviceWorker.controller){
+            try{ if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'}); }catch(_){}
+          }
+        });
+      });
     }).catch(function(){});
-    // 说明：曾在 controllerchange 时强制 reload 以确保新 SW 接管，但本站同源资源走 networkFirst
-    // 永远拿到最新文件，无需强刷；去掉后首次访问与每次发版都不再闪一下。
+    var _reloaded=false;
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if(_reloaded) return; _reloaded=true;
+      window.location.reload();
+    });
   });
 }
 </script>

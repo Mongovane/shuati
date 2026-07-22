@@ -1,4 +1,4 @@
-const APP_VERSION='v103'; // 与 sw.js 的 VERSION 同步升级；用于界面显示与排查缓存
+const APP_VERSION='v104'; // 与 sw.js 的 VERSION 同步升级；用于界面显示与排查缓存
 const SUBJECTS=[{v:'politics',t:'政治理论'},{v:'english',t:'英语'},{v:'math',t:'高等数学'},{v:'computer',t:'计算机基础与程序设计'}];
 const CHAPTER_PRESETS={
   politics:['马原-唯物论','马原-辩证法','马原-认识论','马原-唯物史观','毛中特','习近平新时代中国特色社会主义思想','近代史纲要','思修法基','时政'],
