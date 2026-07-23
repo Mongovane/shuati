@@ -14,7 +14,31 @@ async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON
 // 科目排序：上移/下移一格后批量写回 sort（触摸端比拖拽可靠）
 async subjMove(i,dir){ const j=i+dir; if(j<0||j>=this.subjects.length)return; const arr=[...this.subjects]; const t=arr[i]; arr[i]=arr[j]; arr[j]=t; this.subjects=arr; await this.subjReorder(); },
 async subjReorder(){ try{ for(let i=0;i<this.subjects.length;i++){ const s=this.subjects[i]; const ns=(i+1)*10; if(s.sort!==ns){ s.sort=ns; await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:ns,keywords:s.keywords||''})}); } } this.flash('科目顺序已更新'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('排序保存失败：'+e.message,true); } },
-async subjDelete(s){ const others=this.subjects.filter(x=>x.v!==s.v); let moveTo=''; if(confirm('删除科目「'+s.t+'」。\n\n点「确定」=同时把该科目下的题目转移到其他科目；点「取消」=只删科目、旧题保留原标记（下拉不再显示该科目）。')){ const names=others.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const pick=prompt('把「'+s.t+'」的题目转到哪个科目？输入序号：\n'+names); const idx=parseInt(pick,10)-1; if(others[idx])moveTo=others[idx].v; else { this.flash('序号无效，已取消',true); return; } } try{ await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,moveTo})}); this.flash('已删除科目「'+s.t+'」'+(moveTo?('，题目已转到「'+this.subjName(moveTo)+'」'):'')); await this.loadSubjects(); this.loadMeta&&this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+async subjDelete(s){
+  // 先尝试删除（后端会检查是否为空）；非空则返回 409 + 题目数
+  const doDelete=async (force)=>{
+    return await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,force:!!force})});
+  };
+  try{
+    await doDelete(false);
+    this.flash('\u5df2\u5220\u9664\u79d1\u76ee\u300c'+s.t+'\u300d');
+    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+  }catch(e){
+    // 后端拒绝：该科目下还有题目
+    if(e && e.status===409 && e.data && e.data.error==='subject_not_empty'){
+      const n=e.data.count||0;
+      if(confirm('\u79d1\u76ee\u300c'+s.t+'\u300d\u4e0b\u8fd8\u6709 '+n+' \u9053\u9898\u76ee\u3002\n\n\u5fc5\u987b\u5148\u5904\u7406\u8fd9\u4e9b\u9898\u76ee\u624d\u80fd\u5220\u9664\u79d1\u76ee\u3002\n\n\u70b9\u300c\u786e\u5b9a\u300d\uff1a\u8fde\u540c\u8fd9 '+n+' \u9053\u9898\u76ee\u4e00\u8d77\u5220\u9664\uff08\u4e0d\u53ef\u6062\u590d\uff09\uff1b\u70b9\u300c\u53d6\u6d88\u300d\uff1a\u4fdd\u7559\u3002')){
+        try{
+          const r=await doDelete(true);
+          this.flash('\u5df2\u5220\u9664\u79d1\u76ee\u300c'+s.t+'\u300d\u53ca\u5176\u4e0b '+((r&&r.removedQuestions)||n)+' \u9053\u9898');
+          await this.loadSubjects(); this.loadMeta&&this.loadMeta(true); this.bankDirty=true; this.statsDirty=true;
+        }catch(e2){ if(e2.message!=='unauth')this.flash('\u5220\u9664\u5931\u8d25\uff1a'+e2.message,true); }
+      }
+      return;
+    }
+    if(e.message!=='unauth')this.flash('\u5220\u9664\u5931\u8d25\uff1a'+e.message,true);
+  }
+},
 guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
 saveExplainCfg(){ try{ localStorage.setItem('zb_explaincfg', JSON.stringify(this.explainCfg)); }catch(_){} },
 // 折叠卡「点外部收起全部」：挂 document 级（整页任意位置都覆盖，含内容区两侧留白、卡片下方空白）

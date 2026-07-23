@@ -98,3 +98,20 @@ describe('constants 判分常量', () => {
     expect(OBJECTIVE).toEqual(['single_choice', 'multiple_choice', 'true_false', 'fill_blank']);
   });
 });
+
+describe('选段模式 seg-mode 通知父组件（修回顶按钮遮挡）', () => {
+  it('segMode watch 触发 $emit(seg-mode)', () => {
+    const emits = [];
+    const ctx = { $emit: (name, v) => emits.push([name, v]) };
+    QC.watch.segMode.call(ctx, true);
+    expect(emits).toContainEqual(['seg-mode', true]);
+    QC.watch.segMode.call(ctx, false);
+    expect(emits).toContainEqual(['seg-mode', false]);
+  });
+  it('切题 reset 会退出选段模式（避免 segActive 残留）', () => {
+    const ctx = { q: { note: '' }, blankCount: 0, segMode: true, segCount: 3, sel: [], blanksArr: [] };
+    QC.methods.reset.call(ctx);
+    expect(ctx.segMode).toBe(false);
+    expect(ctx.segCount).toBe(0);
+  });
+});

@@ -1,8 +1,8 @@
 // 后端处理器测试（FakeDB 桩掉 D1，Node 自带 Request/Response 即可跑）
 import { describe, it, expect } from 'vitest';
 import { FakeDB, authedReq, makeEnv } from './helpers.mjs';
-import { onRequestGet as questionsGet } from '../functions/api/questions.js';
-import { onRequestPost as progressPost } from '../functions/api/progress.js';
+import { onRequestGet as questionsGet, onRequestPatch as questionsPatch } from '../functions/api/questions.js';
+import { onRequestPost as progressPost, onRequestGet as progressGet, onRequestDelete as progressDelete } from '../functions/api/progress.js';
 import { onRequestPost as restorePost } from '../functions/api/restore.js';
 import { onRequestPost as processPost } from '../functions/api/process.js';
 
@@ -139,6 +139,23 @@ describe('POST /api/process 直导上限与草稿', () => {
     const qb = db.batches.filter((b) => b.length && /INSERT INTO questions/.test(b[0]._rec.sql));
     expect(qb.length).toBe(Math.ceil(250 / 80));
     expect(qb[0][0]._rec.binds[13]).toBe(null);   // status 列（可信 → 已发布）
+  });
+
+  it('直导会规范化答案并返回 answer_warns（脏答案不静默入库）', async () => {
+    const db = new FakeDB([{ match: /FROM subjects/, value: [] }]);
+    const questions = [
+      { stem: '多选但只给一个答案的题目题干示例', type: 'multiple_choice', options: [{ key: 'A', text: 'x' }, { key: 'B', text: 'y' }], answer: ['A'] },
+      { stem: '答案超出选项范围的单选题干示例', type: 'single_choice', options: [{ key: 'A', text: 'x' }, { key: 'B', text: 'y' }], answer: ['Z'] },
+    ];
+    const res = await processPost({ request: authedReq('http://x/api/process', { method: 'POST', body: JSON.stringify({ subject: 'math', questions }) }), env: makeEnv(db) });
+    const out = await res.json();
+    expect(out.inserted_questions).toBe(2);
+    expect(out.answer_warns.length).toBe(2);
+    expect(out.answer_warns.join(' ')).toMatch(/多选题只有一个答案/);
+    expect(out.answer_warns.join(' ')).toMatch(/不在选项内/);
+    // 规范化后存进库的 answer 是干净的（多选去重大写、单选保留原值待查）
+    const ins = db.batches.flat().filter((s) => /INSERT INTO questions/.test(s._rec.sql));
+    expect(ins.length).toBe(2);
   });
 });
 
@@ -277,5 +294,67 @@ describe('POST /api/restore', () => {
     expect(r1.status).toBe(400);
     const r2 = await restorePost({ request: authedReq('http://x/api/restore', { method: 'POST', body: JSON.stringify({ version: 2 }) }), env: makeEnv(db) });
     expect(r2.status).toBe(422);
+  });
+});
+
+describe('GET /api/progress 统计口径', () => {
+  it('bySubject 排除待审核草稿；返回按题做对数 right_q', async () => {
+    const db = new FakeDB([
+      { match: /FROM questions q LEFT JOIN progress/, value: [
+        { subject: 'math', total_q: 2, seen: 2, right_sum: 5, wrong_sum: 1, right_q: 1, wrong_open: 1, mastered: 0, favorited: 0, due: 0 },
+      ] },
+      { match: /FROM mock_results/, value: [] },
+    ]);
+    const res = await progressGet({ request: authedReq('http://x/api/progress'), env: makeEnv(db) });
+    const out = await res.json();
+    expect(res.status).toBe(200);
+    expect(db.ran(/IFNULL\(q\.status,''\) <> 'draft'/), 'stats 应排除草稿').toBe(true);
+    expect(db.ran(/pr\.last_correct = 1 THEN 1 ELSE 0 END\) AS right_q/), '应查 right_q').toBe(true);
+    expect(out.bySubject[0].right_q).toBe(1);
+  });
+});
+
+describe('DELETE /api/progress 删模考记录', () => {
+  it('mock_id → 同时删 mock_answers 与 mock_results', async () => {
+    const db = new FakeDB();
+    const res = await progressDelete({ request: authedReq('http://x/api/progress?mock_id=7', { method: 'DELETE' }), env: makeEnv(db) });
+    expect((await res.json()).ok).toBe(true);
+    expect(db.stmts(/DELETE FROM mock_answers WHERE mock_id/)[0].binds).toEqual([7]);
+    expect(db.stmts(/DELETE FROM mock_results WHERE id/)[0].binds).toEqual([7]);
+  });
+  it('缺 mock_id → 400', async () => {
+    const db = new FakeDB();
+    const res = await progressDelete({ request: authedReq('http://x/api/progress', { method: 'DELETE' }), env: makeEnv(db) });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('PATCH /api/questions 批量改字段', () => {
+  it('章节/难度/标签在白名单内，正确落库（tags 存 JSON）', async () => {
+    const db = new FakeDB();
+    const body = { ids: ['a', 'b'], chapter: '第一章', difficulty: 4, tags: ['易错', '重点'] };
+    const res = await questionsPatch({ request: authedReq('http://x/api/questions', { method: 'PATCH', body: JSON.stringify(body) }), env: makeEnv(db) });
+    expect((await res.json()).ok).toBe(true);
+    const up = db.stmts(/UPDATE questions SET/)[0];
+    expect(up.sql).toMatch(/chapter = \?/);
+    expect(up.sql).toMatch(/difficulty = \?/);
+    expect(up.sql).toMatch(/tags = \?/);
+    // 绑定值：difficulty 数字、tags JSON 字符串、末尾是 ids
+    expect(up.binds).toContain(4);
+    expect(up.binds).toContain('["易错","重点"]');
+    expect(up.binds.slice(-2)).toEqual(['a', 'b']);
+  });
+  it('status 只接受 draft/ok，非法值被忽略', async () => {
+    const db = new FakeDB();
+    const res = await questionsPatch({ request: authedReq('http://x/api/questions', { method: 'PATCH', body: JSON.stringify({ ids: ['a'], status: 'garbage', chapter: 'x' }) }), env: makeEnv(db) });
+    expect((await res.json()).ok).toBe(true);
+    const up = db.stmts(/UPDATE questions SET/)[0];
+    expect(up.sql).not.toMatch(/status = \?/);
+    expect(up.sql).toMatch(/chapter = \?/);
+  });
+  it('没有可更新字段 → 400', async () => {
+    const db = new FakeDB();
+    const res = await questionsPatch({ request: authedReq('http://x/api/questions', { method: 'PATCH', body: JSON.stringify({ ids: ['a'], bogus: 1 }) }), env: makeEnv(db) });
+    expect(res.status).toBe(400);
   });
 });

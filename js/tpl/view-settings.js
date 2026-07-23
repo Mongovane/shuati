@@ -5,7 +5,7 @@ const TPL_VIEW_SETTINGS = `
       <h2 style="margin:.2em 0 .5em;order:-1">设置</h2>
       <div class="card sett-card" style="max-width:680px;order:1">
         <div class="fold-head" @click="settFold.token=!settFold.token"><span style="font-weight:700;font-size:15px">访问码<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px">{{ token?'已连接 ✓':'未连接' }}</span></span><span class="fold-arrow" :class="{open:!settFold.token}">▾</span></div>
-        <div v-show="!settFold.token" style="margin-top:14px">
+        <div v-show="!settFold.token" class="fold-body" style="margin-top:14px">
         <div class="field" style="margin-bottom:14px"><label>访问码（APP_TOKEN）</label>
           <input class="inp" style="width:100%" type="password" v-model="tokenInput" :placeholder="token?'已设置（重新输入可修改）':'输入你在 Cloudflare 设置的 APP_TOKEN'" @keyup.enter="saveToken" />
         </div>
@@ -111,7 +111,7 @@ const TPL_VIEW_SETTINGS = `
 
       <div class="card sett-card" style="max-width:680px;margin-top:14px;order:6">
         <div class="fold-head" @click="settFold.prefs=!settFold.prefs"><span style="font-weight:700;font-size:15px">个性化与外观<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px">{{ theme==='dark'?'深色':(theme==='auto'?'跟随系统':'浅色') }}</span></span><span class="fold-arrow" :class="{open:!settFold.prefs}">▾</span></div>
-        <div v-show="!settFold.prefs" style="margin-top:14px">
+        <div v-show="!settFold.prefs" class="fold-body" style="margin-top:14px">
         <div class="field" style="margin-bottom:14px"><label>显示名称（浏览器标签页 + 页头）</label>
           <input class="inp" style="width:100%" v-model="appName" placeholder="例如：刷题 / 资料库 / 仪表盘 / 笔记" />
         </div>

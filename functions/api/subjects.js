@@ -92,15 +92,27 @@ export async function onRequestDelete({ request, env }) {
   if (!code) return json({ error: '缺少科目代码' }, 400);
   try {
     await ensure(env);
-    // 可选：把该科目下的题目转到 moveTo 科目；不传则保留旧题（题里仍是旧 code，只是下拉不再显示）
+    // 统计该科目下的题目数（判断能否直接删）
+    let qCount = 0;
+    try { const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM questions WHERE subject = ?`).bind(code).first(); qCount = (c && c.n) || 0; } catch (_) {}
     const moveTo = normCode(body.moveTo);
+    const force = !!body.force;
+    // 有题目且既不转移、也未确认强删 → 拒绝，返回题目数让前端提示
+    if (qCount > 0 && !moveTo && !force) {
+      return json({ error: 'subject_not_empty', count: qCount }, 409);
+    }
     if (moveTo) {
+      // 转移：题目改挂到目标科目
       await env.DB.prepare(`UPDATE questions SET subject = ? WHERE subject = ?`).bind(moveTo, code).run();
       try { await env.DB.prepare(`UPDATE materials SET subject = ? WHERE subject = ?`).bind(moveTo, code).run(); } catch (_) {}
+    } else if (force && qCount > 0) {
+      // 强制删除：连同该科目下的题目一并删除
+      await env.DB.prepare(`DELETE FROM questions WHERE subject = ?`).bind(code).run();
+      try { await env.DB.prepare(`DELETE FROM materials WHERE subject = ?`).bind(code).run(); } catch (_) {}
     }
     const r = await env.DB.prepare(`DELETE FROM subjects WHERE code = ?`).bind(code).run();
     const deleted = (r && r.meta && r.meta.changes != null) ? r.meta.changes : 0;
-    return json({ ok: true, deleted, moved: moveTo || null });
+    return json({ ok: true, deleted, moved: moveTo || null, removedQuestions: (force && !moveTo) ? qCount : 0 });
   } catch (e) {
     return json({ error: '删除科目失败：' + e.message }, 500);
   }

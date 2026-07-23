@@ -43,9 +43,20 @@ describe('Vue 模板编译', () => {
   it('主模板包含各视图与新功能关键标记（拆分/改动后防丢块）', () => {
     for (const marker of [
       `view==='practice'`, `view==='mock'`, `view==='bank'`, `view==='ingest'`, `view==='stats'`, `view==='settings'`,
-      'bp-row', 'ms-chip', 'dur-grid', 'seg-badge', 'print-area', 'dup-group', 'st-chip', `ingest.tab==='excel'`,
+      'bp-row', 'ms-chip', 'dur-grid', 'seg-badge', 'print-area', 'dup-group', 'st-chip', `ingest.tab==='excel'`, 'fab-top',
+      'settFold.token', 'settFold.prefs', 'ai-concept', 'ai-concept-redo', 'ai-explain-redo', 'skel-wrap',
     ]) {
       expect(APP_TEMPLATE.includes(marker), '缺少标记: ' + marker).toBe(true);
+    }
+  });
+
+  it('已下线的鸡肋功能不应残留在模板中（Scribe/tesseract 引擎、拍照/Markdown 独立 tab、PDF 本地提取）', () => {
+    for (const gone of [
+      `value="scribe"`, `value="tesseract"`,
+      `ingest.tab==='photo'`, `ingest.tab==='md'`,
+      'pdfExtractText', 'ingest.pdf.extracted',
+    ]) {
+      expect(APP_TEMPLATE.includes(gone), '不该再出现: ' + gone).toBe(false);
     }
   });
 });

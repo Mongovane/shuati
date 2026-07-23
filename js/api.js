@@ -39,7 +39,9 @@ const ApiMixin = {
           this.flash('服务器繁忙，这条记录已暂存，稍后自动补传', true);
           return { queued: true, deferred: true };
         }
-        throw new Error((data && data.error) || ('请求失败 ' + res.status));
+        const err = new Error((data && data.error) || ('请求失败 ' + res.status));
+        err.status = res.status; err.data = data;
+        throw err;
       }
       this._setOffline(false);
       if (this.offlineQueued > 0) this._offFlush(); // 有积压（含 5xx 暂存）就趁请求正常时补传
