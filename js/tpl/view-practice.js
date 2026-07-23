@@ -43,7 +43,7 @@ const TPL_VIEW_PRACTICE = `
 
       <!-- Saved 收藏清单模式 -->
       <template v-if="view==='favorite' && fav.listMode">
-        <div v-if="fav.loading && !fav.items.length" class="empty"><span class="spin"></span> 加载中…</div>
+        <div v-if="fav.loading && !fav.items.length" class="skel-wrap"><div class="skel skel-row" v-for="n in 5" :key="'fsk'+n"></div></div>
         <template v-else-if="fav.items.length">
           <div class="bank-toolbar">
             <label class="bank-check"><input type="checkbox" :checked="fav.items.length && fav.items.every(q=>fav.sel.includes(q.id))" @change="favAllOnPage" /> 全选本页</label>
@@ -71,7 +71,18 @@ const TPL_VIEW_PRACTICE = `
         </div>
       </template>
 
-      <div v-else-if="loading" class="empty"><span class="spin"></span> 加载中…</div>
+      <div v-else-if="loading" class="skel-wrap">
+        <div class="skel skel-q">
+          <div class="skel-line w40" style="height:11px"></div>
+          <div class="skel-line w90"></div>
+          <div class="skel-line w100"></div>
+          <div class="skel-line w60" style="margin-bottom:20px"></div>
+          <div class="skel skel-opt"></div>
+          <div class="skel skel-opt"></div>
+          <div class="skel skel-opt"></div>
+          <div class="skel skel-opt" style="margin-bottom:0"></div>
+        </div>
+      </div>
       <template v-else>
         <div v-if="cur">
           <div v-if="reviewSession" class="review-banner">

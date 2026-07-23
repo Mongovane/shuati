@@ -2,7 +2,13 @@
 // 直接编辑本文件即可；js/app-template.js 按固定顺序装配，勿在分片间搬动结构边界。
 const TPL_VIEW_STATS = `
     <div v-else-if="view==='stats'">
-      <div v-if="statsLoading" class="empty"><span class="spin"></span> 加载中…</div>
+      <div v-if="statsLoading" class="skel-wrap">
+        <div class="skel-stats">
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+        </div>
+        <div class="skel skel-chart"></div>
+      </div>
       <template v-else-if="stats">
         <div class="stat-grid">
           <div class="stat"><div class="n">{{ statTotals.totalQ }}</div><div class="l">题目总数</div></div>

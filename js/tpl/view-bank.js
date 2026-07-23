@@ -39,7 +39,7 @@ const TPL_VIEW_BANK = `
         </template>
       </div>
 
-      <div v-if="bank.loading && !bank.items.length" class="empty"><span class="spin"></span> 加载中…</div>
+      <div v-if="bank.loading && !bank.items.length" class="skel-wrap"><div class="skel skel-row" v-for="n in 6" :key="'bsk'+n"></div></div>
       <div v-else-if="!bank.items.length" class="empty"><div class="big">∅</div><p>题库为空或没有匹配的题目。</p></div>
       <template v-else>
         <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row" :class="{sel:bank.sel.includes(q.id)}">
