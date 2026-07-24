@@ -380,6 +380,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
 };
 
 const app = createApp(App);
+app.component('icon', Icon);
 app.config.globalProperties.AUTO = AUTO;
 app.config.globalProperties.OBJECTIVE = OBJECTIVE;
 app.mount('#app');

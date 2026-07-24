@@ -866,3 +866,8 @@ a{color:var(--accent)}
 .skel-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .skel-stat{height:88px;border-radius:14px}
 .skel-chart{height:220px;border-radius:14px;margin-top:8px}
+
+/* Lucide 图标组件：与文字对齐 */
+.ic{display:inline-flex;align-items:center;justify-content:center;vertical-align:-0.15em;line-height:0}
+.ic svg{display:block}
+.btn .ic,.ai-btn .ic,.ai-chip .ic{margin-right:.35em}

@@ -184,24 +184,24 @@ const QuestionCard={
         <rich-text v-else-if="aiText" :content="aiText" />
         <div class="ai-acts">
           <div class="ai-acts-main">
-            <button class="ai-btn ai-btn-primary" :class="{on:aiKind!=='concept'&&aiText}" v-if="!aiBusy || aiKind==='concept'" @click="$emit('ai-explain')">{{ hasExplain ? (aiKind==='concept'?'← 解题解析':'✨ 解题解析') : '✨ 解题解析' }}</button>
-            <button class="ai-btn ai-btn-primary" :class="{on:aiKind==='concept'}" v-if="!aiBusy || aiKind!=='concept'" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）">{{ hasConcept ? (aiKind==='concept'?'📚 知识点卡片':'📚 知识点卡片') : '📚 讲讲知识点' }}</button>
+            <button class="ai-btn ai-btn-primary" :class="{on:aiKind!=='concept'&&aiText}" v-if="!aiBusy || aiKind==='concept'" @click="$emit('ai-explain')"><icon :name="aiKind==='concept'?'arrow-left':'sparkles'" :size="15" /><span>解题解析</span></button>
+            <button class="ai-btn ai-btn-primary" :class="{on:aiKind==='concept'}" v-if="!aiBusy || aiKind!=='concept'" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）"><icon name="book-open" :size="15" /><span>{{ hasConcept ? '知识点卡片' : '讲讲知识点' }}</span></button>
           </div>
           <div class="ai-acts-sub" v-if="!aiBusy && (aiText || (aiKind==='concept'&&hasConcept))">
-            <button class="ai-chip" v-if="aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片">↻ 重讲</button>
-            <button class="ai-chip" v-if="aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解析">↻ 重解</button>
-            <button class="ai-chip" v-if="aiText && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）">💾 存入解析</button>
-            <button class="ai-chip" v-if="aiText && aiKind!=='concept'" :class="{on:segMode}" @click="segToggle" title="进入选段模式：点选段落/公式/代码块，再合并复制或引用到追问">{{ segMode?'✕ 退出选段':'📝 选段' }}</button>
+            <button class="ai-chip" v-if="aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片"><icon name="rotate-cw" :size="13" />重讲</button>
+            <button class="ai-chip" v-if="aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解析"><icon name="rotate-cw" :size="13" />重解</button>
+            <button class="ai-chip" v-if="aiText && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）"><icon name="save" :size="13" />存入解析</button>
+            <button class="ai-chip" v-if="aiText && aiKind!=='concept'" :class="{on:segMode}" @click="segToggle" title="进入选段模式：点选段落/公式/代码块，再合并复制或引用到追问"><icon :name="segMode?'x':'text-cursor-input'" :size="13" /><span>{{ segMode?'退出选段':'选段' }}</span></button>
           </div>
         </div>
         <template v-if="aiText && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" class="chat-round">
-            <div class="chat-bub chat-q"><div class="chat-tag">🙋 你</div><rich-text :content="c.q" /></div>
-            <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+            <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="13" /> 你</div><rich-text :content="c.q" /></div>
+            <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="c.a" />
               <div v-if="!aiAsking" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
                 <template v-if="!c.err">
-                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选段落/公式，底部操作条合并复制或引用追问">{{ segMode?'✕ 退出':'📝 选段' }}</button>
-                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记">📝 存为笔记</button>
+                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选段落/公式，底部操作条合并复制或引用追问"><icon :name="segMode?'x':'text-cursor-input'" :size="12" />{{ segMode?'退出':'选段' }}</button>
+                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记"><icon name="notebook-pen" :size="12" />存为笔记</button>
                 </template>
                 <button v-else class="btn subtle" style="padding:2px 10px;font-size:11px;border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)" @click="$emit('ai-retry',i)">⟳ 重试</button>
               </div>
