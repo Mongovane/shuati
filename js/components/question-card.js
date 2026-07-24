@@ -155,7 +155,7 @@ const QuestionCard={
         <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单</button>
       </div>
             <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
-        <h5><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点讲解' : 'AI 解析' }} <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
+        <h5><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <textarea v-if="showRaw" readonly :value="aiText" style="width:100%;min-height:220px;font:12px/1.5 ui-monospace,monospace" @focus="$event.target.select()"></textarea>
         <template v-else-if="aiKind==='concept' && aiCards.length">
         <div class="kcard-tools"><button class="kcard-flipall" @click="$emit('cards-flip-all')"><icon name="chevrons-up-down" :size="13" /> {{ allFlipped ? '全部收起（看题目）' : '全部翻开（看讲解）' }}</button></div>
@@ -188,8 +188,8 @@ const QuestionCard={
             <button class="ai-btn ai-btn-primary" :class="{on:aiKind==='concept'}" v-if="!aiBusy || aiKind!=='concept'" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）"><icon name="book-open" :size="15" /><span>{{ hasConcept ? '知识点卡片' : '生成知识点卡片' }}</span></button>
           </div>
           <div class="ai-acts-sub" v-if="!aiBusy && (aiText || (aiKind==='concept'&&hasConcept))">
-            <button class="ai-chip" v-if="aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片"><icon name="rotate-cw" :size="13" />重讲</button>
-            <button class="ai-chip" v-if="aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解析"><icon name="rotate-cw" :size="13" />重解</button>
+            <button class="ai-chip" v-if="aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片"><icon name="rotate-cw" :size="13" />重新生成</button>
+            <button class="ai-chip" v-if="aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解题解析"><icon name="rotate-cw" :size="13" />重新生成</button>
             <button class="ai-chip" v-if="aiText && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）"><icon name="save" :size="13" />存入解析</button>
             <button class="ai-chip" v-if="aiText && aiKind!=='concept'" :class="{on:segMode}" @click="segToggle" title="进入选段模式：点选段落/公式/代码块，再合并复制或引用到追问"><icon :name="segMode?'x':'text-cursor-input'" :size="13" /><span>{{ segMode?'退出选段':'选段' }}</span></button>
           </div>

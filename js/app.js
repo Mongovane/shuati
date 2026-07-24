@@ -2,6 +2,7 @@ const { createApp } = Vue;
 const APP_VER = 'v4.4';
 // 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
 let qCache = {};
+let scrollCache = {};  // 各视图切走时的滚动位置，切回来恢复
 const App={
   mixins: [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin, IngestMixin, MineruMixin, BooksMixin, SavedMixin, SettingsMixin],
   components:{ QuestionCard, RichText },
@@ -252,6 +253,8 @@ _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catc
 onHashChange(){ const v=this._viewFromHash(); if(v && v!==this.view){ if(!this.token && v!=='settings')return; this.go(v); } },
 go(v){
       const prev=this.view;
+      // 记录当前视图滚动位置，切回来时恢复
+      try{ scrollCache[prev]=window.pageYOffset||document.documentElement.scrollTop||0; }catch(_){}
       if(prev==='favorite' && v!=='favorite' && this.fav) this.fav.listMode=true;
       if(this.pdfv && this.pdfv.open && typeof this.pdfvClose==='function'){ this.pdfvClose(); }
       if(['practice','wrong','favorite'].includes(prev) && this.queue.length){
@@ -279,6 +282,9 @@ go(v){
       if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta();
         // 惰性加载：仅首次进入或数据改动过(bankDirty)才重拉；单纯来回切导航不再刷新（保住滚动/翻页/勾选）
         if(this.bankDirty){ this.bankDirty=false; this.loadBank(true); } }
+      // 恢复该视图上次滚动位置（切回来停在原处，而非顶部）
+      const sy=scrollCache[v]||0;
+      this.$nextTick(()=>{ requestAnimationFrame(()=>{ try{ window.scrollTo(0, sy); }catch(_){} }); });
     },
 sleep(ms){ return new Promise(r=>setTimeout(r,ms)); },
 typeName(t){ return ({single_choice:'单选',multiple_choice:'多选',true_false:'判断',fill_blank:'填空',short_answer:'简答',code:'代码'})[t]||t; },
