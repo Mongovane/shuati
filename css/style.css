@@ -50,6 +50,11 @@ input,select,textarea{font-family:inherit;font-size:15px}
 .field{display:flex;flex-direction:column;gap:4px}
 .field label{font-size:11px;color:var(--ink-soft);font-weight:600;letter-spacing:.02em;text-transform:uppercase}
 select,.inp{height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:120px}
+/* select 收起框精致化：去掉系统默认箭头，换成自定义 chevron，加 hover 态 */
+select{appearance:none;-webkit-appearance:none;-moz-appearance:none;padding-right:34px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888780' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;transition:border-color .16s,box-shadow .16s,background-color .16s}
+select:hover{border-color:var(--accent);background-color:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+select::-ms-expand{display:none}
+[data-theme=dark] select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2398A1B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
 select:focus,.inp:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:1px;border-color:var(--accent)}
 .btn{height:40px;padding:0 18px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:700;font-size:14px;transition:.15s;display:inline-flex;align-items:center;gap:7px}
 .btn:hover{filter:brightness(1.06)}
