@@ -46,11 +46,11 @@ input,select,textarea{font-family:inherit;font-size:15px}
 .tab.active{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
 .tab .badge{margin-left:6px;font-size:11px;background:var(--bad);color:#fff;border-radius:999px;padding:1px 6px;font-weight:700}
 .wrap{max-width:860px;margin:0 auto;padding:18px 18px 32px}
-.toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:16px}
+.toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px}
 .toolbar .field label{font-size:12px;color:var(--ink-soft);font-weight:500}
 .field{display:flex;flex-direction:column;gap:4px}
-/* 筛选区：横向排布 + 自动换行，卡片式面板（与主页 toolbar 统一） */
-.filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:16px;margin-bottom:14px}
+/* 筛选区：横向排布 + 自动换行 */
+.filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
 .filters .field{flex:0 1 auto}
 .filters .field label{font-size:12px;color:var(--ink-soft);font-weight:500}
 .filters > button{align-self:flex-end}
@@ -62,8 +62,8 @@ input,select,textarea{font-family:inherit;font-size:15px}
 .field label{font-size:11px;color:var(--ink-soft);font-weight:600;letter-spacing:.02em;text-transform:uppercase}
 select,.inp{height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:120px}
 /* select 收起框精致化：去掉系统默认箭头，换成自定义 chevron，加 hover 态 */
-select{appearance:none;-webkit-appearance:none;-moz-appearance:none;padding-right:34px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888780' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;transition:border-color .16s,box-shadow .16s,background-color .16s}
-select:hover{border-color:var(--accent);background-color:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+select{appearance:none;-webkit-appearance:none;-moz-appearance:none;padding-right:36px;cursor:pointer;font-weight:500;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888780' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;transition:border-color .16s ease,box-shadow .16s ease,background-color .16s ease}
+select:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));background-color:color-mix(in srgb,var(--accent) 5%,var(--surface))}
 select::-ms-expand{display:none}
 [data-theme=dark] select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2398A1B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
 select:focus,.inp:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:1px;border-color:var(--accent)}
@@ -168,7 +168,7 @@ a{color:var(--accent)}
   .seg::-webkit-scrollbar{display:none}
   .seg button{white-space:nowrap;flex:0 0 auto}
   /* 工具栏字段自动两列填满，减少上下滚动 */
-  .toolbar{gap:8px;padding:14px}
+  .toolbar{gap:8px}
   .toolbar .field{flex:1 1 46%;min-width:118px}
   .toolbar .field select,.toolbar .field .inp{width:100%}
   h2{font-size:22px;margin:.1em 0 .5em}
