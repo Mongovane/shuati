@@ -451,10 +451,10 @@ a{color:var(--accent)}
 [data-theme=dark] .code-wrap .code-copy{background:rgba(30,36,48,.85);border-color:rgba(255,255,255,.18)}
 
 /* —— 选段模式 —— */
-.seg-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:10px;background:var(--card-bg,#fff);position:sticky;bottom:10px;z-index:6;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.seg-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:12px;background:var(--card-bg,#fff);z-index:60;box-shadow:0 6px 24px rgba(0,0,0,.16);position:fixed;left:50%;transform:translateX(-50%);bottom:24px;width:min(560px,calc(100% - 48px));margin-top:0}
 @media (max-width:640px){
   /* 手机端：卡片内 sticky 会被祖先 overflow 裁剪失效，改为 fixed 悬浮在底部导航条之上 */
-  .seg-bar{position:fixed;left:10px;right:10px;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:60;margin-top:0}
+  .seg-bar{position:fixed;left:10px;right:10px;transform:none;width:auto;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:60;margin-top:0}
   .r-segbar{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 }
 [data-theme=dark] .seg-bar{background:#1e2430}
@@ -841,7 +841,7 @@ a{color:var(--accent)}
 /* 行内公式不加底色（避免文字被切碎、满屏色块）；仅靠数学字体自然区分 */
 .ref .rich .katex-display{margin:10px 0;overflow-x:auto;overflow-y:hidden;max-width:100%;-webkit-overflow-scrolling:touch}
 /* 卡片正面核心公式：卡片主角，保留突出高亮 */
-.kcard-formula .katex{background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:6px;padding:4px 10px;font-size:1.05em}
+.kcard-formula .katex{background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:8px;padding:4px 12px;font-size:1.05em}
 /* 区块语义色：段落/区块按语义加左边框 + 淡背景 */
 .ref .rich .seg-tip{border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0}
 .ref .rich .seg-warn{border-left:3px solid #e0564f;background:color-mix(in srgb,#e0564f 8%,transparent);padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0}
@@ -875,3 +875,10 @@ a{color:var(--accent)}
 .ic{display:inline-flex;align-items:center;justify-content:center;vertical-align:-0.15em;line-height:0}
 .ic svg{display:block}
 .btn .ic,.ai-btn .ic,.ai-chip .ic{margin-right:.35em}
+
+/* 知识点卡片背面：讲解要干净，取消从 .ref 继承来的公式/强调高亮块（避免糊成一片色块） */
+.kcard .rich strong{background:none;font-weight:700;color:inherit}
+.kcard-plain .katex,.kcard-eg .katex,.kcard-back .katex{background:none;padding:0;border-radius:0}
+.kcard-plain .katex-display,.kcard-back .katex-display{background:none;border:0;padding:0;margin:6px 0}
+/* 背面强调词改用低调的颜色加重（不加底块）*/
+.kcard-back .rich strong{background:none;color:var(--accent);font-weight:700}
