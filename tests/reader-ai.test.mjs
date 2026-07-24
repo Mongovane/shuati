@@ -28,16 +28,18 @@ describe('PDF 问答停止 pdfAiStop', () => {
 });
 
 describe('书架层级改科目 setBookSubjectByKey', () => {
-  it('对指定书的每一页 saveOneMaterial 改 subject，不依赖当前打开的书', async () => {
-    const saved = [];
+  it('对指定书批量 PATCH 改 subject（一次请求带全部页 id，不逐页保存）', async () => {
+    const calls = [];
     const ctx = { token: 't', materials: { loading: false },
-      async saveOneMaterial(m) { saved.push(m); }, async loadMaterials() {}, flash() {}, subjName: (x) => x };
-    // setBookSubjectByKey 转发到 _setBookSubjectPages，绑上同一 mixin 的该方法
+      async api(path, opts) { calls.push({ path, body: JSON.parse(opts.body) }); return { ok: true, updated: 2 }; },
+      async loadMaterials() {}, flash() {}, subjName: (x) => x };
     ctx._setBookSubjectPages = Books.methods._setBookSubjectPages.bind(ctx);
     const book = { title: '高数', pages: [{ id: 'a', content_md: 'x' }, { id: 'b', content_md: 'y' }] };
     await Books.methods.setBookSubjectByKey.call(ctx, book, 'math');
-    expect(saved.length).toBe(2);
-    expect(saved.every((m) => m.subject === 'math')).toBe(true);
+    expect(calls.length).toBe(1);                          // 只发一次请求
+    expect(calls[0].path).toBe('/api/materials');
+    expect(calls[0].body.subject).toBe('math');
+    expect(calls[0].body.ids).toEqual(['a', 'b']);          // 带上所有页 id
   });
   it('缺参数直接返回，不报错', async () => {
     const ctx = { flash() {}, _setBookSubjectPages() {} };

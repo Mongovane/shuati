@@ -82,6 +82,31 @@ export async function onRequestPost({ request, env }) {
 }
 
 // DELETE：按 id 批量删除教材页。body: { ids: ["mat-...","..."] }
+// 批量把一组教材页改到某科目（书籍归类用，一次请求代替逐页串行）
+export async function onRequestPatch({ request, env }) {
+  const auth = await checkAuth(request, env);
+  if (!auth.ok) return auth.resp;
+  await ensureMaterialsTable(env);
+  let b;
+  try { b = await request.json(); } catch { return json({ error: '请求体不是合法 JSON' }, 400); }
+  const ids = Array.isArray(b.ids) ? b.ids.map((x) => String(x)).filter(Boolean) : [];
+  const subject = String(b.subject || '').trim();
+  if (!ids.length) return json({ error: '缺少要修改的 ids 数组' }, 400);
+  if (!subject) return json({ error: '缺少目标 subject' }, 400);
+  try {
+    let updated = 0;
+    for (let i = 0; i < ids.length; i += 100) {
+      const part = ids.slice(i, i + 100);
+      const placeholders = part.map(() => '?').join(',');
+      const rs = await env.DB.prepare(`UPDATE materials SET subject = ? WHERE id IN (${placeholders})`).bind(subject, ...part).run();
+      updated += (rs.meta && rs.meta.changes) || 0;
+    }
+    return json({ ok: true, updated });
+  } catch (e) {
+    return json({ error: '修改科目失败：' + e.message }, 500);
+  }
+}
+
 export async function onRequestDelete({ request, env }) {
   const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;

@@ -12,7 +12,9 @@ const TPL_VIEW_BANK = `
         <div class="field" style="min-width:120px"><label>标签</label>
           <input class="inp" v-model="bank.tag" @keyup.enter="loadBank(true)" placeholder="整词筛选" /></div>
         <div class="field" style="min-width:120px"><label>状态</label>
-          <select v-model="bank.mode" @change="loadBank(true)"><option value="all">全部</option><option value="wrong">仅错题</option><option value="favorite">仅收藏</option><option value="mastered">仅已掌握</option><option value="unseen">仅未做</option></select></div>
+          <div class="chip-group">
+            <button v-for="opt in [{v:'all',t:'全部'},{v:'wrong',t:'仅错题'},{v:'favorite',t:'仅收藏'},{v:'mastered',t:'仅已掌握'},{v:'unseen',t:'仅未做'}]" :key="opt.v" class="filter-chip" :class="{on:bank.mode===opt.v}" @click="bank.mode=opt.v; loadBank(true)">{{ opt.t }}</button>
+          </div></div>
         <button class="btn subtle" @click="loadBank(true)" style="align-self:flex-end"><icon name="rotate-cw" :size="15" /> 搜索</button>
       </div>
 

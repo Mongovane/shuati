@@ -887,3 +887,9 @@ a{color:var(--accent)}
 .kcard-plain .katex-display,.kcard-back .katex-display{background:none;border:0;padding:0;margin:6px 0}
 /* 背面强调词改用低调的颜色加重（不加底块）*/
 .kcard-back .rich strong{background:none;color:var(--accent);font-weight:700}
+
+/* 筛选 chip 组：选项少的下拉改成一排可点胶囊（一眼看全、一点即选）*/
+.chip-group{display:flex;flex-wrap:wrap;gap:6px}
+.filter-chip{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s ease;white-space:nowrap;line-height:1.2}
+.filter-chip:hover{border-color:var(--accent);color:var(--accent)}
+.filter-chip.on{background:color-mix(in srgb,var(--accent) 12%,var(--surface));border-color:var(--accent);color:var(--accent);font-weight:600}

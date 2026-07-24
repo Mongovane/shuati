@@ -23,7 +23,9 @@ const TPL_VIEW_INGEST = `
       </div>
       <div class="toolbar">
         <div class="field" v-if="!['manual','json','mineru'].includes(ingest.tab)"><label>导入类型</label>
-          <select v-model="ingest.kind"><option value="auto">自动分辨（题库 / 教材）</option><option value="questions">只当题库</option><option value="material">只当教材</option></select></div>
+          <div class="chip-group">
+            <button v-for="opt in [{v:'auto',t:'自动分辨'},{v:'questions',t:'只当题库'},{v:'material',t:'只当教材'}]" :key="opt.v" class="filter-chip" :class="{on:ingest.kind===opt.v}" @click="ingest.kind=opt.v">{{ opt.t }}</button>
+          </div></div>
         <div class="field"><label>默认科目</label>
           <select v-model="ingest.subject"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select></div>
         <div class="field" v-if="['pdf','ai','mineru'].includes(ingest.tab)"><label>教材名称（转教材时用作书名，按科目归类）</label><input class="inp" v-model="ingest.bookTitle" placeholder="如 谭浩强C程序设计（选 PDF 会自动填）" /></div>
