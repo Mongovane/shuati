@@ -451,10 +451,10 @@ a{color:var(--accent)}
 [data-theme=dark] .code-wrap .code-copy{background:rgba(30,36,48,.85);border-color:rgba(255,255,255,.18)}
 
 /* —— 选段模式 —— */
-.seg-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:12px;background:var(--card-bg,#fff);z-index:60;box-shadow:0 6px 24px rgba(0,0,0,.16);position:fixed;left:50%;transform:translateX(-50%);bottom:24px;width:min(560px,calc(100% - 48px));margin-top:0}
+.seg-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:12px;background:var(--card-bg,#fff);z-index:95;box-shadow:0 6px 24px rgba(0,0,0,.18);position:fixed;left:50%;transform:translateX(-50%);bottom:84px;width:min(560px,calc(100% - 48px));margin-top:0}
 @media (max-width:640px){
   /* 手机端：卡片内 sticky 会被祖先 overflow 裁剪失效，改为 fixed 悬浮在底部导航条之上 */
-  .seg-bar{position:fixed;left:10px;right:10px;transform:none;width:auto;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:60;margin-top:0}
+  .seg-bar{position:fixed;left:10px;right:10px;transform:none;width:auto;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:95;margin-top:0}
   .r-segbar{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 }
 [data-theme=dark] .seg-bar{background:#1e2430}
