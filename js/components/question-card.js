@@ -43,7 +43,7 @@ const QuestionCard={
     finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
     graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
   },
-  watch:{ q(){ this.reset(); }, segMode(v){ this.$emit('seg-mode', v); } },
+  watch:{ q(){ this.reset(); }, segMode(v){ this.$emit('seg-mode', v); }, aiKind(nv, ov){ if(nv&&ov&&nv!==ov){ this.$nextTick(()=>{ try{ const el=this.$refs.aiBox; if(el&&el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){} }); } } },
   mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); } },
   beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){} },
   methods:{

@@ -163,6 +163,12 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   const isConcept=kind==='concept';
   const qid=q.id;
   // 同题：若目标内容已生成且非强制重做，只切换显示、不重新请求
+  // 切视图前，先从缓存把该题已生成的内容同步到 aiX（后台生成完但当时没在看这个视图的情况）
+  const cache=this.aiStates[qid];
+  if(cache){
+    if(isConcept && cache.cards && cache.cards.length && (!this.aiX.cards || !this.aiX.cards.length)){ this.aiX.cards=cache.cards.slice(); this.aiX.cardsModel=cache.cardsModel||''; this.aiX.flip={ ...(cache.flip||{}) }; }
+    if(!isConcept && cache.text && !this.aiX.text){ this.aiX.text=cache.text; this.aiX.model=cache.model||''; this.aiX.chat=(cache.chat||[]).slice(); }
+  }
   if(this.aiX.id===qid && !force){
     if(isConcept && this.aiX.cards && this.aiX.cards.length){ this.aiX.view='concept'; this.aiX.busy=!!(this._aiJobs&&this._aiJobs[qid+':c']); return; }
     if(!isConcept && this.aiX.text){ this.aiX.view='explain'; this.aiX.busy=!!(this._aiJobs&&this._aiJobs[qid+':e']); return; }
@@ -170,7 +176,7 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   // 该题该类型若已在生成中，仅切换显示（不重复发起）
   if(!this._aiJobs)this._aiJobs={};
   const jobKey=qid+':'+(isConcept?'c':'e');
-  if(this._aiJobs[jobKey] && !force){ if(this.aiX.id===qid) this.aiX.view=isConcept?'concept':'explain'; return; }
+  if(this._aiJobs[jobKey] && !force){ if(this.aiX.id===qid){ this.aiX.view=isConcept?'concept':'explain'; this.aiX.busy=true; } return; }
   // 确保 aiStates 有该题条目（承载后台生成结果，切题也不丢）
   const st=this.aiStates[qid] || (this.aiStates[qid]={ id:qid, view:'', text:'', chat:[], model:'', cards:[], cardsModel:'', flip:{} });
   st.view=isConcept?'concept':'explain';
