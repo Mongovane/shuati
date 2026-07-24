@@ -5,7 +5,7 @@ const TPL_SHELL_OPEN = `
     <div class="brand"><span class="dot"></span>{{ appName }}</div>
     <div class="spacer"></div>
     <button class="icon-btn" @click="stealthHide" title="快速隐藏（按 &#96; 切换）"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.4 5.2A9 9 0 0 1 21 12a9.4 9.4 0 0 1-1.3 1.9"/><path d="M6.1 6.1A9.4 9.4 0 0 0 3 12a9 9 0 0 0 11 6.6"/></svg></button>
-    <button class="icon-btn" @click="cycleTheme" :title="'主题：'+({light:'浅色',dark:'深色',auto:'跟随系统'}[theme]||'浅色')+'（点按切换）'">{{ themeIcon }}</button>
+    <button class="icon-btn" @click="cycleTheme" :title="'主题：'+({light:'浅色',dark:'深色',auto:'跟随系统'}[theme]||'浅色')+'（点按切换）'"><icon :name="theme==='dark'?'moon':(theme==='auto'?'sun-moon':'sun')" :size="18" /></button>
   </div>
   <div class="tabs">
     <button class="tab" :class="{active:view==='practice'}" @click="go('practice')">Home</button>

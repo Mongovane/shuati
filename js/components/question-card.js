@@ -112,7 +112,7 @@ const QuestionCard={
       <span class="chip">{{ typeMap[q.type]||q.type }}</span>
       <span v-if="q.chapter" class="chip">{{ q.chapter }}</span>
       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
-      <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏">★</button>
+      <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
     </div>
     <div v-if="q.passage" class="passage"><rich-text :content="q.passage" /></div>
     <div class="stem"><rich-text :content="q.stem" /></div>
@@ -120,8 +120,8 @@ const QuestionCard={
       <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
         <span class="key">{{ o.key }}</span>
         <span class="opt-body"><rich-text :content="o.text" /></span>
-        <span class="mark" v-if="revealed && answerKeys.includes(o.key)">✓</span>
-        <span class="mark" v-else-if="revealed && sel.includes(o.key)">✗</span>
+        <span class="mark" v-if="revealed && answerKeys.includes(o.key)"><icon name="check" :size="16" /></span>
+        <span class="mark" v-else-if="revealed && sel.includes(o.key)"><icon name="x" :size="16" /></span>
       </div>
       <p class="muted" v-if="isMulti && !revealed">多选题：请选择所有正确选项</p>
     </template>
@@ -149,16 +149,16 @@ const QuestionCard={
       <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="q.type==='fill_blank' ? ansDisplay : refText" /></div>
       <div v-if="!AUTO.includes(q.type)" class="selfgrade">
         <span class="q">掌握程度？</span>
-        <button class="btn subtle sg sg-again" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="没答上来，10 分钟后回炉">✗ 重来</button>
+        <button class="btn subtle sg sg-again" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="没答上来，10 分钟后回炉"><icon name="x" :size="15" /> 重来</button>
         <button class="btn subtle sg sg-hard" :class="{on:selfGrade==='hard'}" @click="grade4('hard')" title="勉强想起，间隔小步前进">困难</button>
-        <button class="btn subtle sg sg-good" :class="{on:selfGrade==='good'}" @click="grade4('good')" title="正常想起">✓ 良好</button>
+        <button class="btn subtle sg sg-good" :class="{on:selfGrade==='good'}" @click="grade4('good')" title="正常想起"><icon name="check" :size="15" /> 良好</button>
         <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单</button>
       </div>
             <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
-        <h5>{{ aiKind==='concept' ? '📚 知识点讲解' : 'AI 解析' }} <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
+        <h5><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点讲解' : 'AI 解析' }} <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <textarea v-if="showRaw" readonly :value="aiText" style="width:100%;min-height:220px;font:12px/1.5 ui-monospace,monospace" @focus="$event.target.select()"></textarea>
         <template v-else-if="aiKind==='concept' && aiCards.length">
-        <div class="kcard-tools"><button class="kcard-flipall" @click="$emit('cards-flip-all')">{{ allFlipped ? '⇕ 全部收起（看题目）' : '⇕ 全部翻开（看讲解）' }}</button></div>
+        <div class="kcard-tools"><button class="kcard-flipall" @click="$emit('cards-flip-all')"><icon name="chevrons-up-down" :size="13" /> {{ allFlipped ? '全部收起（看题目）' : '全部翻开（看讲解）' }}</button></div>
         <div class="kcard-grid">
           <div v-for="(c,i) in aiCards" :key="'kc'+i" class="kcard" :class="{flipped:aiFlip[i]}" :style="{animationDelay:(i*90)+'ms'}" @click="$emit('card-flip',i)">
             <div class="kcard-inner">
@@ -166,12 +166,12 @@ const QuestionCard={
                 <div class="kcard-idx">{{ i+1 }}/{{ aiCards.length }}</div>
                 <div class="kcard-term"><rich-text :content="c.term" /></div>
                 <div v-if="c.formula" class="kcard-formula"><rich-text :content="c.formula" /></div>
-                <div class="kcard-hint">点击查看讲解 ↻</div>
+                <div class="kcard-hint">点击查看讲解 <icon name="rotate-cw" :size="15" /></div>
               </div>
               <div class="kcard-face kcard-back">
                 <div class="kcard-plain"><rich-text :content="c.plain" /></div>
                 <div v-if="c.example" class="kcard-eg"><span class="kcard-eg-tag">例</span><rich-text :content="c.example" /></div>
-                <div class="kcard-hint">点击返回 ↩</div>
+                <div class="kcard-hint">点击返回 <icon name="corner-down-left" :size="15" /></div>
               </div>
             </div>
           </div>
@@ -185,7 +185,7 @@ const QuestionCard={
         <div class="ai-acts">
           <div class="ai-acts-main">
             <button class="ai-btn ai-btn-primary" :class="{on:aiKind!=='concept'&&aiText}" v-if="!aiBusy || aiKind==='concept'" @click="$emit('ai-explain')"><icon :name="aiKind==='concept'?'arrow-left':'sparkles'" :size="15" /><span>解题解析</span></button>
-            <button class="ai-btn ai-btn-primary" :class="{on:aiKind==='concept'}" v-if="!aiBusy || aiKind!=='concept'" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）"><icon name="book-open" :size="15" /><span>{{ hasConcept ? '知识点卡片' : '讲讲知识点' }}</span></button>
+            <button class="ai-btn ai-btn-primary" :class="{on:aiKind==='concept'}" v-if="!aiBusy || aiKind!=='concept'" @click="$emit('ai-concept')" title="不解题，只讲这道题涉及的前置知识点和公式（适合基础忘了、重新复习）"><icon name="book-open" :size="15" /><span>{{ hasConcept ? '知识点卡片' : '生成知识点卡片' }}</span></button>
           </div>
           <div class="ai-acts-sub" v-if="!aiBusy && (aiText || (aiKind==='concept'&&hasConcept))">
             <button class="ai-chip" v-if="aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片"><icon name="rotate-cw" :size="13" />重讲</button>
@@ -224,7 +224,7 @@ const QuestionCard={
       <div v-if="showNote" style="margin-top:8px">
         <template v-if="!noteEdit && q.note">
           <div class="ref"><rich-text :content="q.note" /></div>
-          <button class="btn subtle" style="margin-top:8px" @click="noteEdit=true; noteDraft=q.note||''">✏️ 编辑笔记</button>
+          <button class="btn subtle" style="margin-top:8px" @click="noteEdit=true; noteDraft=q.note||''"> 编辑笔记</button>
         </template>
         <template v-else>
           <textarea v-model="noteDraft" class="note-ta" @input="taGrow($event)" @focus="taGrow($event)" placeholder="记下易错点或记忆口诀…（支持 Markdown 与 $ 公式）"></textarea>
@@ -238,7 +238,7 @@ const QuestionCard={
     <div class="q-actions" v-if="mode!=='exam'">
       <button v-if="!revealed" class="btn" :disabled="!canSubmit()" @click="submit">{{ AUTO.includes(q.type) ? '提交' : '看参考答案' }}</button>
       <template v-else>
-        <button class="btn" @click="$emit('next')">下一题 →</button>
+        <button class="btn" @click="$emit('next')">下一题 <icon name="arrow-right" :size="15" /></button>
         <button class="btn subtle" :style="q.mastered?'border-color:var(--ok);color:var(--ok)':''" @click="markMastered">{{ q.mastered?'已掌握 ✓':'标记为已掌握' }}</button>
       </template>
     </div>

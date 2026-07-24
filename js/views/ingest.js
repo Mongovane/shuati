@@ -58,7 +58,7 @@ async importXlsx(){ const rows=(this.ingest.xl&&this.ingest.xl.rows)||[]; if(!ro
       if(rows.length>2000){ this.flash('单次最多导入 2000 题，请把表拆小一点',true); return; }
       this.ingest.busy=true;
       try{ const r=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,questions:rows})});
-        this.flash('已导入 '+(r.inserted_questions||r.inserted||rows.length)+' 题 ✅');
+        this.flash('已导入 '+(r.inserted_questions||r.inserted||rows.length)+' 题');
         this.ingest.xl.done=true; this.ingest.xl.rows=[]; this.ingest.xl.issues=[];
         this.bankDirty=true; this.statsDirty=true; this.loadMeta(true);
       }catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); }

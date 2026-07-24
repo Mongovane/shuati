@@ -17,9 +17,9 @@ const TPL_VIEW_STATS = `
           <div class="stat"><div class="n" style="color:var(--ok)">{{ statTotals.mastered }}</div><div class="l">已掌握</div></div>
         </div>
         <div class="row" style="gap:8px;margin:2px 0 10px;flex-wrap:wrap;align-items:center">
-          <span v-if="streakDays>0" class="st-chip hot">🔥 连续学习 {{ streakDays }} 天</span>
+          <span v-if="streakDays>0" class="st-chip hot"><icon name="flame" :size="15" /> 连续学习 {{ streakDays }} 天</span>
           <span v-if="examDaysLeft!==null" class="st-chip" :class="{warn:examDaysLeft<=30&&examDaysLeft>=0}">⏳ {{ examDaysLeft>=0 ? '距考试 '+examDaysLeft+' 天' : '考试已过 '+(-examDaysLeft)+' 天' }}</span>
-          <button class="btn subtle xs" @click="printWrong" :disabled="printW.busy"><span v-if="printW.busy" class="spin"></span>🖨 打印错题卷</button>
+          <button class="btn subtle xs" @click="printWrong" :disabled="printW.busy"><span v-if="printW.busy" class="spin"></span><icon name="printer" :size="15" /> 打印错题卷</button>
           <label class="row" style="cursor:pointer;font-size:12px;gap:4px"><input type="checkbox" v-model="printW.withAns" />附参考答案</label>
         </div>
         <div v-if="!statTotals.totalQ" class="empty"><p>暂无题目。请到导入页面添加题目。</p><button class="btn" @click=\"go('ingest')\">前往导入</button></div>
@@ -50,7 +50,7 @@ const TPL_VIEW_STATS = `
               <div class="top"><span :title="'当次测试得分，历史存档'">{{ subjName(m.subject) }} · {{ m.score!=null?m.score:m.correct }}/{{ m.total }}<span v-if="m.score!=null&&m.score!==m.correct" class="muted" style="font-size:12px">（含半分）</span></span>
                 <span class="muted">{{ fmtTime(m.duration_seconds) }}
                   <button class="btn subtle" style="margin-left:8px;padding:2px 10px;font-size:12px" @click="reviewMock(m)">错题回顾</button>
-                  <button class="bk-del-min" style="margin-left:4px" @click="deleteMock(m)" title="删除这条测试记录">✕</button>
+                  <button class="bk-del-min" style="margin-left:4px" @click="deleteMock(m)" title="删除这条测试记录"><icon name="x" :size="16" /></button>
                 </span></div>
               <div class="bar"><span :style="{width:(m.total?Math.round((m.score!=null?m.score:m.correct)/m.total*100):0)+'%', background:(m.total&&(m.score!=null?m.score:m.correct)/m.total>=0.6)?'var(--ok)':'var(--bad)'}"></span></div>
             </div>

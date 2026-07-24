@@ -16,35 +16,35 @@ const TPL_SHELL_CLOSE = `
     <div class="r-top">
       <button class="ricon" @click="readerClose" title="退出阅读">‹ 退出</button>
       <div class="rttl">{{ pageLabel(currentPageMat) }}</div>
-      <button class="ricon" @click="readerTocShow" title="目录">☰</button>
-      <button class="ricon" :style="reader.segMode?'color:var(--accent,#4f46e5)':''" @click="readerSegToggle" title="选段：点选段落/公式后合并复制或问 AI">📝</button>
-      <button class="ricon" v-if="readerCanAi" @click="readerAskAI" title="就本页内容问 AI">✨</button>
+      <button class="ricon" @click="readerTocShow" title="目录"><icon name="menu" :size="18" /></button>
+      <button class="ricon" :style="reader.segMode?'color:var(--accent,#4f46e5)':''" @click="readerSegToggle" title="选段：点选段落/公式后合并复制或问 AI"><icon name="notebook-pen" :size="16" /></button>
+      <button class="ricon" v-if="readerCanAi" @click="readerAskAI" title="就本页内容问 AI"><icon name="sparkles" :size="16" /></button>
       <button class="ricon" @click="reader.panel=!reader.panel; reader.barsHidden=false" title="字号 / 主题">Aa</button>
     </div>
     <div class="r-bot">
       <div class="rprog">第 <b>{{ bookIdx+1 }}</b> / {{ currentBook.pages.length }} 篇 · {{ Math.round((bookIdx+1)/currentBook.pages.length*100) }}%</div>
       <div class="rrow">
-        <button class="rbtn" :disabled="bookIdx<=0" @click="readerPrev">← 上一篇</button>
-        <button class="rbtn" :disabled="bookIdx>=currentBook.pages.length-1" @click="readerNext">下一篇 →</button>
+        <button class="rbtn" :disabled="bookIdx<=0" @click="readerPrev"><icon name="arrow-left" :size="15" /> 上一篇</button>
+        <button class="rbtn" :disabled="bookIdx>=currentBook.pages.length-1" @click="readerNext">下一篇 <icon name="arrow-right" :size="15" /></button>
       </div>
     </div>
     <div v-if="reader.segMode" class="seg-bar r-segbar">
       <span class="muted" style="font-size:12px">{{ reader.segCount? '已选 '+reader.segCount+' 块' : '点选虚线块（段落 / 公式 / 代码）' }}</span>
       <span style="flex:1"></span>
       <button class="rbtn" :disabled="!reader.segCount" @click="readerSegCopy">合并复制</button>
-      <button class="rbtn" v-if="readerCanAi" :disabled="!reader.segCount" @click="readerAskAI">✨ 问 AI</button>
-      <button class="rbtn" @click="readerSegToggle">✕</button>
+      <button class="rbtn" v-if="readerCanAi" :disabled="!reader.segCount" @click="readerAskAI"><icon name="sparkles" :size="15" /> 问 AI</button>
+      <button class="rbtn" @click="readerSegToggle"><icon name="x" :size="16" /></button>
     </div>
         <div v-if="rdAi.open" class="r-panel-backdrop" @click="rdAi.open=false"></div>
     <div class="r-ai" :class="{open:rdAi.open}">
-      <div class="rai-h"><b>✨ 问 AI · 本页</b><span style="flex:1"></span>
-        <button class="ricon" v-if="rdAi.chat.length||rdAi.quote" @click="rdAi.chat=[]; rdAi.quote=''" title="清空对话与引用">🗑</button>
-        <button class="ricon" @click="rdAi.open=false">✕</button></div>
+      <div class="rai-h"><b><icon name="sparkles" :size="15" /> 问 AI · 本页</b><span style="flex:1"></span>
+        <button class="ricon" v-if="rdAi.chat.length||rdAi.quote" @click="rdAi.chat=[]; rdAi.quote=''" title="清空对话与引用"><icon name="trash-2" :size="16" /></button>
+        <button class="ricon" @click="rdAi.open=false"><icon name="x" :size="16" /></button></div>
       <div v-if="rdAi.quote" class="rai-quote">已引用选段：{{ rdAi.quote.slice(0,120) }}{{ rdAi.quote.length>120?'…':'' }}</div>
       <div class="rai-list">
         <div v-for="(c,i) in rdAi.chat" :key="'rai'+i" class="chat-round">
-          <div class="chat-bub chat-q"><div class="chat-tag">🙋 你</div>{{ c.q }}</div>
-          <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+          <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="15" /> 你</div>{{ c.q }}</div>
+          <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="15" /> AI</div><rich-text :content="c.a" />
             <div v-if="c.err && !rdAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" style="flex:none;padding:4px 14px" @click="rdAiRetry(i)">⟳ 重试</button></div>
           </div>
           <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
@@ -66,7 +66,7 @@ const TPL_SHELL_CLOSE = `
     </div>
     <div v-if="reader.tocOpen" class="r-toc-backdrop" @click="reader.tocOpen=false"></div>
     <div class="r-toc" :class="{open:reader.tocOpen}">
-      <h4>目录 <span style="color:var(--rsoft);font-weight:400;margin-left:6px">{{ currentBook.pages.length }} 篇</span><button class="ricon" style="margin-left:auto" @click="reader.tocOpen=false">✕</button></h4>
+      <h4>目录 <span style="color:var(--rsoft);font-weight:400;margin-left:6px">{{ currentBook.pages.length }} 篇</span><button class="ricon" style="margin-left:auto" @click="reader.tocOpen=false"><icon name="x" :size="16" /></button></h4>
       <div class="list">
         <div v-for="(m,i) in currentBook.pages" :key="m.id" :class="{on:i===bookIdx}" @click="readerGoto(i)">{{ pageLabel(m) }}</div>
       </div>
@@ -75,7 +75,7 @@ const TPL_SHELL_CLOSE = `
 
   <div v-if="extractPreview.open" class="modal-mask" @click.self="extractClose">
     <div class="modal" style="max-width:860px;width:94vw">
-      <div class="modal-h"><b>抽题预览 · {{ extractPreview.title }}</b><button class="toc-close" @click="extractClose">✕</button></div>
+      <div class="modal-h"><b>抽题预览 · {{ extractPreview.title }}</b><button class="toc-close" @click="extractClose"><icon name="x" :size="16" /></button></div>
       <div class="modal-b">
         <div class="row" style="gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
           <span>共解析 <b>{{ extractPreview.items.length }}</b> 题，已勾选 <b>{{ extractUseCount() }}</b> 题导入</span>
@@ -92,7 +92,7 @@ const TPL_SHELL_CLOSE = `
               <div class="prev-q"><span class="prev-lab">题干</span><rich-text :content="q.stem || '（空）'" /></div>
               <div v-if="q.options&&q.options.length" class="prev-opts"><span v-for="o in q.options" :key="o.key" class="prev-opt"><b>{{ o.key }}.</b> {{ o.text }}</span></div>
               <div v-if="q.answer&&q.answer.length" class="prev-q"><span class="prev-lab ans">答案</span><rich-text :content="ansLines(q)" /></div>
-              <div v-if="q.page" class="muted" style="font-size:11.5px;margin-top:6px;opacity:.8">📄 出自第 {{ q.page }} 页</div>
+              <div v-if="q.page" class="muted" style="font-size:11.5px;margin-top:6px;opacity:.8"><icon name="file-text" :size="13" /> 出自第 {{ q.page }} 页</div>
             </div>
           </div>
         </div>
@@ -107,14 +107,14 @@ const TPL_SHELL_CLOSE = `
 
   <div v-if="pdfAi.open" class="pdf-ai-backdrop" @click="pdfAi.open=false"></div>
     <div class="r-ai pdf-ai" :class="{open:pdfAi.open}">
-      <div class="rai-h"><b>✨ 问 AI · 第 {{ pdfv.cur }} 页</b><span style="flex:1"></span>
-        <button class="ricon" v-if="pdfAi.chat.length" @click="pdfAi.chat=[]" title="清空对话">🗑</button>
-        <button class="ricon" @click="pdfAi.open=false">✕</button></div>
+      <div class="rai-h"><b><icon name="sparkles" :size="15" /> 问 AI · 第 {{ pdfv.cur }} 页</b><span style="flex:1"></span>
+        <button class="ricon" v-if="pdfAi.chat.length" @click="pdfAi.chat=[]" title="清空对话"><icon name="trash-2" :size="16" /></button>
+        <button class="ricon" @click="pdfAi.open=false"><icon name="x" :size="16" /></button></div>
       <div class="rai-quote" v-if="pdfAi.pageAtOpen && pdfAi.pageAtOpen!==pdfv.cur">提示：你已翻到第 {{ pdfv.cur }} 页，提问将针对当前页</div>
       <div class="rai-list">
         <div v-for="(c,i) in pdfAi.chat" :key="'pai'+i" class="chat-round">
-          <div class="chat-bub chat-q"><div class="chat-tag">🙋 你 · 第{{ c.page }}页</div>{{ c.q }}</div>
-          <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+          <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="15" /> 你 · 第{{ c.page }}页</div>{{ c.q }}</div>
+          <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="15" /> AI</div><rich-text :content="c.a" />
             <div v-if="c.err && !pdfAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" style="flex:none;padding:4px 14px" @click="pdfAiRetry(i)">⟳ 重试</button></div>
           </div>
           <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
@@ -146,7 +146,7 @@ const TPL_SHELL_CLOSE = `
       </template>
     </div>
     <div v-if="toast" class="toast" :class="{err:toast.err}">{{ toast.msg }}</div>
-  <teleport to="body"><button v-show="showTop && !anyOverlayOpen" class="fab-top" :class="{'above-bar':hasBottomBar}" @click="scrollTop" title="回到顶部" aria-label="回到顶部">↑</button></teleport>
+  <teleport to="body"><button v-show="showTop && !anyOverlayOpen" class="fab-top" :class="{'above-bar':hasBottomBar}" @click="scrollTop" title="回到顶部" aria-label="回到顶部"><icon name="arrow-up" :size="20" /></button></teleport>
   <div v-if="stealth.hidden" class="stealth" @click="stealthShow">
     <div class="stealth-vane">Vane</div>
   </div>

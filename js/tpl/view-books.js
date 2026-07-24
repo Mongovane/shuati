@@ -37,12 +37,12 @@ const TPL_VIEW_BOOKS = `
         <div v-if="pdfv.open" class="pdfv" :class="{inv: pdfv.invert, 'bars-off': pdfv.barsOff}" style="margin-top:14px">
           <div class="pdfv-bar">
             <div class="ttl">{{ pdfv.title }}</div>
-            <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvTocOpen=true" title="目录">☰ 目录</button>
+            <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvTocOpen=true" title="目录"><icon name="menu" :size="15" /> 目录</button>
             <span class="pdfv-title" v-if="!pdfvMobile">{{ pdfv.title }}</span>
             <div class="pdfv-zoom"><button @click="pdfvZoom(-0.2)">−</button><span>{{ Math.round(pdfv.scale*100) }}%</span><button @click="pdfvZoom(0.2)">+</button></div>
             <button v-if="!pdfvMobile" class="btn subtle" @click="pdfvToggleMode" :title="pdfv.mode==='scroll'?'切换为单页模式':'切换为连续滚动'">{{ pdfv.mode==='scroll' ? '单页' : '连续' }}</button>
-            <button v-if="pdfvMobile" class="btn subtle" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5)':''" title="夜间反色">🌙</button>
-            <button class="btn subtle" @click="pdfAiOpen" title="就当前页内容问 AI">✨ 问 AI</button>
+            <button v-if="pdfvMobile" class="btn subtle" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5)':''" title="夜间反色"><icon name="moon" :size="16" /></button>
+            <button class="btn subtle" @click="pdfAiOpen" title="就当前页内容问 AI"><icon name="sparkles" :size="15" /> 问 AI</button>
             <button class="btn subtle" @click="pdfvClose">关闭</button>
           </div>
           <div class="pdfv-body" :class="{'one-col': pdfv.mode==='page'}" @touchstart="pdfvTouchStart" @touchmove="pdfvTouchMove" @touchend="pdfvTouchEnd">
@@ -59,17 +59,17 @@ const TPL_VIEW_BOOKS = `
             <span v-if="pdfvSliderTip" class="pdfv-slider-tip">{{ pdfvSliderTip }} / {{ pdfv.pages }}</span>
           </div>
           <div class="pdfv-foot" :class="{ic:pdfvMobile}">
-            <button v-if="pdfvMobile" class="pf-ic" @click="pdfvTocOpen=true" title="目录">☰</button>
-            <button v-if="pdfvMobile" class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI">✨</button>
+            <button v-if="pdfvMobile" class="pf-ic" @click="pdfvTocOpen=true" title="目录"><icon name="menu" :size="16" /></button>
+            <button v-if="pdfvMobile" class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI"><icon name="sparkles" :size="16" /></button>
             <span v-if="pdfvMobile" class="pf-spacer"></span>
             <button class="pf-ic pf-nav" :disabled="pdfv.cur<=1" @click="pdfvPrev" title="上一页">‹</button>
             <span class="muted pf-pg">{{ pdfv.cur }} <i>/</i> {{ pdfv.pages }}</span>
             <button class="pf-ic pf-nav" :disabled="pdfv.cur>=pdfv.pages" @click="pdfvNext" title="下一页">›</button>
-            <button v-if="!pdfvMobile" class="pf-ic" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5)':''" title="夜间反色">🌙</button>
-            <button v-if="!pdfvMobile" class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI">✨</button>
+            <button v-if="!pdfvMobile" class="pf-ic" @click="pdfvToggleInvert" :style="pdfv.invert?'color:var(--accent,#4f46e5)':''" title="夜间反色"><icon name="moon" :size="16" /></button>
+            <button v-if="!pdfvMobile" class="pf-ic" @click="pdfAiOpen" title="就当前页问 AI"><icon name="sparkles" :size="16" /></button>
           </div>
           <div class="pdfv-drawer" :class="{open:pdfvTocOpen}">
-            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">{{ pdfv.outline.length? pdfv.outline.length+' 章节' : ('共 '+pdfv.pages+' 页') }}</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto">✕</button></div>
+            <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">{{ pdfv.outline.length? pdfv.outline.length+' 章节' : ('共 '+pdfv.pages+' 页') }}</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto"><icon name="x" :size="16" /></button></div>
             <input class="inp pdfv-drawer-jump" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
             <div class="pdfv-drawer-list" ref="pdfvTocList">
               <template v-if="pdfv.outline.length">
@@ -96,7 +96,7 @@ const TPL_VIEW_BOOKS = `
       </template>
       <template v-else>
         <div v-if="lastReadBook && !currentBookId && booksTotalCount>=6" class="bk-continue" @click="currentBookId=lastReadBook.key">
-          <div class="bkc-ic">📖</div>
+          <div class="bkc-ic"><icon name="book" :size="16" /></div>
           <div class="bkc-main">
             <div class="bkc-label">继续阅读</div>
             <div class="bkc-title">{{ lastReadBook.title }}</div>
@@ -104,7 +104,7 @@ const TPL_VIEW_BOOKS = `
           </div>
           <div class="bkc-go">›</div>
         </div>
-        <input v-if="booksTotalCount>=6 && !currentBookId" class="bk-search inp" v-model="bookSearch" placeholder="🔍 搜索书名…" />
+        <input v-if="booksTotalCount>=6 && !currentBookId" class="bk-search inp" v-model="bookSearch" placeholder="搜索书名…" />
         <template v-for="(list,sub) in booksBySubject" :key="sub">
           <div v-if="list.length" class="bk-shelf">
             <div class="bk-shelf-label fold-head" @click="bookFold[sub]=!bookFold[sub]"><span>{{ subjName(sub)==='other'? '其他' : subjName(sub) }} <span class="muted" style="font-weight:400;font-size:12px">{{ list.length }} 本</span></span><span class="fold-arrow" :class="{open:!bookFold[sub]}">▾</span></div>
@@ -115,7 +115,7 @@ const TPL_VIEW_BOOKS = `
                   <span class="spine"></span>
                   <span class="t" :title="b.title">{{ b.title }}</span>
                   <span class="m">{{ b.pages.length }} 页</span>
-                  <span class="bk-card-del" @click.stop="deleteBook(b)" title="删除本书">🗑</span>
+                  <span class="bk-card-del" @click.stop="deleteBook(b)" title="删除本书"><icon name="trash-2" :size="16" /></span>
                 </button>
                 <button class="bk-card-subjtag" @click.stop="bookSubjPick.book=b; bookSubjPick.custom=''; bookSubjPick.open=true" title="点击修改本书分类">{{ subjName(sub)==='other'?'未分类':subjName(sub) }} ▾</button>
               </div>
@@ -125,7 +125,7 @@ const TPL_VIEW_BOOKS = `
         <div v-if="bookSearchEmpty" class="empty"><p class="muted">没有匹配「{{ bookSearch }}」的书</p></div>
         <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen,'toc-open':bookTocOpen}">
           <aside class="bk-toc">
-            <h4>目录 <span class="muted">{{ bookOutline.length ? bookOutline.length+' 章节' : currentBook.pages.length+' 篇' }}</span><button class="toc-close" @click="bookTocOpen=false" title="关闭">✕</button></h4>
+            <h4>目录 <span class="muted">{{ bookOutline.length ? bookOutline.length+' 章节' : currentBook.pages.length+' 篇' }}</span><button class="toc-close" @click="bookTocOpen=false" title="关闭"><icon name="x" :size="16" /></button></h4>
             <template v-if="bookOutline.length">
               <div class="tip">按书本目录页解析，点击跳到对应页</div>
               <div v-for="(o,oi) in bookOutline" :key="'bo'+oi" class="toc-row" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="bookGotoBookPage(o.page)"><span class="toc-t">{{ o.title }}</span><span class="toc-p">{{ o.page }}</span></div>
@@ -138,13 +138,13 @@ const TPL_VIEW_BOOKS = `
           <div class="bk-toc-backdrop" @click="bookTocOpen=false"></div>
           <div class="bk-page">
             <div class="bk-bar">
-              <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" title="目录">☰ 目录</button>
+              <button class="bk-toctoggle" @click="bookTocOpen=!bookTocOpen" title="目录"><icon name="menu" :size="15" /> 目录</button>
               <div class="bk-tophead" style="flex:1;min-width:160px">
                 <div class="ttl">{{ pageLabel(currentPageMat) }}</div>
                 <div class="sub">{{ subjName(currentPageMat.subject) }}<span v-if="currentPageMat.page"> · 第 {{ currentPageMat.page }} 页</span> · 本书第 {{ bookIdx+1 }} / {{ currentBook.pages.length }} 篇</div>
               </div>
-              <button v-if="readerCanAi" class="bk-toctoggle" @click="bookAskAI" title="就本篇内容问 AI">✨ 问 AI</button>
-              <button class="bk-toctoggle" @click="readerOpen" title="全屏沉浸阅读：可调字号、行距、主题，点两侧翻篇">📖 沉浸阅读</button>
+              <button v-if="readerCanAi" class="bk-toctoggle" @click="bookAskAI" title="就本篇内容问 AI"><icon name="sparkles" :size="15" /> 问 AI</button>
+              <button class="bk-toctoggle" @click="readerOpen" title="全屏沉浸阅读：可调字号、行距、主题，点两侧翻篇"><icon name="book" :size="15" /> 沉浸阅读</button>
               <button class="btn subtle" @click="currentBookId=''" style="flex:none">关闭</button>
             </div>
             <div class="bk-body">
@@ -163,27 +163,27 @@ const TPL_VIEW_BOOKS = `
               <div class="bk-foot-ops">
                 <button class="btn" :disabled="bookExtract.busy" @click="localExtractPage" title="用规则解析本页现成的习题+解答，直接入题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>本页抽题入库（不花 AI）</button>
                 <button class="btn subtle" :disabled="bookExtract.busy" @click="localExtractBook" title="把整本书的习题一次性抽进题库，不消耗 AI"><span v-if="bookExtract.busy" class="spin"></span>整本抽题入库</button>
-                <button v-if="!genq.busy" class="btn subtle" :disabled="!(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）">✨ AI 出题</button>
+                <button v-if="!genq.busy" class="btn subtle" :disabled="!(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）"><icon name="sparkles" :size="15" /> AI 出题</button>
                 <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
               </div>
               <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
               <div class="bk-nav">
-                <button :disabled="bookIdx<=0" @click="bookPrev">← 上一页</button>
-                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 →</button>
+                <button :disabled="bookIdx<=0" @click="bookPrev"><icon name="arrow-left" :size="15" /> 上一页</button>
+                <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 <icon name="arrow-right" :size="15" /></button>
               </div>
             </div>
           </div>
         </div>
         <div v-if="rdAi.open && !reader.open" class="bk-inline-backdrop" @click="rdAi.open=false"></div>
         <div v-if="!reader.open" class="r-ai bk-inline-ai" :class="{open:rdAi.open}">
-          <div class="rai-h"><b>✨ 问 AI · 本页</b><span style="flex:1"></span>
-            <button class="ricon" v-if="rdAi.chat.length||rdAi.quote" @click="rdAi.chat=[]; rdAi.quote=''" title="清空对话与引用">🗑</button>
-            <button class="ricon" @click="rdAi.open=false">✕</button></div>
+          <div class="rai-h"><b><icon name="sparkles" :size="15" /> 问 AI · 本页</b><span style="flex:1"></span>
+            <button class="ricon" v-if="rdAi.chat.length||rdAi.quote" @click="rdAi.chat=[]; rdAi.quote=''" title="清空对话与引用"><icon name="trash-2" :size="16" /></button>
+            <button class="ricon" @click="rdAi.open=false"><icon name="x" :size="16" /></button></div>
           <div v-if="rdAi.quote" class="rai-quote">已引用选段：{{ rdAi.quote.slice(0,120) }}{{ rdAi.quote.length>120?'…':'' }}</div>
           <div class="rai-list">
             <div v-for="(c,i) in rdAi.chat" :key="'brai'+i" class="chat-round">
-              <div class="chat-bub chat-q"><div class="chat-tag">🙋 你</div>{{ c.q }}</div>
-              <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag">✨ AI</div><rich-text :content="c.a" />
+              <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="15" /> 你</div>{{ c.q }}</div>
+              <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="15" /> AI</div><rich-text :content="c.a" />
                 <div v-if="c.err && !rdAi.asking" style="text-align:right;margin-top:6px"><button class="rbtn" style="flex:none;padding:4px 14px" @click="rdAiRetry(i)">⟳ 重试</button></div>
               </div>
               <div v-else class="chat-bub chat-a"><span class="spin"></span></div>

@@ -126,7 +126,6 @@ const App={
       return n; },
     examDaysLeft(){ if(!this.examDate)return null; const t=new Date(this.examDate+'T00:00:00'); if(isNaN(t))return null;
       const today=new Date(); today.setHours(0,0,0,0); return Math.round((t-today)/86400000); },
-    themeIcon(){ return this.theme==='dark'?'🌙':(this.theme==='auto'?'🌗':'☀️'); },
     heatCells(){ const map={}; for(const h of ((this.stats&&this.stats.heat)||[]))map[h.d]=h;
       const out=[]; const today=new Date(); today.setHours(0,0,0,0);
       const start=new Date(today); start.setDate(start.getDate()-(139+((today.getDay()+6)%7))); /* 对齐到周一，共 20 列 */

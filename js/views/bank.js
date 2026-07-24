@@ -82,7 +82,7 @@ async bankDupScan(){ if(!this.token){ this.flash('请先在设置中填写访问
         const groups=[...gm.values()].filter(g=>g.length>1).sort((a,b)=>b.length-a.length).slice(0,100);
         const del={}; for(const g of groups){ g.sort((a,b)=>(a.created_at||0)-(b.created_at||0)); for(let i=1;i<g.length;i++)del[g[i].id]=true; }
         this.dup.groups=groups; this.dup.del=del;
-        if(!groups.length){ this.dup.open=false; this.flash('没有发现相似重复题（共扫描 '+all.length+' 题）✨'); }
+        if(!groups.length){ this.dup.open=false; this.flash('没有发现相似重复题（共扫描 '+all.length+' 题）'); }
       }catch(e){ if(e.message!=='unauth')this.flash('查重失败：'+e.message,true); }
       this.dup.busy=false; },
 dupToggle(id){ if(this.dup.del[id])delete this.dup.del[id]; else this.dup.del[id]=true; },

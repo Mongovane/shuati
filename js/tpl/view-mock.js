@@ -4,7 +4,7 @@ const TPL_VIEW_MOCK = `
     <div v-else-if="view==='mock'">
       <div v-if="!mock.started && !mock.finished">
         <div v-if="mockSaved" class="card" style="border:1.5px solid var(--accent);margin-bottom:14px">
-          <div style="font-weight:700;margin-bottom:6px">🕒 有一场未完成的模拟考</div>
+          <div style="font-weight:700;margin-bottom:6px"><icon name="clock" :size="15" /> 有一场未完成的模拟考</div>
           <p class="muted" style="margin:0 0 10px">{{ subjName(mockSaved.subject==='all'?'':mockSaved.subject)||'全部科目' }} · {{ (mockSaved.questions||[]).length }} 题 · 剩余 {{ fmtTime(mockSaved.remaining|0) }} · 存于 {{ new Date(mockSaved.savedAt).toLocaleString() }}</p>
           <div class="row" style="gap:8px">
             <button class="btn" @click="resumeMock">继续这场考试</button>
@@ -27,7 +27,7 @@ const TPL_VIEW_MOCK = `
         <label class="row" style="margin:6px 0 14px;cursor:pointer"><input type="checkbox" v-model="mock.objectiveOnly" /> <span class="muted">仅自动判分题（单选 / 多选 / 判断）</span></label>
         <div class="card" style="margin:0 0 16px;padding:14px 16px">
           <label class="row" style="cursor:pointer;justify-content:space-between;align-items:center">
-            <span style="font-weight:600">🧩 高级组卷 <span class="muted" style="font-weight:400;font-size:12px">按章节 × 题型配比出卷</span></span>
+            <span style="font-weight:600"><icon name="puzzle" :size="15" /> 高级组卷 <span class="muted" style="font-weight:400;font-size:12px">按章节 × 题型配比出卷</span></span>
             <input type="checkbox" v-model="mock.bp.on" />
           </label>
           <template v-if="mock.bp.on">
@@ -36,7 +36,7 @@ const TPL_VIEW_MOCK = `
               <select class="bk-mini" v-model="r.chapter"><option value="">不限章节</option><option v-for="c in mockChapters" :key="c" :value="c">{{ c }}</option></select>
               <input class="inp bp-n" type="number" min="1" max="100" v-model.number="r.count" />
               <span class="muted" style="font-size:12px">题</span>
-              <button class="bk-del xs" @click="bpDel(ri)" title="删除这行">✕</button>
+              <button class="bk-del xs" @click="bpDel(ri)" title="删除这行"><icon name="x" :size="16" /></button>
             </div>
             <div class="row" style="gap:10px;margin-top:8px;align-items:center;flex-wrap:wrap">
               <button class="btn subtle xs" @click="bpAdd">+ 加一行</button>

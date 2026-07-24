@@ -60,13 +60,13 @@ const TPL_VIEW_INGEST = `
             <div v-if="ingest.xl.issues.length" class="hint" style="margin-top:10px;color:var(--bad)">注意：<br/><span v-for="(x,i) in ingest.xl.issues" :key="'i'+i">· {{ x }}<br/></span></div>
             <button class="btn" style="margin-top:12px" :disabled="ingest.busy" @click="importXlsx"><span v-if="ingest.busy" class="spin"></span>确认导入 {{ ingest.xl.rows.length }} 题</button>
           </template>
-          <div v-else-if="ingest.xl.done" class="hint" style="margin-top:12px">✅ 导入完成，可去「题库」查看，或继续选择下一张表。</div>
+          <div v-else-if="ingest.xl.done" class="hint" style="margin-top:12px"><icon name="circle-check" :size="15" /> 导入完成，可去「题库」查看，或继续选择下一张表。</div>
         </div>
       </template>
 
       <template v-if="ingest.tab==='manual'">
         <details class="card" style="margin-bottom:14px" :open="!!ingest.photoUrl">
-          <summary style="cursor:pointer;font-weight:600">📷 拍照 / 选图，AI 识别填入题干（可选）</summary>
+          <summary style="cursor:pointer;font-weight:600"><icon name="camera" :size="15" /> 拍照 / 选图，AI 识别填入题干（可选）</summary>
           <div style="margin-top:12px">
             <label class="btn subtle" style="cursor:pointer">拍摄 / 选择照片
               <input type="file" accept="image/*" capture="environment" @change="onPhotoFile" style="display:none" />
@@ -83,7 +83,7 @@ const TPL_VIEW_INGEST = `
         <textarea v-model="ingest.manual.passage" style="min-height:80px;margin-bottom:10px" placeholder="可选：材料 / 阅读文本"></textarea>
         <textarea v-model="ingest.manual.stem" placeholder="题干。数学可用 $...$；代码可用 Markdown 代码块。"></textarea>
         <div v-if="ingest.manual.type==='single_choice'||ingest.manual.type==='multiple_choice'" style="margin-top:10px">
-          <div v-for="(o,oi) in ingest.manual.options" :key="o.key" class="row" style="margin-bottom:8px"><span class="chip">{{ o.key }}</span><input class="inp" style="flex:1" v-model="o.text" :placeholder="'选项 '+o.key" /><button class="bk-del-min" @click="delManualOption(oi)" title="删除该选项" v-if="ingest.manual.options.length>2">✕</button></div>
+          <div v-for="(o,oi) in ingest.manual.options" :key="o.key" class="row" style="margin-bottom:8px"><span class="chip">{{ o.key }}</span><input class="inp" style="flex:1" v-model="o.text" :placeholder="'选项 '+o.key" /><button class="bk-del-min" @click="delManualOption(oi)" title="删除该选项" v-if="ingest.manual.options.length>2"><icon name="x" :size="16" /></button></div>
           <button class="btn subtle xs" @click="addManualOption" v-if="ingest.manual.options.length<8">+ 选项</button>
         </div>
         <input class="inp" style="width:100%;margin-top:10px" v-model="ingest.manual.answer" placeholder="答案：单选填 A；多选填 A,C；判断填 T 或 F；填空每行一个；主观题填写参考答案" />
@@ -131,7 +131,7 @@ const TPL_VIEW_INGEST = `
                 <div class="field" style="margin:0;min-width:280px"><label>Base URL（留空用服务端）</label><input class="inp" v-model="ocrCfg.base" @change="saveOcrCfg" placeholder="https://你的中转站/v1" /></div>
                 <div class="field" style="margin:0;min-width:280px"><label>API Key（留空用服务端）</label><input class="inp" type="password" v-model="ocrCfg.key" @change="saveOcrCfg" placeholder="sk-..." /></div>
               </div>
-              <div class="hint" style="margin-top:6px">⚠ Key 只存本机、经本站转发到你的中转站。公用电脑别填，建议用限额子 Key；留空用服务端配置。</div>
+              <div class="hint" style="margin-top:6px"><icon name="triangle-alert" :size="15" /> Key 只存本机、经本站转发到你的中转站。公用电脑别填，建议用限额子 Key；留空用服务端配置。</div>
             </details>
           </template>
           <template v-if="ingest.local.ocr && ingest.local.engine==='cfai'">
@@ -156,7 +156,7 @@ const TPL_VIEW_INGEST = `
           <div v-if="ingest.local.log.length" style="margin-top:10px">
             <div class="muted" style="font-size:12px;margin-bottom:4px">逐页明细（共 {{ ingest.local.log.length }} 条，最新在下）：</div>
             <div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px;font-size:12.5px;line-height:1.6;font-family:var(--mono,monospace)">
-              <div v-for="(l,i) in ingest.local.log" :key="i" :style="{color: l.t==='ok'?'var(--ink)': l.t==='skip'?'#b8860b':'#c0392b'}">{{ l.t==='ok'?'✓':l.t==='skip'?'⚠':'✗' }} 第 {{ l.p }} 页 · {{ l.msg }}</div>
+              <div v-for="(l,i) in ingest.local.log" :key="i" :style="{color: l.t==='ok'?'var(--ink)': l.t==='skip'?'#b8860b':'#c0392b'}">{{ l.t==='ok'?'✓':l.t==='skip'?'':'✗' }} 第 {{ l.p }} 页 · {{ l.msg }}</div>
             </div>
           </div>
         </div>
@@ -179,7 +179,7 @@ const TPL_VIEW_INGEST = `
           <a href="#" @click.prevent="view='settings'" style="color:var(--accent)">配额 / Token 设置 ›</a>
         </div>
         <div v-if="mineruTokenDays()!=null && mineruTokenDays()<=7" class="hint" style="color:var(--bad);background:color-mix(in srgb,var(--bad) 8%,transparent);border:1px solid color-mix(in srgb,var(--bad) 35%,var(--line));border-radius:8px;padding:8px 10px;margin-top:6px">Token {{ mineruTokenDays()<0?'已过期':'即将过期' }}：MinerU 不支持续期，请去控制台「API 管理 → 创建 Token」重建，把新 Token 填到 Cloudflare Pages 环境变量 <code>MINERU_API_KEY</code> 后重新部署（应用无法自动创建）。</div>
-        <div v-if="mineruTokenBad" class="hint" style="color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));border-radius:8px;padding:8px 10px;margin-top:6px"><b>MinerU Token 已过期/无效</b>（A0211/A0202）：控制台重建 Token → 更新 <code>MINERU_API_KEY</code> → 重新部署。<a href="#" @click.prevent="mineruTokenOk()" style="color:var(--accent);margin-left:6px">我已更新，清除提示</a></div>
+        <div v-if="mineruTokenBad" class="hint" style="color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));border-radius:8px;padding:8px 10px;margin-top:6px"><b>MinerU Token 已过期/无效</b>（A0211/A0202）：控制台重建 Token → 更新 <code>MINERU_API_KEY</code><icon name="arrow-right" :size="15" /> 重新部署。<a href="#" @click.prevent="mineruTokenOk()" style="color:var(--accent);margin-left:6px">我已更新，清除提示</a></div>
         <div class="row" style="margin-top:12px;gap:8px"><button class="btn" :disabled="ingest.mineru.busy || !ingest.mineru.name" @click="mineruConvert"><span v-if="ingest.mineru.busy" class="spin"></span>转换并导入 Books</button></div>
         <div v-if="ingest.mineru.busy || ingest.mineru.log.length" class="ocr-panel" style="margin-top:12px">
           <div class="top"><div><b>MinerU 转换进度</b><div class="muted">提交 → 解析 → 取回 Markdown → 导入</div></div><div class="pct">{{ ingest.mineru.pct }}%</div></div>
@@ -194,7 +194,7 @@ const TPL_VIEW_INGEST = `
         <div v-for="(s,i) in ingest.result.sample" :key="i" class="muted">· [{{ subjName(s.subject) }} / {{ typeMap[s.type]||s.type }}] {{ s.stem }}</div>
         <div v-for="(s,i) in (ingest.result.material_sample||[])" :key="'m'+i" class="muted">· [{{ subjName(s.subject) }} / 教材] {{ s.title }}</div>
         <div v-if="ingest.result.answer_warns && ingest.result.answer_warns.length" style="margin-top:8px;color:var(--bad);font-size:12.5px">
-          <div style="font-weight:600">⚠ 答案疑点（已入库，建议到题库核对）：</div>
+          <div style="font-weight:600"><icon name="triangle-alert" :size="15" /> 答案疑点（已入库，建议到题库核对）：</div>
           <div v-for="(w,i) in ingest.result.answer_warns" :key="'w'+i">· {{ w }}</div>
         </div>
       </div>
