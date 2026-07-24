@@ -69,3 +69,21 @@ describe('教材批量改科目 PATCH', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('教材批量改科目 - 大数据量分批（避免 D1 变量超限）', () => {
+  it('278 个 id 应分成多批 UPDATE（每批≤50）', async () => {
+    const { onRequestPatch } = await import('../functions/api/materials.js');
+    const { FakeDB, authedReq, makeEnv } = await import('./helpers.mjs');
+    const db = new FakeDB();
+    const ids = Array.from({ length: 278 }, (_, i) => 'p' + i);
+    const res = await onRequestPatch({ request: authedReq('http://x/api/materials', { method: 'PATCH', body: JSON.stringify({ ids, subject: 'politics' }) }), env: makeEnv(db) });
+    expect(res.status).toBe(200);
+    const updateStmts = db.stmts(/UPDATE materials SET subject/i);
+    expect(updateStmts.length).toBe(6); // ceil(278/50)=6 批
+    // 每条语句的变量数（? 个数）不超过 51（50 id + 1 subject）
+    for (const s of updateStmts) {
+      const qMarks = (s.sql.match(/\?/g) || []).length;
+      expect(qMarks).toBeLessThanOrEqual(51);
+    }
+  });
+});

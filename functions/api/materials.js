@@ -95,8 +95,8 @@ export async function onRequestPatch({ request, env }) {
   if (!subject) return json({ error: '缺少目标 subject' }, 400);
   try {
     let updated = 0;
-    for (let i = 0; i < ids.length; i += 100) {
-      const part = ids.slice(i, i + 100);
+    for (let i = 0; i < ids.length; i += 50) {
+      const part = ids.slice(i, i + 50);
       const placeholders = part.map(() => '?').join(',');
       const rs = await env.DB.prepare(`UPDATE materials SET subject = ? WHERE id IN (${placeholders})`).bind(subject, ...part).run();
       updated += (rs.meta && rs.meta.changes) || 0;
@@ -118,8 +118,8 @@ export async function onRequestDelete({ request, env }) {
   try {
     // 分批，避免单条语句绑定参数过多
     let deleted = 0;
-    for (let i = 0; i < ids.length; i += 100) {
-      const part = ids.slice(i, i + 100);
+    for (let i = 0; i < ids.length; i += 50) {
+      const part = ids.slice(i, i + 50);
       const placeholders = part.map(() => '?').join(',');
       const rs = await env.DB.prepare(`DELETE FROM materials WHERE id IN (${placeholders})`).bind(...part).run();
       deleted += (rs.meta && rs.meta.changes) || 0;

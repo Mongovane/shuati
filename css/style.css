@@ -48,6 +48,16 @@ input,select,textarea{font-family:inherit;font-size:15px}
 .wrap{max-width:860px;margin:0 auto;padding:18px 18px 32px}
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px}
 .field{display:flex;flex-direction:column;gap:4px}
+/* 筛选区：横向排布 + 自动换行，紧凑好看 */
+.filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.filters .field{flex:0 1 auto}
+.filters .field label{font-size:12px;color:var(--ink-soft);font-weight:500}
+.filters > button{align-self:flex-end}
+@media(max-width:640px){
+  .filters{gap:10px}
+  .filters .field{flex:1 1 100%}
+  .filters > button{flex:1 1 100%;justify-content:center}
+}
 .field label{font-size:11px;color:var(--ink-soft);font-weight:600;letter-spacing:.02em;text-transform:uppercase}
 select,.inp{height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-width:120px}
 /* select 收起框精致化：去掉系统默认箭头，换成自定义 chevron，加 hover 态 */
@@ -187,7 +197,14 @@ a{color:var(--accent)}
 .subj-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .subj-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--ink-soft);background:var(--surface-2);padding:3px 8px;border-radius:6px;min-width:78px;text-align:center}
 .subj-add{margin-top:14px;padding-top:12px}
-.bank-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 2px 14px;font-size:13px}
+.bank-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 2px 14px;font-size:13px}
+.bank-toolbar .tb-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bank-toolbar .tb-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.bank-toolbar .tb-right .btn{padding:7px 12px;font-size:13px}
+@media(max-width:640px){
+  .bank-toolbar .tb-right{margin-left:0;width:100%}
+  .bank-toolbar .tb-right .btn{flex:1 1 auto}
+}
 .bank-check{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
 .bank-row{display:flex;align-items:flex-start;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;transition:.12s}
 .bank-row.sel{border-color:var(--accent);background:var(--accent-soft)}

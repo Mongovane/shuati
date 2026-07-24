@@ -19,17 +19,21 @@ const TPL_VIEW_BANK = `
       </div>
 
       <div class="bank-toolbar">
-        <div class="seg xs">
-          <button :class="{on:bank.status===''}" @click="bank.status='';loadBank(true)">已发布</button>
-          <button :class="{on:bank.status==='draft'}" @click="bank.status='draft';loadBank(true)">待审核<span v-if="meta.drafts" class="seg-badge">{{ meta.drafts }}</span></button>
+        <div class="tb-left">
+          <div class="seg xs">
+            <button :class="{on:bank.status===''}" @click="bank.status='';loadBank(true)">已发布</button>
+            <button :class="{on:bank.status==='draft'}" @click="bank.status='draft';loadBank(true)">待审核<span v-if="meta.drafts" class="seg-badge">{{ meta.drafts }}</span></button>
+          </div>
+          <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
+          <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
         </div>
-        <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
-        <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
-        <button class="btn subtle" v-if="bank.items.length" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
-        <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
-        <button class="btn subtle" v-if="bank.items.length && !bank.sel.length" @click="bankExportSel" title="把当前已加载的题导出为 JSON"><icon name="download" :size="15" /> 导出本页</button>
-        <button class="btn subtle" v-if="bank.total" @click="bankDedup" title="扫描整个题库，删除题干完全相同的重复题（每组保留一道）"><icon name="eraser" :size="15" /> 清理完全重复</button>
-        <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似（OCR 错字/标点差异）的疑似重复组，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 近似查重</button>
+        <div class="tb-right">
+          <button class="btn subtle" v-if="bank.items.length" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
+          <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
+          <button class="btn subtle" v-if="bank.items.length && !bank.sel.length" @click="bankExportSel" title="把当前已加载的题导出为 JSON"><icon name="download" :size="15" /> 导出本页</button>
+          <button class="btn subtle" v-if="bank.total" @click="bankDedup" title="扫描整个题库，删除题干完全相同的重复题（每组保留一道）"><icon name="eraser" :size="15" /> 清理重复</button>
+          <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似（OCR 错字/标点差异）的疑似重复组，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 近似查重</button>
+        </div>
         <template v-if="bank.sel.length">
           <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
           <button class="btn subtle" @click="bankBatchSubject">应用</button>
