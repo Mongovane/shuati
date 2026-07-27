@@ -185,6 +185,9 @@ a{color:var(--accent)}
 .bk-shelf-label::after{content:"";flex:1;height:1px;background:var(--line)}
 .bk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .bk-card{position:relative;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px 14px 20px;cursor:pointer;transition:.16s;display:flex;flex-direction:column;gap:10px;min-height:88px}
+.bk-card.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--surface));box-shadow:0 0 0 1px var(--accent)}
+.bk-card.on .spine{background:var(--accent)}
+.bk-reading{display:inline-block;margin-left:8px;font-size:11px;font-weight:600;color:#fff;background:var(--accent);border-radius:5px;padding:1px 7px;vertical-align:middle}
 .bk-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
 .bk-card.on{border-color:var(--accent);background:var(--accent-soft)}
 .bk-card .spine{position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:0 4px 4px 0;background:var(--accent);opacity:.3}

@@ -202,6 +202,21 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
   // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
   if(showing() && this.aiX.id===qid){ if(!this._aiJobs[qid+':e'] && !this._aiJobs[qid+':c'])this.aiX.busy=false; else if((isConcept&&this.aiX.view==='concept')||(!isConcept&&this.aiX.view==='explain'))this.aiX.busy=false; }
+  // 自动保存（默认关）：生成成功后静默存入题目，不打扰
+  if(this.autoSaveAi){ try{ if(isConcept){ if(st.cards&&st.cards.length)await this._autoSaveConcept(qid, st.cards); } else { if(st.text)await this._autoSaveExplain(qid, st.text, st.chat); } }catch(_){} }
+},
+// 自动保存 AI 解析到题目「解析」字段（静默，供 autoSaveAi 用）
+async _autoSaveExplain(qid, text, chat){ const q=this.findQ(qid); if(!q||!text)return; if(q._aiSaved)return;
+  let merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+String(text).trim();
+  const cs=(chat||[]).filter(c=>c.a&&!c.a.startsWith('_回答失败'));
+  if(cs.length){ merged+='\n\n**追问记录**\n\n'+cs.map(c=>'> '+c.q+'\n\n'+c.a.trim()).join('\n\n'); }
+  await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[qid],analysis:merged})}); q.analysis=merged; q._aiSaved=true; this.bankDirty=true;
+},
+// 自动保存知识点卡片（转 markdown 追加到题目「解析」）
+async _autoSaveConcept(qid, cards){ const q=this.findQ(qid); if(!q||!cards||!cards.length)return; if(q._conceptSaved)return;
+  const md=cards.map(c=>'### '+(c.term||'知识点')+(c.formula?'\n\n$'+c.formula+'$':'')+(c.plain?'\n\n'+c.plain:'')+(c.example?'\n\n_例：_'+c.example:'')).join('\n\n');
+  const merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**知识点卡片**\n\n'+md;
+  await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[qid],analysis:merged})}); q.analysis=merged; q._conceptSaved=true; this.bankDirty=true;
 },
 async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this.aiX.text)return;
   let merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();

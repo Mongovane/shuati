@@ -41,6 +41,7 @@ async subjDelete(s){
 },
 guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
 saveExplainCfg(){ try{ localStorage.setItem('zb_explaincfg', JSON.stringify(this.explainCfg)); }catch(_){} },
+toggleAutoSaveAi(){ this.autoSaveAi=!this.autoSaveAi; try{ localStorage.setItem('zb_autosave_ai', this.autoSaveAi?'1':'0'); }catch(_){} this.flash(this.autoSaveAi?'已开启：AI 解析/知识点卡片将自动存入题目':'已关闭自动保存'); },
 // 折叠卡「点外部收起全部」：挂 document 级（整页任意位置都覆盖，含内容区两侧留白、卡片下方空白）
 // 仅在设置页生效；点在折叠卡头/体内部时不干预（交给卡自身的点头折叠）
 settBlankClick(e){

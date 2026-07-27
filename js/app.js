@@ -25,6 +25,7 @@ const App={
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
     explainCfg:{ base:'', key:'', model:'' },  // AI 解析中转站（本机 localStorage，留空用服务端）
+    autoSaveAi:false,  // 自动保存 AI 解析/知识点卡片到题目（默认关：手动保存更省存储/额度）
     modelPick:{ busy:false, list:[] }, modelBoxOpen:false,  // 「从端点拉取」到的模型候选列表
     explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
     materials:{ subject:'all', items:[], loading:false, loaded:false }, loadProgMsg:'',
@@ -42,7 +43,7 @@ const App={
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
     pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
-    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1, title:'', mode:'scroll', msg:'' , outline:[], invert:false, barsOff:false},
+    pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1, title:'', mode:'scroll', msg:'' , outline:[], invert:false, barsOff:false, curId:''},
     pdfvMobile:false, pdfvSliderTip:'', pdfvTocOpen:false,
     pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
@@ -346,6 +347,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     window.addEventListener('focus', this.onFocus);
     try{ const oc=JSON.parse(localStorage.getItem('zb_ocrcfg')||'null'); if(oc&&typeof oc==='object'){ this.ocrCfg.model=oc.model||''; this.ocrCfg.base=oc.base||''; this.ocrCfg.key=oc.key||''; } }catch(_){}
     try{ const ec=JSON.parse(localStorage.getItem('zb_explaincfg')||'null'); if(ec&&typeof ec==='object'){ this.explainCfg.base=ec.base||''; this.explainCfg.key=ec.key||''; this.explainCfg.model=ec.model||''; } }catch(_){}
+    try{ this.autoSaveAi = localStorage.getItem('zb_autosave_ai')==='1'; }catch(_){}
     try{ this.explainStable = localStorage.getItem('zb_explain_stable')==='1'; }catch(_){}
     try{ const mc=JSON.parse(localStorage.getItem('zb_mineru_cfg')||'null'); if(mc&&typeof mc==='object'){ if(mc.pageLimit!=null)this.mineruCfg.pageLimit=mc.pageLimit; if(mc.fileLimit!=null)this.mineruCfg.fileLimit=mc.fileLimit; this.mineruCfg.tokenExp=mc.tokenExp||''; this.mineruCfg.token=mc.token||''; } }catch(_){}
     this.mineruRefreshUsage();

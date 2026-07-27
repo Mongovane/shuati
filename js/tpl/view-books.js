@@ -25,9 +25,9 @@ const TPL_VIEW_BOOKS = `
             <div v-if="list.length" class="bk-shelf">
               <div class="bk-shelf-label fold-head" @click="bookFold['pdf_'+sub]=!bookFold['pdf_'+sub]"><span>{{ subjName(sub)==='other'? '其他' : subjName(sub) }} <span class="muted" style="font-weight:400;font-size:12px">{{ list.length }} 本</span></span><span class="fold-arrow" :class="{open:!bookFold['pdf_'+sub]}">▾</span></div>
               <div v-show="!bookFold['pdf_'+sub]" class="bk-grid">
-                <div v-for="it in list" :key="it.id" class="bk-card" @click="openShelfPdf(it)">
+                <div v-for="it in list" :key="it.id" class="bk-card" :class="{on:pdfv.curId===it.id && pdfv.open}" @click="openShelfPdf(it)">
                   <span class="spine"></span>
-                  <span class="t">{{ it.title }}</span>
+                  <span class="t">{{ it.title }}<span v-if="pdfv.curId===it.id && pdfv.open" class="bk-reading">在读</span></span>
                   <span class="m">{{ (it.size/1048576).toFixed(1) }} MB · 云端 · <a href="#" style="color:#c0392b" @click.stop.prevent="deleteShelfPdf(it)">删除</a></span>
                 </div>
               </div>

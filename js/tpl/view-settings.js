@@ -59,6 +59,7 @@ const TPL_VIEW_SETTINGS = `
           <span v-for="m in modelPick.list" :key="m" class="model-chip" :class="{on:explainCfg.model===m}" @click="pickModel(m)" :title="m">{{ m }}</span>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer"><input type="checkbox" v-model="explainStable" @change="saveExplainStable" style="width:auto;flex:none" /> 稳定模式（关闭流式）：某些模型或网络下流式易断（如 HTTP2 报错），开启后改用一次性返回，更稳但无逐字效果、需等全部生成</label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer"><input type="checkbox" :checked="autoSaveAi" @change="toggleAutoSaveAi" style="width:auto;flex:none" /> 自动保存 AI 解析 / 知识点卡片：生成成功后自动存入题目「解析」字段（默认关）。开启后不用手动点「存入解析」，但会更快占用存储空间</label>
         <div class="hint" style="margin-top:10px"><icon name="triangle-alert" :size="15" /> Key 只存本机浏览器；自定义 Base 必须配它自己的 Key。公用电脑别填，建议用限额子 Key。</div>
         </div>
       </div>
