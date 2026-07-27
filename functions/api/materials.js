@@ -1,4 +1,4 @@
-import { json, checkAuth } from './_utils.js';
+import { json, checkAuth, checkStorage } from './_utils.js';
 
 const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 
@@ -61,12 +61,48 @@ export async function onRequestPost({ request, env }) {
   await ensureMaterialsTable(env);
   let b;
   try { b = await request.json(); } catch { return json({ error: '请求体不是合法 JSON' }, 400); }
+  // 批量模式：body.items 为数组时，一次插入多条（MinerU/PDF 整本导入用，避免逐页串行）
+  if (Array.isArray(b.items) && b.items.length) {
+    // 写入前存储保护：估算本批体积，接近 5GB 上限则拒绝，避免超 Cloudflare 免费额度
+    const addBytes = b.items.reduce((s, it) => s + ((it.content_md || '').length + (it.page_image || '').length), 0);
+    const sc = await checkStorage(env, addBytes);
+    if (sc.blocked) return json({ error: 'storage_full', message: '存储空间接近免费上限（5GB），已阻止本次导入以免超额产生费用。请先删除一些不需要的题目或带图的大教材。', used: sc.used, limit: sc.limit }, 507);
+    try {
+      const stmt = env.DB.prepare(`INSERT OR REPLACE INTO materials
+        (id, subject, title, source, page, page_image, content_md, summary, tags)
+        VALUES (?,?,?,?,?,?,?,?,?)`);
+      const rows = [];
+      for (const it of b.items) {
+        const subject = VALID_SUBJECTS.includes(it.subject) ? it.subject : 'computer';
+        const title = String(it.title || it.source || '教材页面').trim();
+        const content = String(it.content_md || it.content || '').trim();
+        if (!title || !content) continue;
+        const id = (it.id && String(it.id).trim()) || `mat-${subject}-${crypto.randomUUID().slice(0, 12)}`;
+        const tags = JSON.stringify(Array.isArray(it.tags) ? it.tags : []);
+        rows.push(stmt.bind(id, subject, title, String(it.source || '').trim() || null,
+          parseInt(it.page || 0, 10) || null, String(it.page_image || '').trim() || null,
+          content, String(it.summary || '').trim() || null, tags));
+      }
+      if (!rows.length) return json({ error: '批量项全部无效（缺 title/content）' }, 400);
+      // 分批 batch，避免单次事务过大
+      let inserted = 0;
+      for (let i = 0; i < rows.length; i += 25) {
+        await env.DB.batch(rows.slice(i, i + 25));
+        inserted += Math.min(25, rows.length - i);
+      }
+      return json({ ok: true, inserted });
+    } catch (e) {
+      return json({ error: '批量写入教材失败：' + e.message }, 500);
+    }
+  }
   const subject = VALID_SUBJECTS.includes(b.subject) ? b.subject : 'computer';
   const title = String(b.title || b.source || '教材页面').trim();
   const content = String(b.content_md || b.content || '').trim();
   if (!title || !content) return json({ error: '缺少 title 或 content_md' }, 400);
   const id = (b.id && String(b.id).trim()) || `mat-${subject}-${crypto.randomUUID().slice(0, 12)}`;
   const tags = JSON.stringify(Array.isArray(b.tags) ? b.tags : []);
+  // 写入前存储保护（单条）
+  { const sc = await checkStorage(env, content.length + String(b.page_image || '').length); if (sc.blocked) return json({ error: 'storage_full', message: '存储空间接近免费上限（5GB），已阻止写入。请先清理部分内容。', used: sc.used, limit: sc.limit }, 507); }
   try {
     await env.DB.prepare(`INSERT OR REPLACE INTO materials
       (id, subject, title, source, page, page_image, content_md, summary, tags)

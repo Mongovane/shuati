@@ -205,3 +205,25 @@ export function rowToQuestion(r) {
     note: r.user_note || r.note || '',
   };
 }
+
+// —— 存储用量估算与写入保护（避免超 Cloudflare D1 免费额度 5GB）——
+// D1 无直接字节数 API，用 SQL length() 累加各大字段（图片 base64 是大头）估算。
+export const STORAGE_LIMIT = 5 * 1024 * 1024 * 1024;       // 5 GB 免费上限
+export const STORAGE_BLOCK = Math.round(4.8 * 1024 * 1024 * 1024); // 到 4.8GB 拒绝新导入（留安全余量）
+export const STORAGE_WARN = Math.round(4.5 * 1024 * 1024 * 1024);  // 到 4.5GB 前端警告
+
+export async function estimateDbBytes(env) {
+  // 累加占空间的大字段：materials(教材正文+图片)、questions(题干/材料/解析)、pdfs(原文)
+  const q = async (sql) => { try { const r = await env.DB.prepare(sql).first(); return (r && r.n) || 0; } catch { return 0; } };
+  const mat = await q(`SELECT SUM(LENGTH(COALESCE(content_md,''))+LENGTH(COALESCE(page_image,''))+LENGTH(COALESCE(title,''))+LENGTH(COALESCE(summary,''))) AS n FROM materials`);
+  const qs = await q(`SELECT SUM(LENGTH(COALESCE(stem,''))+LENGTH(COALESCE(passage,''))+LENGTH(COALESCE(analysis,''))+LENGTH(COALESCE(options,''))) AS n FROM questions`);
+  let pdf = 0; try { pdf = await q(`SELECT SUM(LENGTH(COALESCE(data,''))) AS n FROM pdfs`); } catch { pdf = 0; }
+  // 估算含索引/元数据开销，粗放上浮 15%
+  return Math.round((mat + qs + pdf) * 1.15);
+}
+
+// 写入前检查：预计新增 addBytes 后是否超阈值。超了返回 {blocked:true, ...}，否则 {blocked:false, used}
+export async function checkStorage(env, addBytes = 0) {
+  const used = await estimateDbBytes(env);
+  return { blocked: (used + addBytes) >= STORAGE_BLOCK, used, limit: STORAGE_LIMIT, block: STORAGE_BLOCK };
+}

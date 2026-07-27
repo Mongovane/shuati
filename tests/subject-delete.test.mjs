@@ -87,3 +87,34 @@ describe('教材批量改科目 - 大数据量分批（避免 D1 变量超限）
     }
   });
 });
+
+describe('教材批量插入 POST items', () => {
+  it('items 数组：批量插入，返回 inserted 数', async () => {
+    const { onRequestPost } = await import('../functions/api/materials.js');
+    const { FakeDB, authedReq, makeEnv } = await import('./helpers.mjs');
+    const db = new FakeDB();
+    const items = Array.from({ length: 75 }, (_, i) => ({ subject: 'math', title: 'p' + i, content_md: '内容' + i, page: i + 1 }));
+    const res = await onRequestPost({ request: authedReq('http://x/api/materials', { method: 'POST', body: JSON.stringify({ items }) }), env: makeEnv(db) });
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.inserted).toBe(75);
+  });
+  it('items 里缺 title/content 的被跳过', async () => {
+    const { onRequestPost } = await import('../functions/api/materials.js');
+    const { FakeDB, authedReq, makeEnv } = await import('./helpers.mjs');
+    const db = new FakeDB();
+    const items = [{ subject: 'math', title: 'ok', content_md: 'x' }, { subject: 'math', title: '', content_md: '' }];
+    const res = await onRequestPost({ request: authedReq('http://x/api/materials', { method: 'POST', body: JSON.stringify({ items }) }), env: makeEnv(db) });
+    const d = await res.json();
+    expect(d.inserted).toBe(1); // 只插了有效的那条
+  });
+  it('单条模式仍正常（向后兼容）', async () => {
+    const { onRequestPost } = await import('../functions/api/materials.js');
+    const { FakeDB, authedReq, makeEnv } = await import('./helpers.mjs');
+    const db = new FakeDB();
+    const res = await onRequestPost({ request: authedReq('http://x/api/materials', { method: 'POST', body: JSON.stringify({ subject: 'math', title: 't', content_md: 'c' }) }), env: makeEnv(db) });
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.inserted).toBe(1);
+  });
+});

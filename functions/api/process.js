@@ -1,4 +1,4 @@
-import { json, checkAuth, batchChunked } from './_utils.js';
+import { json, checkAuth, batchChunked, checkStorage } from './_utils.js';
 
 const MAX_IMPORT = 2000; // 单次直接导入 JSON 的题目上限（超过请分批，防单请求撑爆内存/超时）
 
@@ -86,6 +86,9 @@ export async function onRequestPost({ request, env }) {
 
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体不是合法 JSON' }, 400); }
+
+  // 写入前存储保护：接近 5GB 免费上限则拒绝导入（学习记录类不受此限，另走 progress 接口）
+  { const sc = await checkStorage(env); if (sc.blocked) return json({ error: 'storage_full', message: '存储空间接近免费上限（5GB），已阻止导入以免超额。请先在题库删除部分题目或清理带图教材。', used: sc.used, limit: sc.limit }, 507); }
 
   // 动态科目：合法科目 = 内置四科 ∪ subjects 表里用户自建的科目
   const subjList = await loadSubjectList(env);
