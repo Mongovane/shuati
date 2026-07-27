@@ -17,6 +17,16 @@ describe('parseBookOutline 目录页解析', () => {
     expect(out[1].level).toBe(1);   // 习题缩进一级
     expect(out[3]).toEqual({ title: '总习题八', page: 28, level: 1 });
   });
+  it('识别"第X节"为二级（缩进到章下）', () => {
+    const toc = '第一章　函数与极限 …… 1 第一节　映射与函数 …… 1 第二节　数列的极限 …… 18 总习题一 …… 68 第二章　导数与微分 …… 71 第一节　导数概念 …… 71';
+    const out = P.call({}, toc);
+    const byTitle = (t) => out.find((o) => o.title.includes(t));
+    expect(byTitle('第一章').level).toBe(0);
+    expect(byTitle('第一节　映射').level).toBe(1);
+    expect(byTitle('第二节　数列').level).toBe(1);
+    expect(byTitle('总习题一').level).toBe(1);
+    expect(byTitle('第二章').level).toBe(0);
+  });
   it('多页目录拼接后，后半部分章节不丢（模拟目录跨页）', () => {
     const tocPage1 = '第1章 绪论 …… 1 1.1 概述 …… 3 第2章 算法 …… 15 3.2 数据 …… 39';
     const tocPage2 = '第4章 循环结构 …… 41 4.1 while 语句 …… 42 第10章 文件 …… 380';
@@ -178,5 +188,26 @@ describe('bookReadPct 阅读进度（当前书用实时 bookIdx）', () => {
   it('无记录返回空', () => {
     const ctx = { currentBookId: 'other', bookIdx: 0, store: {} };
     expect(pct(ctx, { key: 'k', pages: new Array(10) })).toBe('');
+  });
+});
+
+describe('PDF 目录页码偏移校正（扫描版书签粗时回退）', () => {
+  it('偏移 = 书签首章PDF页 - 目录文本首章书内页，应用到所有条目', () => {
+    // 模拟：书签里"第一章"在 PDF 第18页；目录文本里"第一章"书内页1、"第一节"书内页1、"第二节"18
+    const bookmarks = [{ title: '第1章 函数与极限', page: 18, level: 0 }];
+    const textItems = [
+      { title: '第一章　函数与极限', page: 1, level: 0 },
+      { title: '第一节　映射与函数', page: 1, level: 1 },
+      { title: '第二节　数列的极限', page: 18, level: 1 },
+    ];
+    // 复刻 pdfvOutlineFromText 的偏移算法
+    const bm1 = bookmarks.find((b) => /^第[一二三四五六七八九十百零\d]+\s*[章篇]/.test(b.title));
+    const tx1 = textItems.find((o) => o.level === 0);
+    const offset = (bm1 && tx1) ? bm1.page - tx1.page : 0;
+    expect(offset).toBe(17);
+    const mapped = textItems.map((o) => ({ ...o, page: o.page + offset }));
+    expect(mapped[0].page).toBe(18);   // 第一章 → PDF 18
+    expect(mapped[1].page).toBe(18);   // 第一节 → PDF 18
+    expect(mapped[2].page).toBe(35);   // 第二节 书内18 → PDF 35
   });
 });

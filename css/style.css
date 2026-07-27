@@ -374,6 +374,13 @@ a{color:var(--accent)}
 .reader .r-toc .list{flex:1;overflow:auto;padding:6px}
 .reader .r-toc .list>div{padding:12px;border-radius:9px;font-size:14px;color:var(--rink);cursor:pointer;line-height:1.4}
 .reader .r-toc .list>div.on{background:color-mix(in srgb,var(--racc) 14%,transparent);color:var(--racc);font-weight:600}
+.reader .r-toc-jump{margin:10px 12px 6px;width:calc(100% - 24px);height:38px;background:var(--rbg);color:var(--rink);border:1px solid var(--rline);border-radius:9px;padding:0 12px}
+.reader .r-toc .toc-row{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:9px;font-size:14px;color:var(--rink);cursor:pointer;line-height:1.4}
+.reader .r-toc .toc-row:hover{background:color-mix(in srgb,var(--rink) 7%,transparent)}
+.reader .r-toc .toc-row.toc-lv0{font-weight:600}
+.reader .r-toc .toc-row.on{background:color-mix(in srgb,var(--racc) 14%,transparent);color:var(--racc);font-weight:600}
+.reader .r-toc .toc-row .toc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reader .r-toc .toc-row .toc-p{flex:none;font-size:11px;color:var(--rsoft)}
 .reader .r-toc-backdrop{position:absolute;inset:0;z-index:8;background:rgba(0,0,0,.4)}
 @media(max-width:600px){ .reader .r-wrap{padding:54px 18px 108px} }
 /* —— PDF 原书阅读器 —— */
@@ -383,6 +390,7 @@ a{color:var(--accent)}
 .pdfv-drawer-h{display:flex;align-items:center;padding:14px 14px 10px;border-bottom:1px solid var(--line);font-size:14px}
 .pdfv-drawer-h .toc-close{border:none;background:transparent;color:var(--ink-soft);font-size:20px;cursor:pointer}
 .pdfv-drawer-list{flex:1;overflow:auto;padding:6px}
+.pdfv-drawer .tip{font-size:11.5px;color:var(--ink-soft);line-height:1.5;background:color-mix(in srgb,var(--accent) 6%,transparent);padding:8px 10px;border-radius:8px}
 .pdfv-drawer-list>div{padding:11px 12px;border-radius:8px;font-size:14px;color:var(--ink);cursor:pointer}
 .pdfv-drawer-list>div.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .pdfv-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:25}
@@ -494,7 +502,7 @@ a{color:var(--accent)}
 }
 
 /* —— 阅读器：选段悬浮条 + 问 AI 抽屉 —— */
-.r-segbar{position:fixed;left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:55}
+.r-segbar{position:fixed;left:50%;right:auto;transform:translateX(-50%);width:min(600px,calc(100% - 32px));max-width:none;bottom:calc(84px + env(safe-area-inset-bottom));z-index:55}
 .r-ai{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--bg,#F5F6F2);color:inherit;border-radius:18px 18px 0 0;box-shadow:0 -8px 40px rgba(0,0,0,.22);transform:translateY(105%);transition:transform .25s ease;max-height:72vh;display:flex;flex-direction:column;padding:14px 16px calc(14px + env(safe-area-inset-bottom))}
 .r-ai.open{transform:none}
 .rai-h{display:flex;align-items:center;gap:8px;font-size:15px;padding-bottom:10px;border-bottom:1px solid color-mix(in srgb,var(--ink,#1A1F2B) 8%,transparent)}

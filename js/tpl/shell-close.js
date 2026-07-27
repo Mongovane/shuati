@@ -66,9 +66,15 @@ const TPL_SHELL_CLOSE = `
     </div>
     <div v-if="reader.tocOpen" class="r-toc-backdrop" @click="reader.tocOpen=false"></div>
     <div class="r-toc" :class="{open:reader.tocOpen}">
-      <h4>目录 <span style="color:var(--rsoft);font-weight:400;margin-left:6px">{{ currentBook.pages.length }} 篇</span><button class="ricon" style="margin-left:auto" @click="reader.tocOpen=false"><icon name="x" :size="16" /></button></h4>
+      <h4>目录 <span style="color:var(--rsoft);font-weight:400;margin-left:6px">{{ bookOutline.length ? bookOutline.length+' 章节' : currentBook.pages.length+' 篇' }}</span><button class="ricon" style="margin-left:auto" @click="reader.tocOpen=false"><icon name="x" :size="16" /></button></h4>
+      <input class="inp r-toc-jump" type="number" min="1" :max="currentBook.pages.length" @keyup.enter="readerGoto(Math.max(0,Math.min(currentBook.pages.length-1,parseInt($event.target.value||0,10)-1)))" placeholder="输入第几篇跳转" />
       <div class="list">
-        <div v-for="(m,i) in currentBook.pages" :key="m.id" :class="{on:i===bookIdx}" @click="readerGoto(i)">{{ pageLabel(m) }}</div>
+        <template v-if="bookOutline.length">
+          <div v-for="(o,oi) in bookOutline" :key="'rbo'+oi" class="toc-row" :class="{'toc-lv0':o.level===0, on: bookCurBookPage>0 && o.page<=bookCurBookPage && (oi===bookOutline.length-1 || bookOutline[oi+1].page>bookCurBookPage)}" :style="{paddingLeft:(4+o.level*16)+'px'}" @click="bookGotoBookPage(o.page); reader.tocOpen=false"><span class="toc-t">{{ o.title }}</span><span class="toc-p">{{ o.page }}</span></div>
+        </template>
+        <template v-else>
+          <div v-for="(m,i) in currentBook.pages" :key="m.id" :class="{on:i===bookIdx}" @click="readerGoto(i)">{{ pageLabel(m) }}</div>
+        </template>
       </div>
     </div>
   </div>

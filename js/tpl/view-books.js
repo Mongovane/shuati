@@ -71,6 +71,7 @@ const TPL_VIEW_BOOKS = `
           <div class="pdfv-drawer" :class="{open:pdfvTocOpen}">
             <div class="pdfv-drawer-h"><b>目录</b><span class="muted" style="margin-left:6px">{{ pdfv.outline.length? pdfv.outline.length+' 章节' : ('共 '+pdfv.pages+' 页') }}</span><button class="toc-close" @click="pdfvTocOpen=false" style="margin-left:auto"><icon name="x" :size="16" /></button></div>
             <input class="inp pdfv-drawer-jump" type="number" min="1" :max="pdfv.pages" @keyup.enter="pdfvGoto($event.target.value); pdfvTocOpen=false" placeholder="输入页码跳转" style="margin:0 12px 8px;width:calc(100% - 24px)" />
+            <div v-if="pdfv.outline.length && pdfv.outline.every(o=>o.level===0) && pdfv.outline.length<20" class="tip" style="margin:0 12px 8px">此 PDF 只内嵌了章级书签（扫描版常见），无法显示更细的小节。想要细分目录可用「整理笔记」导入本书。</div>
             <div class="pdfv-drawer-list" ref="pdfvTocList">
               <template v-if="pdfv.outline.length">
                 <div v-for="(o,oi) in pdfv.outline" :key="'ol'+oi" class="toc-row" :class="{on: o.page<=pdfv.cur && (oi===pdfv.outline.length-1 || pdfv.outline[oi+1].page>pdfv.cur)}" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="pdfvGoto(o.page); pdfvTocOpen=false"><span class="toc-t">{{ o.title }}</span><span class="toc-p">{{ o.page }}</span></div>

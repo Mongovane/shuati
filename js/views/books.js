@@ -47,12 +47,13 @@ bookGotoBookPage(n){ const b=this.currentBook; if(!b||!Number.isFinite(n))return
 parseBookOutline(tocText){ if(!tocText)return []; const items=[]; const re=/((?:[^\n.\u2026]|\.(?!\.))+?)\s*(?:\.{2,}|\u2026+)\s*(\d{1,4})/g; let mm;
       while((mm=re.exec(tocText))!==null){ const title=mm[1].replace(/^[\s*#>]+/,'').trim(); const page=parseInt(mm[2],10);
         if(!title||!Number.isFinite(page))continue;
-        // 层级判断：第X章/篇=0；"1.2 xx"=2；纯数字开头"1 xx"=1；习题类=1；其余=0
+        // 层级判断：第X章/篇=0；第X节=1；"1.2 xx"=2；"1 xx"=1；习题类=1；其余=0
         let level=0;
         if(/^第[一二三四五六七八九十百零\d]+\s*[章篇]/.test(title)) level=0;
+        else if(/^第[一二三四五六七八九十百零\d]+\s*节/.test(title)) level=1;
         else if(/^\d+\.\d+/.test(title)) level=2;
         else if(/^\d+[\s、.]/.test(title)) level=1;
-        else if(/^\*?(习题|总习题|本章小结|小结|思考题|练习)/.test(title)) level=1;
+        else if(/^\*?(习题|总习题|本章小结|小结|思考题|练习|复习题)/.test(title)) level=1;
         items.push({ title:title.slice(0,50), page, level }); if(items.length>=400)break; }
       return items; },
 async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI && !(this.explainCfg&&this.explainCfg.base&&this.explainCfg.key)){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; } if(this._genqCtrl){ try{ this._genqCtrl.abort(); }catch(_){} } const ctrl=new AbortController(); this._genqCtrl=ctrl; this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',signal:ctrl.signal,body:JSON.stringify({...this.aiOv(false),subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.name!=='AbortError' && e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; if(this._genqCtrl===ctrl)this._genqCtrl=null; },
@@ -200,8 +201,28 @@ async pdfvLoadOutline(){ this.pdfv.outline=[]; try{ const doc=this._pdfvDoc; if(
       if(Array.isArray(dest)&&dest[0]){ page=(await doc.getPageIndex(dest[0]))+1; } }catch(_){}
     out.push({title:(it.title||'').trim()||'(未命名)',page,level});
     if(it.items&&it.items.length&&level<3)await walk(it.items,level+1); } };
-  await walk(raw,0); this.pdfv.outline=out.filter(o=>o.page>0);
+  await walk(raw,0); const fromBookmark=out.filter(o=>o.page>0);
+  // 内嵌书签太粗（多为扫描版，只有章级）→ 尝试从目录页文本层解析出细分目录
+  if(fromBookmark.length && fromBookmark.length<=12 && fromBookmark.every(o=>o.level===0)){
+    try{ const fine=await this.pdfvOutlineFromText(fromBookmark); if(fine && fine.length>fromBookmark.length){ this.pdfv.outline=fine; return; } }catch(_){}
+  }
+  this.pdfv.outline=fromBookmark;
 }catch(_){ this.pdfv.outline=[]; } },
+// 从目录页文本层解析目录（扫描版内嵌书签粗时的回退）
+async pdfvOutlineFromText(bookmarks){ const doc=this._pdfvDoc; if(!doc)return []; const maxScan=Math.min(30, doc.numPages||30); let toc='';
+  for(let n=1;n<=maxScan;n++){ let t=''; try{ t=await this.pdfvPageText(n); }catch(_){ continue; }
+    const looksToc=/目\s*录|CONTENTS/i.test(t.slice(0,60)) || (t.match(/\u2026{2,}\s*\d+|\.{4,}\s*\d+/g)||[]).length>=4;
+    if(looksToc){ toc+='\n'+t; } else if(toc){ break; } }
+  if(!toc.trim())return [];
+  const items=this.parseBookOutline(toc); if(!items.length)return [];
+  // 页码校正：目录里是「书内页码」，PDF 物理页常有偏移（封面/目录占前几页）。
+  // 用书签第一章的 PDF 页 - 目录文本里第一章的书内页，推算偏移量。
+  let offset=0;
+  try{ const bm1=(bookmarks||[]).find(b=>/^第[一二三四五六七八九十百零\d]+\s*[章篇]/.test(b.title));
+    const tx1=items.find(o=>o.level===0);
+    if(bm1&&tx1&&bm1.page>0&&tx1.page>0){ offset=bm1.page-tx1.page; } }catch(_){}
+  return items.map(o=>({ ...o, page:o.page+offset })).filter(o=>o.page>0 && o.page<=(doc.numPages||99999));
+},
 pdfvSliderShow(v){ this.pdfvSliderTip=String(v); },
 pdfvSliderHide(){ setTimeout(()=>{ this.pdfvSliderTip=''; },250); },
 pdfvToggleInvert(){ this.pdfv.invert=!this.pdfv.invert; try{ localStorage.setItem('zb_pdf_invert', this.pdfv.invert?'1':'0'); }catch(_){} },
