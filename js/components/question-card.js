@@ -147,6 +147,7 @@ const QuestionCard={
         <span class="tag">正确答案： {{ answerKeys.join(', ') }}</span>
       </div>
       <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="q.type==='fill_blank' ? ansDisplay : refText" /></div>
+      <div v-if="q.analysis && String(q.analysis).trim()" class="ref saved-analysis"><h5><icon name="notebook-pen" :size="14" /> 已保存的解析 / 笔记</h5><rich-text :content="q.analysis" /></div>
       <div v-if="!AUTO.includes(q.type)" class="selfgrade">
         <span class="q">掌握程度？</span>
         <button class="btn subtle sg sg-again" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="没答上来，10 分钟后回炉"><icon name="x" :size="15" /> 重来</button>
