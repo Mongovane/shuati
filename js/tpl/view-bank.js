@@ -44,7 +44,7 @@ const TPL_VIEW_BANK = `
       </div>
 
       <div v-if="bank.loading && !bank.items.length" class="skel-wrap"><div class="skel skel-row" v-for="n in 6" :key="'bsk'+n"></div></div>
-      <div v-else-if="!bank.items.length" class="empty"><div class="big">∅</div><p>题库为空或没有匹配的题目。</p></div>
+      <div v-else-if="!bank.items.length" class="empty"><div class="big"><icon name="inbox" :size="16" /></div><p>题库为空或没有匹配的题目。</p></div>
       <template v-else>
         <div v-for="(q,i) in bank.items" :key="q.id" class="bank-row" :class="{sel:bank.sel.includes(q.id)}">
           <input type="checkbox" class="bank-rowck" :checked="bank.sel.includes(q.id)" @change="bankToggle(q.id)" />

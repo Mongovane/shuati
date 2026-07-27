@@ -168,11 +168,11 @@ const TPL_VIEW_PRACTICE = `
             <div class="row" style="justify-content:center;margin-top:14px"><button class="btn subtle" @click="f._mode='all'; startSession()">刷新题</button></div>
           </template>
           <template v-else-if="f._mode==='mastered'">
-            <div class="big">∅</div><p>还没有标记为「已掌握」的题。</p>
+            <div class="big"><icon name="circle-check" :size="16" /></div><p>还没有标记为「已掌握」的题。</p>
             <div class="row" style="justify-content:center;margin-top:14px"><button class="btn subtle" @click="f._mode='all'; startSession()">看全部题</button></div>
           </template>
           <template v-else>
-            <div class="big">∅</div><p>没有匹配的题目。请调整筛选条件，或先导入题目。</p>
+            <div class="big"><icon name="search-x" :size="16" /></div><p>没有匹配的题目。请调整筛选条件，或先导入题目。</p>
             <div class="row" style="justify-content:center;margin-top:14px">
               <button class="btn subtle" @click="startSession">重新加载</button>
               <button class="btn" @click=\"go('ingest')\">前往导入</button>
