@@ -194,12 +194,7 @@ a{color:var(--accent)}
 .bk-reader{position:relative;margin-top:20px;overflow:hidden;border-radius:14px}
 .bk-reader .bk-page{min-width:0}
 /* 桌面宽屏：目录与正文并排，展开时正文让位（不再浮层盖住正文）*/
-@media(min-width:820px){
-  .bk-reader.toc-open{display:flex;align-items:stretch;gap:0}
-  .bk-reader.toc-open .bk-toc{position:relative;transform:none;flex:0 0 288px;width:288px;box-shadow:none;border-radius:14px 0 0 14px;height:auto}
-  .bk-reader.toc-open .bk-page{flex:1;min-width:0}
-  .bk-reader.toc-open .bk-toc-backdrop{display:none !important}
-}
+/* 教材目录：浮层覆盖正文（像 PDF 原书，不压缩正文宽度），点空白关闭 */
 .bk-toctoggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;white-space:nowrap}
 .subj-edit{padding:10px 0;border-bottom:1px solid var(--line)}
 .subj-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
