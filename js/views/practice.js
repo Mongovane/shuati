@@ -127,7 +127,7 @@ findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(
 async onAnswered(p){ this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
       if(p.partial) this.flash('多选少选：按半分计，已计入错题复习');
       this.countNewToday(p.id);
-      try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct,grade:p.grade||undefined,duration_ms:p.ms||undefined})}); }catch(e){ if(e.message!=='unauth')this.flash('作答记录保存失败：'+e.message,true); } },
+      try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct,grade:p.grade||undefined,duration_ms:p.ms||undefined})}); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('作答记录保存失败：'+e.message,true); } },
 countNewToday(id){ /* 每日新题软上限：只提醒不硬拦，帮着把节奏留给复习 */
       if(!(this.dailyNewLimit>0))return; const q=this.findQ(id); if(!q||q._seen)return;
       if((q.right_count>0)||(q.wrong_count>0))return; q._seen=true;
@@ -139,7 +139,7 @@ countNewToday(id){ /* 每日新题软上限：只提醒不硬拦，帮着把节�
       if(n===this.dailyNewLimit) this.flash('今日新题已达上限 '+this.dailyNewLimit+' 题，建议切到「今日待复习」巩固');
       else if(n>this.dailyNewLimit && (n-this.dailyNewLimit)%10===0) this.flash('已超今日新题上限（'+n+'/'+this.dailyNewLimit+'），注意复习消化'); },
 async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); this.favDirty=true; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth')this.flash('收藏保存失败：'+e.message,true); } },
-async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth')this.flash('掌握状态保存失败：'+e.message,true); } },
+async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); this.statsDirty=true; this.favDirty=true; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth')this.flash('掌握状态保存失败：'+e.message,true); } },
 async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth')this.flash('笔记保存失败：'+e.message,true); } }
 
 ,

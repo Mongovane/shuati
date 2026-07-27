@@ -10,6 +10,9 @@ const TPL_VIEW_STATS = `
         <div class="skel skel-chart"></div>
       </div>
       <template v-else-if="stats">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn subtle" @click="loadStats" :disabled="statsLoading" title="重新拉取最新统计数据"><icon name="refresh-cw" :size="15" /> 刷新</button>
+        </div>
         <div class="stat-grid">
           <div class="stat"><div class="n">{{ statTotals.totalQ }}</div><div class="l">题目总数</div></div>
           <div class="stat"><div class="n">{{ statTotals.seen }}</div><div class="l">已作答</div></div>
