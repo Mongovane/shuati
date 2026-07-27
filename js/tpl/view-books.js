@@ -126,9 +126,10 @@ const TPL_VIEW_BOOKS = `
         <div v-if="currentBook && currentPageMat" class="bk-reader" :class="{'toc-collapsed':!bookTocOpen,'toc-open':bookTocOpen}">
           <aside class="bk-toc">
             <h4>目录 <span class="muted">{{ bookOutline.length ? bookOutline.length+' 章节' : currentBook.pages.length+' 篇' }}</span><button class="toc-close" @click="bookTocOpen=false" title="关闭"><icon name="x" :size="16" /></button></h4>
+            <input class="inp bk-toc-jump" type="number" min="1" :max="currentBook.pages.length" @keyup.enter="bookGoto(Math.max(0,Math.min(currentBook.pages.length-1,parseInt($event.target.value||0,10)-1))); bookTocOpen=false" placeholder="输入第几篇跳转" />
             <template v-if="bookOutline.length">
               <div class="tip">按书本目录页解析，点击跳到对应页</div>
-              <div v-for="(o,oi) in bookOutline" :key="'bo'+oi" class="toc-row" :class="{'toc-lv0':o.level===0}" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="bookGotoBookPage(o.page)"><span class="toc-t">{{ o.title }}</span><span class="toc-p">{{ o.page }}</span></div>
+              <div v-for="(o,oi) in bookOutline" :key="'bo'+oi" class="toc-row" :class="{'toc-lv0':o.level===0, on: bookCurBookPage>0 && o.page<=bookCurBookPage && (oi===bookOutline.length-1 || bookOutline[oi+1].page>bookCurBookPage)}" :style="{paddingLeft:(14+o.level*16)+'px'}" @click="bookGotoBookPage(o.page)"><span class="toc-t">{{ o.title }}</span><span class="toc-p">{{ o.page }}</span></div>
             </template>
             <template v-else>
               <div class="tip">按每页正文标题/首行生成，点击跳转</div>

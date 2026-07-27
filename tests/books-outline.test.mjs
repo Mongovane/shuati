@@ -17,6 +17,15 @@ describe('parseBookOutline 目录页解析', () => {
     expect(out[1].level).toBe(1);   // 习题缩进一级
     expect(out[3]).toEqual({ title: '总习题八', page: 28, level: 1 });
   });
+  it('多页目录拼接后，后半部分章节不丢（模拟目录跨页）', () => {
+    const tocPage1 = '第1章 绪论 …… 1 1.1 概述 …… 3 第2章 算法 …… 15 3.2 数据 …… 39';
+    const tocPage2 = '第4章 循环结构 …… 41 4.1 while 语句 …… 42 第10章 文件 …… 380';
+    const out = P.call({}, tocPage1 + '\n' + tocPage2);
+    const titles = out.map((o) => o.title);
+    expect(titles.some((t) => t.startsWith('第4章'))).toBe(true);
+    expect(titles.some((t) => t.startsWith('第10章'))).toBe(true);
+    expect(out[out.length - 1].page).toBe(380);
+  });
   it('多级层级：章=0，"1 xx"=1，"2.2 xx"=2，习题=1', () => {
     const toc = '第2章 算法 …… 15 1 什么是算法 …… 16 2.2 数据的表现形式 …… 39 习题 …… 35';
     const out = P.call({}, toc);

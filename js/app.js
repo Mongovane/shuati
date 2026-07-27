@@ -81,6 +81,7 @@ const App={
     lastReadBook(){ let id=''; try{ id=localStorage.getItem('zb_bookid')||''; }catch(_){ } if(!id)return null; const b=this.materialBooks.find(x=>x.key===id); if(!b)return null; let pos=0; try{ pos=parseInt(localStorage.getItem('zb_readpos:'+id),10)||0; }catch(_){ } if(pos<=0)return null; return b; },
     currentBook(){ if(!this.currentBookId)return null; return this.materialBooks.find(b=>b.key===this.currentBookId)||null; },
     currentPageMat(){ const b=this.currentBook; if(!b||!b.pages.length)return null; const i=Math.min(Math.max(0,this.bookIdx),b.pages.length-1); return b.pages[i]; },
+    bookCurBookPage(){ const m=this.currentPageMat; return (m&&m.page)?m.page:0; },
     ocrModelName(){ return this.ai.visionModel || this.ai.model || '未读取模型'; },
     sessionMode(){ if(this.view==='wrong')return this.reviewScope==='due'?'due':'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
     chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
@@ -113,8 +114,11 @@ const App={
     // 从当前书的「目录页」解析出「章节标题 → 页码」列表，供内嵌目录导航（像 PDF 书签那样可点跳转）
     // 目录页判定：pageLabel 或正文里出现「目录」，且含多处「…… 数字」页码引导。解析不出则返回 []（回退按篇列目录）
     bookOutline(){ const b=this.currentBook; if(!b||!b.pages||!b.pages.length)return [];
-      let tocText=''; for(const m of b.pages){ const c=String(m.content_md||''); if(/目\s*录|CONTENTS/i.test(c.slice(0,40)) || (c.match(/\.{3,}\s*\d+/g)||[]).length>=4){ tocText=c; break; } }
-      return this.parseBookOutline(tocText); },
+      // 目录常跨多页：收集所有"像目录"的页并按顺序拼接，避免只取第一页导致后面章节丢失
+      const isTocPage=(c)=>/目\s*录|CONTENTS/i.test(c.slice(0,40)) || (c.match(/\.{3,}\s*\d+/g)||[]).length>=4 || (c.match(/\u2026+\s*\d+/g)||[]).length>=4;
+      const parts=[]; let started=false, gap=0;
+      for(const m of b.pages){ const c=String(m.content_md||''); if(isTocPage(c)){ parts.push(c); started=true; gap=0; } else if(started){ gap++; if(gap>=2)break; } }
+      return this.parseBookOutline(parts.join('\n')); },
     curAiModel(){ const q=this.cur; if(!q||this.aiX.id!==q.id)return ''; return this.aiX.view==='concept' ? (this.aiX.cardsModel||'') : (this.aiX.model||''); },
     curAllFlipped(){ const q=this.cur; if(!q||this.aiX.id!==q.id)return false; const cards=this.aiX.cards||[]; return cards.length>0 && cards.every((c,i)=>this.aiX.flip&&this.aiX.flip[i]); },
     mockPct(){ const t=this.mock.questions.length||1; return Math.round(this.mockResult.score/t*100); },

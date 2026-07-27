@@ -194,9 +194,9 @@ a{color:var(--accent)}
 .bk-reader{position:relative;margin-top:20px;overflow:hidden;border-radius:14px}
 .bk-reader .bk-page{min-width:0}
 /* 桌面宽屏：目录与正文并排，展开时正文让位（不再浮层盖住正文）*/
-@media(min-width:900px){
+@media(min-width:820px){
   .bk-reader.toc-open{display:flex;align-items:stretch;gap:0}
-  .bk-reader.toc-open .bk-toc{position:relative;transform:none;flex:0 0 300px;width:300px;box-shadow:none;border-radius:14px 0 0 14px;height:auto}
+  .bk-reader.toc-open .bk-toc{position:relative;transform:none;flex:0 0 288px;width:288px;box-shadow:none;border-radius:14px 0 0 14px;height:auto}
   .bk-reader.toc-open .bk-page{flex:1;min-width:0}
   .bk-reader.toc-open .bk-toc-backdrop{display:none !important}
 }
@@ -751,6 +751,7 @@ a{color:var(--accent)}
 .bk-toc .toc-row{display:flex;align-items:center;gap:8px;padding:8px 10px;line-height:1.35;cursor:pointer;border-radius:8px;font-size:13px}
 .bk-toc .toc-row:hover{background:var(--surface-2,rgba(0,0,0,.04))}
 .bk-toc .toc-row.toc-lv0{font-weight:600;margin-top:2px}
+.bk-toc .bk-toc-jump{width:calc(100% - 4px);margin:2px 0 10px;height:38px}
 .bk-toc .toc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bk-toc .toc-p{flex:none;font-size:11px;color:var(--muted,#888)}
 
