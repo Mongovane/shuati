@@ -44,10 +44,15 @@ bookNext(){ this.bookGoto(this.bookIdx+1); },
 bookJumpPage(p){ const b=this.currentBook; if(!b)return; const n=parseInt(p,10); if(!Number.isFinite(n))return; const idx=b.pages.findIndex(m=>Number(m.page)===n); if(idx>=0)this.bookGoto(idx); else this.flash('没有第 '+n+' 页',true); },
 // 跳到「书内页码」最接近 n 的那一篇（目录里的页码常和整理后的分篇页码不完全一致，取 ≤n 的最大页）
 bookGotoBookPage(n){ const b=this.currentBook; if(!b||!Number.isFinite(n))return; let best=-1,bestPg=-1; b.pages.forEach((m,i)=>{ const pg=Number(m.page)||0; if(pg<=n && pg>bestPg){ bestPg=pg; best=i; } }); if(best<0){ best=0; } this.bookGoto(best); this.bookTocOpen=false; },
-parseBookOutline(tocText){ if(!tocText)return []; const items=[]; const re=/([^\n.\u2026]{2,60}?)\s*[.\u2026]{2,}\s*(\d{1,4})/g; let mm;
+parseBookOutline(tocText){ if(!tocText)return []; const items=[]; const re=/((?:[^\n.\u2026]|\.(?!\.))+?)\s*(?:\.{2,}|\u2026+)\s*(\d{1,4})/g; let mm;
       while((mm=re.exec(tocText))!==null){ const title=mm[1].replace(/^[\s*#>]+/,'').trim(); const page=parseInt(mm[2],10);
         if(!title||!Number.isFinite(page))continue;
-        const level=/^第[一二三四五六七八九十百零\d]+\s*[章篇]/.test(title)?0:(/^\*?(习题|总习题)/.test(title)?1:0);
+        // 层级判断：第X章/篇=0；"1.2 xx"=2；纯数字开头"1 xx"=1；习题类=1；其余=0
+        let level=0;
+        if(/^第[一二三四五六七八九十百零\d]+\s*[章篇]/.test(title)) level=0;
+        else if(/^\d+\.\d+/.test(title)) level=2;
+        else if(/^\d+[\s、.]/.test(title)) level=1;
+        else if(/^\*?(习题|总习题|本章小结|小结|思考题|练习)/.test(title)) level=1;
         items.push({ title:title.slice(0,50), page, level }); if(items.length>=400)break; }
       return items; },
 async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI && !(this.explainCfg&&this.explainCfg.base&&this.explainCfg.key)){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; } if(this._genqCtrl){ try{ this._genqCtrl.abort(); }catch(_){} } const ctrl=new AbortController(); this._genqCtrl=ctrl; this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',signal:ctrl.signal,body:JSON.stringify({...this.aiOv(false),subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.name!=='AbortError' && e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; if(this._genqCtrl===ctrl)this._genqCtrl=null; },

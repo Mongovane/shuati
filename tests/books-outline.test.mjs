@@ -17,6 +17,15 @@ describe('parseBookOutline 目录页解析', () => {
     expect(out[1].level).toBe(1);   // 习题缩进一级
     expect(out[3]).toEqual({ title: '总习题八', page: 28, level: 1 });
   });
+  it('多级层级：章=0，"1 xx"=1，"2.2 xx"=2，习题=1', () => {
+    const toc = '第2章 算法 …… 15 1 什么是算法 …… 16 2.2 数据的表现形式 …… 39 习题 …… 35';
+    const out = P.call({}, toc);
+    const byTitle = (t) => out.find((o) => o.title.startsWith(t));
+    expect(byTitle('第2章').level).toBe(0);
+    expect(byTitle('1 什么是算法').level).toBe(1);
+    expect(byTitle('2.2').level).toBe(2);
+    expect(byTitle('习题').level).toBe(1);
+  });
   it('兼容英文点号引导 .... 与全角省略号 ……', () => {
     expect(P.call({}, 'Chapter 1 .... 5').length).toBe(1);
     expect(P.call({}, '第一章 绪论 …… 1')[0].page).toBe(1);

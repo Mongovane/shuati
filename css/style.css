@@ -193,6 +193,13 @@ a{color:var(--accent)}
 .bk-card .m{font-size:12px;color:var(--ink-soft);margin-top:auto}
 .bk-reader{position:relative;margin-top:20px;overflow:hidden;border-radius:14px}
 .bk-reader .bk-page{min-width:0}
+/* 桌面宽屏：目录与正文并排，展开时正文让位（不再浮层盖住正文）*/
+@media(min-width:900px){
+  .bk-reader.toc-open{display:flex;align-items:stretch;gap:0}
+  .bk-reader.toc-open .bk-toc{position:relative;transform:none;flex:0 0 300px;width:300px;box-shadow:none;border-radius:14px 0 0 14px;height:auto}
+  .bk-reader.toc-open .bk-page{flex:1;min-width:0}
+  .bk-reader.toc-open .bk-toc-backdrop{display:none !important}
+}
 .bk-toctoggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;white-space:nowrap}
 .subj-edit{padding:10px 0;border-bottom:1px solid var(--line)}
 .subj-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -493,7 +500,7 @@ a{color:var(--accent)}
 
 /* —— 阅读器：选段悬浮条 + 问 AI 抽屉 —— */
 .r-segbar{position:fixed;left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:55}
-.r-ai{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--card-bg,#fff);color:inherit;border-radius:16px 16px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.28);transform:translateY(105%);transition:transform .25s ease;max-height:72vh;display:flex;flex-direction:column;padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+.r-ai{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--bg,#F5F6F2);color:inherit;border-radius:18px 18px 0 0;box-shadow:0 -8px 40px rgba(0,0,0,.22);transform:translateY(105%);transition:transform .25s ease;max-height:72vh;display:flex;flex-direction:column;padding:14px 16px calc(14px + env(safe-area-inset-bottom))}
 .r-ai.open{transform:none}
 .rai-h{display:flex;align-items:center;gap:8px;font-size:15px;padding-bottom:10px;border-bottom:1px solid color-mix(in srgb,var(--ink,#1A1F2B) 8%,transparent)}
 .rai-h b{font-weight:600;display:inline-flex;align-items:center;gap:6px}
@@ -529,7 +536,7 @@ a{color:var(--accent)}
 [data-theme=dark] .chat-a{background:transparent}
 
 /* —— PDF 阅读器内的 AI 抽屉：必须盖在 .pdfv(z-index:200) 之上 —— */
-.pdf-ai-backdrop{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.35)}
+.pdf-ai-backdrop{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.22)}
 .r-ai.pdf-ai{z-index:220}
 
 /* ============ 移动端字体/内容溢出统一修复 (v38) ============ */
@@ -743,6 +750,7 @@ a{color:var(--accent)}
 /* Books 内联目录的结构化章节导航（复用 PDF 目录的行样式） */
 .bk-toc .toc-row{display:flex;align-items:center;gap:8px;padding:8px 10px;line-height:1.35;cursor:pointer;border-radius:8px;font-size:13px}
 .bk-toc .toc-row:hover{background:var(--surface-2,rgba(0,0,0,.04))}
+.bk-toc .toc-row.toc-lv0{font-weight:600;margin-top:2px}
 .bk-toc .toc-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bk-toc .toc-p{flex:none;font-size:11px;color:var(--muted,#888)}
 
