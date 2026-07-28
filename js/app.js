@@ -273,7 +273,6 @@ go(v){
       const prev=this.view;
       // 记录当前视图滚动位置，切回来时恢复
       try{ scrollCache[prev]=window.pageYOffset||document.documentElement.scrollTop||0; }catch(_){}
-      if(prev==='favorite' && v!=='favorite' && this.fav) this.fav.listMode=true;
       if(this.pdfv && this.pdfv.open && typeof this.pdfvClose==='function'){ this.pdfvClose(); }
       if(['practice','wrong','favorite'].includes(prev) && this.queue.length){
         qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };

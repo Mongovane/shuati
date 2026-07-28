@@ -94,6 +94,7 @@ const TPL_VIEW_PRACTICE = `
             <span class="muted" v-if="view==='wrong' && !reviewSession">· {{ reviewScope==='due' ? '今日到期（按到期先后）' : '全部错题（最不熟优先）' }}</span>
             <span class="muted" v-if="view==='wrong' && !reviewSession && queueTotal">· {{ reviewScope==='due' ? '今日待复习 ' : '待复习共 ' }}{{ queueTotal }} 题</span>
             <span class="muted" v-if="view==='favorite'">· 收藏</span>
+            <button class="btn subtle xs" v-if="view==='favorite'" @click="fav.listMode=true" title="返回收藏清单"><icon name="arrow-left" :size="14" /> 收藏清单</button>
             <span v-if="curStatus" class="q-badge" :style="{color:curStatus.c,borderColor:curStatus.c}">{{ curStatus.t }}</span>
             <span v-if="view==='practice' && queueTotal" class="muted">· {{ f._mode==='unseen'?'未做剩 '+queueTotal:'本范围共 '+queueTotal }} 题</span>
             <span v-if="streak>=2" style="color:var(--accent);font-weight:600;font-size:13px"><icon name="flame" :size="15" /> 连对 {{ streak }}</span>
