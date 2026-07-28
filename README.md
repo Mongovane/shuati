@@ -78,11 +78,11 @@
 - 把本项目推到你自己的 GitHub 仓库（建议设为私有）。
 
 ### 2. 创建 D1 数据库
-后台 → **Storage & Databases → D1 → Create database**，命名 `zhuanben`。
+后台 → **Storage & Databases → D1 → Create database**，命名 `study-db`。
 
 ### 3. 建表
 进入该数据库 → **Console** 标签 → 把 `schema.sql` 全部内容粘进去执行。
-（命令行用户可改用：`wrangler d1 execute zhuanben --remote --file=./schema.sql`）
+（命令行用户可改用：`wrangler d1 execute study-db --remote --file=./schema.sql`）
 
 ### 4. 创建 Pages 项目
 后台 → **Workers & Pages → Create → Pages → Connect to Git** → 选你的仓库。
@@ -96,7 +96,7 @@
 ### 5. 绑定 D1 到 Pages（关键）
 项目 → **Settings → Bindings（或 Functions）→ D1 database bindings → Add**：
 - Variable name 填 **`DB`**（务必是 DB，代码按这个名字找数据库）
-- Database 选 `zhuanben`
+- Database 选 `study-db`
 
 ### 6. 设置环境变量
 项目 → **Settings → Variables and Secrets**，添加四个：

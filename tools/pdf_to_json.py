@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-pdf_to_json.py — 把真题 / 题库 PDF 批量转成「专插本刷题系统」可导入的 JSON。
+pdf_to_json.py — 把真题 / 题库 PDF 批量转成「刷题系统」可导入的 JSON。
 
 为什么省钱：在本地用便宜模型批量跑一次，生成 JSON 后你可以人工检查/修正，
 再到网站「录题 → 直接导入 JSON」粘贴导入，导入本身完全不花 AI 费用。
@@ -46,7 +46,7 @@ VALID_TYPES = {"single_choice", "multiple_choice", "true_false",
                "fill_blank", "short_answer", "code"}
 
 # 与网站 functions/api/process.js 完全一致的提示词，保证 JSON 结构对得上
-SYSTEM_PROMPT = """你是专业的考试题库结构化助手，服务于「广东普通专升本（专插本）」备考。
+SYSTEM_PROMPT = """你是专业的考试题库结构化助手，服务于「升学考试」备考。
 任务：把用户提供的、可能格式混乱的题目原文，转换为严格符合下述结构的题目数组。
 
 输出要求（务必遵守）：

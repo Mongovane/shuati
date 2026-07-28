@@ -4,6 +4,11 @@
 -- 执行（新库或旧库都安全，全部 IF NOT EXISTS，不会动已有数据）：
 --   wrangler d1 execute <你的库名> --file=./schema.sql --remote
 --
+-- 说明：本脚本对「新库」一次建全。对「已存在的旧库」，CREATE TABLE IF NOT EXISTS 不会给
+-- 已有表补列——后续版本新增的列（如 questions.status / questions.ai_cards /
+-- answer_log.duration_ms / mock_results.score 等）由后端在首次 API 请求时自动补齐
+-- （见 functions/api/_utils.js 的 ensure* 系列），旧库无需手动处理。
+--
 -- 【本文件包含的优化 · 索引】
 --   · questions(subject) / (chapter) / (type) / (subject,chapter 复合)
 --     —— 按科目、章节筛选取题时走索引，题量上万也不慢
@@ -32,12 +37,23 @@ CREATE TABLE IF NOT EXISTS questions (
   answer      TEXT NOT NULL,                    -- JSON 字符串：见 README 的字段说明
   analysis    TEXT,                             -- 解析
   tags        TEXT,                             -- JSON 字符串：["指针","链表"]
+  status      TEXT,                             -- 'draft' = AI 导入待审核；NULL/'ok' = 已发布
+  ai_cards    TEXT,                             -- JSON 字符串：AI 知识点卡片 [{term,formula,plain,example}]（开启自动保存时写入）
   created_at  INTEGER DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS idx_q_subject ON questions(subject);
 CREATE INDEX IF NOT EXISTS idx_q_chapter ON questions(chapter);
 CREATE INDEX IF NOT EXISTS idx_q_type    ON questions(type);
 CREATE INDEX IF NOT EXISTS idx_q_subject_chapter ON questions(subject, chapter);
+
+-- 科目表（内置四科 + 用户自建科目）
+-- 首次访问 /api/subjects 时后端会自动写入四个内置科目及其关键词种子，无需手动插入。
+CREATE TABLE IF NOT EXISTS subjects (
+  code     TEXT PRIMARY KEY,                    -- 科目代码，如 politics / math / 自建的拼音代码
+  name     TEXT NOT NULL,                       -- 显示名，如「高等数学」
+  sort     INTEGER DEFAULT 0,                   -- 排序权重（设置页可上下调整）
+  keywords TEXT DEFAULT ''                      -- 逗号分隔关键词，用于「智能归类」按题干判断科目
+);
 
 -- 每道题的学习进度（错题本 / 收藏 / 掌握状态）
 CREATE TABLE IF NOT EXISTS progress (
@@ -73,6 +89,7 @@ CREATE TABLE IF NOT EXISTS mock_results (
   total            INTEGER,
   correct          INTEGER,
   duration_seconds INTEGER,
+  score            REAL,                        -- 多选半分制得分（可空，旧记录无）
   taken_at         INTEGER DEFAULT (unixepoch())
 );
 
@@ -112,6 +129,7 @@ CREATE TABLE IF NOT EXISTS answer_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   question_id TEXT,
   is_correct  INTEGER,
+  duration_ms INTEGER,                          -- 每题作答用时（毫秒，可空）
   ts          INTEGER DEFAULT (unixepoch())
 );
 
