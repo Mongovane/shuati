@@ -163,8 +163,8 @@ export async function onRequestPatch({ request, env }) {
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
   const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
   if (!ids.length) return json({ error: '缺少题目 id' }, 400);
-  const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis', 'options', 'answer', 'tags', 'status'];
-  const JSON_FIELDS = new Set(['options', 'answer', 'tags']);
+  const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis', 'options', 'answer', 'tags', 'status', 'ai_cards'];
+  const JSON_FIELDS = new Set(['options', 'answer', 'tags', 'ai_cards']);
   const sets = [], vals = [];
   for (const k of ALLOWED) {
     if (body[k] !== undefined && body[k] !== null) {

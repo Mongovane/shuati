@@ -158,10 +158,15 @@ const App={
         const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
         this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) } };
       } else {
-        // 无会话缓存：若题目里存过 AI 解析（自动/手动保存），恢复到容器显示，避免重开后又要重新生成
-        const saved = this._extractSavedAi(nc);
-        if(saved){ this.aiX={ id:nid, view:'explain', text:saved, busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }; this.aiStates[nid]={ id:nid, view:'explain', text:saved, chat:[], model:'', cards:[], cardsModel:'', flip:{} }; }
-        else this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} };
+        // 无会话缓存：优先从题目已存的知识点卡片(ai_cards)重建翻转卡片；否则从 analysis 恢复解析文字
+        if(nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length){
+          this.aiX={ id:nid, view:'concept', text:'', busy:false, chat:[], asking:false, model:'', cards:nc.ai_cards.slice(), cardsModel:'', flip:{} };
+          this.aiStates[nid]={ id:nid, view:'concept', text:'', chat:[], model:'', cards:nc.ai_cards.slice(), cardsModel:'', flip:{} };
+        } else {
+          const saved = this._extractSavedAi(nc);
+          if(saved){ this.aiX={ id:nid, view:'explain', text:saved, busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }; this.aiStates[nid]={ id:nid, view:'explain', text:saved, chat:[], model:'', cards:[], cardsModel:'', flip:{} }; }
+          else this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} };
+        }
       }
     },
     theme(v){ localStorage.setItem('zb_theme',v); this.applyTheme(); },

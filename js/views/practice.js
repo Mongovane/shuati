@@ -214,9 +214,7 @@ async _autoSaveExplain(qid, text, chat){ const q=this.findQ(qid); if(!q||!text)r
 },
 // 自动保存知识点卡片（转 markdown 追加到题目「解析」）
 async _autoSaveConcept(qid, cards){ const q=this.findQ(qid); if(!q||!cards||!cards.length)return; if(q._conceptSaved)return;
-  const md=cards.map(c=>'### '+(c.term||'知识点')+(c.formula?'\n\n$'+c.formula+'$':'')+(c.plain?'\n\n'+c.plain:'')+(c.example?'\n\n_例：_'+c.example:'')).join('\n\n');
-  const merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**知识点卡片**\n\n'+md;
-  await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[qid],analysis:merged})}); q.analysis=merged; q._conceptSaved=true; this.bankDirty=true;
+  await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[qid],ai_cards:cards})}); q.ai_cards=cards.slice(); q._conceptSaved=true; this.bankDirty=true;
 },
 async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this.aiX.text)return;
   let merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();

@@ -358,3 +358,16 @@ describe('PATCH /api/questions 批量改字段', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('questions PATCH ai_cards（知识点卡片持久化）', () => {
+  it('写入 ai_cards（JSON 序列化存储）', async () => {
+    const { FakeDB, authedReq, makeEnv } = await import('./helpers.mjs');
+    const db = new FakeDB();
+    const cards = [{ term: '导数', formula: "f'(x)", plain: '变化率' }];
+    const res = await questionsPatch({ request: authedReq('http://x/api/questions', { method: 'PATCH', body: JSON.stringify({ ids: ['q1'], ai_cards: cards }) }), env: makeEnv(db) });
+    expect(res.status).toBe(200);
+    // 应执行了 UPDATE，且 ai_cards 被 JSON 序列化
+    const upd = db.stmts(/UPDATE questions SET.*ai_cards/i);
+    expect(upd.length).toBe(1);
+  });
+});

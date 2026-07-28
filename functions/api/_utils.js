@@ -104,6 +104,7 @@ export async function ensureSrsSchema(env) {
     `ALTER TABLE answer_log ADD COLUMN duration_ms INTEGER`,   // 每题作答用时（毫秒，可空）
     `ALTER TABLE questions ADD COLUMN status TEXT`,            // 'draft' = AI 导入待审核；NULL/'ok' = 已发布
     `ALTER TABLE questions ADD COLUMN page INTEGER`,
+    `ALTER TABLE questions ADD COLUMN ai_cards TEXT`,          // 知识点卡片 JSON（自动保存用，恢复时重建翻转卡片）
     `ALTER TABLE mock_results ADD COLUMN score REAL`,          // 多选半分制得分（可空，旧记录无）
   ];
   for (const sql of alters) { try { await env.DB.prepare(sql).run(); } catch (_) { /* duplicate column：已存在 */ } }
@@ -196,6 +197,7 @@ export function rowToQuestion(r) {
     options: parse(r.options, []),
     answer: parse(r.answer, []),
     analysis: r.analysis || '',
+    ai_cards: parse(r.ai_cards, null),
     tags: parse(r.tags, []),
     wrong_count: r.wrong_count || 0,
     right_count: r.right_count || 0,

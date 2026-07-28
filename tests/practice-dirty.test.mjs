@@ -56,15 +56,14 @@ describe('AI 自动保存（autoSaveAi）', () => {
     await M._autoSaveExplain.call(ctx, 'q1', 'text', []);
     expect(patches.length).toBe(0);
   });
-  it('_autoSaveConcept 把卡片转 markdown 存入', async () => {
+  it('_autoSaveConcept 把卡片存为 ai_cards JSON（不再转 markdown）', async () => {
     const patches = [];
     const q = { id: 'q2', analysis: '' };
     const ctx = { findQ: () => q, bankDirty: false, async api(p, o) { patches.push(JSON.parse(o.body)); return {}; } };
     const cards = [{ term: '导数', formula: 'f\'(x)', plain: '变化率', example: '速度' }];
     await M._autoSaveConcept.call(ctx, 'q2', cards);
     expect(patches.length).toBe(1);
-    expect(patches[0].analysis).toContain('知识点卡片');
-    expect(patches[0].analysis).toContain('导数');
+    expect(patches[0].ai_cards).toEqual(cards);   // 存结构化数组
     expect(q._conceptSaved).toBe(true);
   });
 });
