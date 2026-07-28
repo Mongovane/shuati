@@ -4,7 +4,7 @@ const APP_VER = 'v4.4';
 let qCache = {};
 let scrollCache = {};  // 各视图切走时的滚动位置，切回来恢复
 const App={
-  mixins: [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin, IngestMixin, MineruMixin, BooksMixin, SavedMixin, SettingsMixin],
+  mixins: [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin, IngestMixin, MineruMixin, BooksMixin, PdfToolMixin, SavedMixin, SettingsMixin],
   components:{ QuestionCard, RichText },
   data(){ return {
     token: localStorage.getItem('zb_token')||'',

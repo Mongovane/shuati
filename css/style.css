@@ -936,3 +936,14 @@ a{color:var(--accent)}
 .filter-chip{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s ease;white-space:nowrap;line-height:1.2}
 .filter-chip:hover{border-color:var(--accent);color:var(--accent)}
 .filter-chip.on{background:color-mix(in srgb,var(--accent) 12%,var(--surface));border-color:var(--accent);color:var(--accent);font-weight:600}
+
+/* PDF 超限预处理面板（检测文字层 → 拆分 / 压缩） */
+.pdfprep{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:16px 18px;margin-bottom:16px;max-width:720px}
+.pdfprep-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.pdfprep-h b{font-weight:600;display:inline-flex;align-items:center;gap:6px;font-size:15px}
+.pdfprep-h .ricon{margin-left:auto;min-width:32px;height:32px;border:none;background:transparent;color:var(--ink-soft);cursor:pointer;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+.pdfprep-h .ricon:hover{background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--ink)}
+.pdfprep-verdict{font-size:13px;line-height:1.65;padding:10px 12px;border-radius:9px;border:1px solid}
+.pdfprep-verdict.ok{background:color-mix(in srgb,var(--accent) 6%,transparent);border-color:color-mix(in srgb,var(--accent) 25%,transparent)}
+.pdfprep-verdict.warn{background:color-mix(in srgb,#d4952a 8%,transparent);border-color:color-mix(in srgb,#d4952a 30%,transparent)}
+.pdfprep .filters{gap:10px}

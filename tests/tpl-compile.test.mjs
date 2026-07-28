@@ -60,3 +60,19 @@ describe('Vue 模板编译', () => {
     }
   });
 });
+
+describe('模板属性名合法性（防手误）', () => {
+  it('不出现引号残留的畸形属性，如 v-else" / v-if"', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { ROOT } = await import('./helpers.mjs');
+    const dir = path.join(ROOT, 'js/tpl');
+    const bad = [];
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      // 形如 <template v-else">、<div v-if"> —— 指令名后紧跟引号再跟 >
+      for (const m of src.matchAll(/<[a-zA-Z-]+[^>]*?\s(v-[a-z-]+)"(?=[\s>])/g)) bad.push(`${f}: ${m[1]}"`);
+    }
+    expect(bad, `发现畸形属性（指令会失效）: ${bad.join(', ')}`).toEqual([]);
+  });
+});

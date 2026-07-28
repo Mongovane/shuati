@@ -20,6 +20,63 @@ const TPL_VIEW_BOOKS = `
           <div style="height:9px;background:var(--surface-2);border-radius:99px;overflow:hidden;border:1px solid var(--line)"><div :style="{width:pdfShelf.pct+'%',height:'100%',background:'var(--accent)',transition:'width .2s'}"></div></div>
         </div>
         <div v-if="pdfShelf.note" class="hint" style="border:1px solid color-mix(in srgb,#c0392b 35%,var(--line));background:color-mix(in srgb,#c0392b 6%,var(--surface));margin-bottom:14px">{{ pdfShelf.note }}</div>
+
+        <!-- 超过 100MB：本地预处理（检测文字层 → 拆分 / 压缩）后再传 -->
+        <div v-if="pdfPrep.open" class="pdfprep">
+          <div class="pdfprep-h">
+            <b><icon name="file-text" :size="16" /> 文件超过上传上限</b>
+            <button class="ricon" @click="pdfPrepClose" title="关闭"><icon name="x" :size="16" /></button>
+          </div>
+          <div class="muted" style="font-size:13px">{{ pdfPrep.name }} · {{ pdfPrep.sizeMB.toFixed(1) }}MB<span v-if="pdfPrep.pages"> · {{ pdfPrep.pages }} 页</span></div>
+          <div class="hint" style="margin:10px 0">Cloudflare 单次上传上限 100MB。可在本地先处理成多个小文件再传，全程在你的浏览器完成，不经过服务器。</div>
+
+          <div v-if="pdfPrep.probing" class="muted" style="font-size:13px"><span class="spin"></span> {{ pdfPrep.msg }}</div>
+
+          <template v-else-if="pdfPrep.hasText!==null">
+            <div class="pdfprep-verdict" :class="pdfPrep.hasText?'ok':'warn'">
+              <template v-if="pdfPrep.hasText">检测到<b>文字层</b>（每页约 {{ Math.round(pdfPrep.charsPerPage) }} 字）——建议<b>无损拆分</b>，压缩会毁掉文字层，导致 PDF 里的「问 AI」和目录解析失效。</template>
+              <template v-else>检测到<b>没有文字层</b>（纯扫描图）——「问 AI」和目录解析本来就用不了，<b>压缩</b>不会有额外损失，且能保持一本书。</template>
+            </div>
+
+            <div class="chip-group" style="margin:12px 0 4px">
+              <button class="filter-chip" :class="{on:pdfPrep.mode==='split'}" @click="pdfPrep.mode='split'" :disabled="pdfPrep.busy">无损拆分{{ pdfPrep.hasText?'（推荐）':'' }}</button>
+              <button class="filter-chip" :class="{on:pdfPrep.mode==='compress'}" @click="pdfPrep.mode='compress'" :disabled="pdfPrep.busy">压缩{{ !pdfPrep.hasText?'（推荐）':'' }}</button>
+            </div>
+
+            <div v-if="pdfPrep.mode==='split'" class="filters" style="margin-top:8px">
+              <div class="field"><label>拆成几份</label>
+                <select v-model.number="pdfPrep.parts" :disabled="pdfPrep.busy">
+                  <option :value="2">2 份</option><option :value="3">3 份</option><option :value="4">4 份</option><option :value="6">6 份</option>
+                </select></div>
+              <div class="muted" style="align-self:flex-end;font-size:12px">约 {{ (pdfPrep.sizeMB/pdfPrep.parts).toFixed(0) }}MB / 份 · 清晰度与文字层完全保留</div>
+            </div>
+
+            <div v-else class="filters" style="margin-top:8px">
+              <div class="field"><label>目标宽度（像素）</label>
+                <select v-model.number="pdfPrep.targetW" :disabled="pdfPrep.busy">
+                  <option :value="1700">1700（清晰，压得少）</option><option :value="1400">1400（推荐）</option><option :value="1100">1100（省空间）</option><option :value="900">900（最小）</option>
+                </select></div>
+              <div class="field"><label>画质</label>
+                <select v-model.number="pdfPrep.quality" :disabled="pdfPrep.busy">
+                  <option :value="0.85">高</option><option :value="0.72">中（推荐）</option><option :value="0.6">低</option>
+                </select></div>
+              <div class="muted" style="align-self:flex-end;font-size:12px">逐页重绘，{{ pdfPrep.pages }} 页可能要几分钟，别关页面</div>
+            </div>
+
+            <div v-if="pdfPrep.busy" style="margin:14px 0 4px">
+              <div class="muted" style="font-size:13px;margin-bottom:6px">{{ pdfPrep.msg }} <span v-if="pdfPrep.pct">· {{ pdfPrep.pct }}%</span></div>
+              <div style="height:9px;background:var(--surface-2);border-radius:99px;overflow:hidden;border:1px solid var(--line)"><div :style="{width:pdfPrep.pct+'%',height:'100%',background:'var(--accent)',transition:'width .2s'}"></div></div>
+            </div>
+            <div v-else-if="pdfPrep.msg" class="hint" style="margin:12px 0 0;border:1px solid color-mix(in srgb,#c0392b 35%,var(--line));background:color-mix(in srgb,#c0392b 6%,var(--surface))">{{ pdfPrep.msg }}</div>
+
+            <div class="row" style="margin-top:14px;gap:8px">
+              <button class="btn" :disabled="pdfPrep.busy || !pdfPrep.mode" @click="pdfPrepRun"><span v-if="pdfPrep.busy" class="spin"></span>{{ pdfPrep.busy ? '处理中…' : (pdfPrep.mode==='split' ? '拆分并上传' : '压缩并上传') }}</button>
+              <button class="btn subtle" @click="pdfPrepClose">取消</button>
+            </div>
+          </template>
+
+          <div v-else-if="pdfPrep.msg" class="hint" style="border:1px solid color-mix(in srgb,#c0392b 35%,var(--line));background:color-mix(in srgb,#c0392b 6%,var(--surface))">{{ pdfPrep.msg }}</div>
+        </div>
         <template v-if="pdfShelf.items.length">
           <template v-for="(list,sub) in pdfShelfBySubject()" :key="sub">
             <div v-if="list.length" class="bk-shelf">
