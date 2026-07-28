@@ -27,6 +27,7 @@
 
 - **Functions / Workers**：10 万次请求 / 天
 - **D1**：5 GB 存储、读 500 万行 / 天、写 10 万行 / 天
+- **R2**：10 GB 存储、且**出网流量不计费**（PDF 原书 / 题目插图存这里，不占 D1 的 5 GB）
 - **Pages**：静态访问不限量、构建 500 次 / 月
 
 > 注意：调用大模型清洗题目的**费用走你自己的「API 中转站」**，不是 Cloudflare 收费。所以「直接导入 JSON」这条路完全免费，建议优先用。
@@ -63,6 +64,8 @@
 │   ├── export.js             # GET 一键导出全部数据备份（JSON）
 │   ├── restore.js            # POST 恢复备份（合并 / 覆盖两种模式，与 export 闭环）
 │   ├── qimg.js               # 题目插图：POST 上传到 R2（口令+2MB+类型校验），GET 按 128 位随机键出图
+│   ├── pdfs.js               # PDF 原书书架：文件本体存 R2（binding PDF_BUCKET），书名等元信息存 D1
+│   ├── storage.js            # GET 估算 D1 已用空间，接近 5 GB 免费上限时前端预警 / 后端拦截导入
 │   ├── aimodels.js           # POST 代理中转站 /v1/models，供设置页「从端点拉取」列出可用模型
 │   └── config.js             # GET 读取 AI 模型 / 是否配置 AI 等前端所需配置
 ├── schema.sql                # D1 建表脚本（questions / progress / mock_results / materials …）
@@ -97,6 +100,21 @@
 项目 → **Settings → Bindings（或 Functions）→ D1 database bindings → Add**：
 - Variable name 填 **`DB`**（务必是 DB，代码按这个名字找数据库）
 - Database 选 `study-db`
+
+### 5.1 创建并绑定 R2 存储桶（PDF 书架 / 题目插图需要）
+不绑也能正常刷题，但**「PDF 原书书架」和「题目插配图（大图）」会不可用**（上传时会提示未绑定 R2）。
+
+先建桶：后台 → **R2 → Create bucket**，命名 `study-pdfs`（位置选自动即可）。
+
+再绑定：Pages 项目 → **Settings → Bindings → R2 bucket bindings → Add**：
+- Variable name 填 **`PDF_BUCKET`**（务必是这个名字，代码按它找存储桶）
+- R2 bucket 选 `study-pdfs`
+
+桶内会自动分两类对象存放，无需手动建目录：
+- `pdf/<id>` —— 上传的 PDF 原书文件本体
+- `qimg/<随机名>.png|jpg|webp|gif` —— 题目插图
+
+> 备份说明：`导出数据备份 (JSON)` 里**只有 PDF 的书名等目录信息，没有文件本体**（本体在 R2）。换库/重装后 PDF 需要重新上传。
 
 ### 6. 设置环境变量
 项目 → **Settings → Variables and Secrets**，添加四个：

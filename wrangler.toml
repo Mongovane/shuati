@@ -16,6 +16,12 @@
 #database_name = "study-db"
 #database_id = "在此填入 wrangler d1 create 返回的 database_id"
 
+# R2 存储桶绑定（PDF 原书书架 / 题目插图；不绑这两项功能不可用，刷题不受影响）：
+#   wrangler r2 bucket create study-pdfs
+#[[r2_buckets]]
+#binding = "PDF_BUCKET"         # 代码里通过 env.PDF_BUCKET 访问，请勿改名
+#bucket_name = "study-pdfs"
+
 # 非敏感变量可写在这里；敏感信息（AI_API_KEY / APP_TOKEN）请用 secret，不要写进文件：
 #   wrangler pages secret put AI_API_KEY
 #   wrangler pages secret put APP_TOKEN
