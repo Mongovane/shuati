@@ -68,3 +68,26 @@ describe('AI 自动保存（autoSaveAi）', () => {
     expect(q._conceptSaved).toBe(true);
   });
 });
+
+describe('从 analysis 恢复已保存 AI（_extractSavedAi）', () => {
+  // 复刻 app.js 的 _extractSavedAi
+  const extract = (q) => {
+    if (!q || !q.analysis) return '';
+    const a = String(q.analysis);
+    const i = a.search(/\*\*(AI 解析|知识点卡片)\*\*/);
+    if (i < 0) return '';
+    return a.slice(i).replace(/^\*\*(AI 解析|知识点卡片)\*\*\s*/, '').trim();
+  };
+  it('提取 AI 解析段', () => {
+    expect(extract({ analysis: '答案\n\n---\n\n**AI 解析**\n\n解析正文' })).toBe('解析正文');
+  });
+  it('提取知识点卡片段', () => {
+    expect(extract({ analysis: '**知识点卡片**\n\n### 导数\n变化率' })).toBe('### 导数\n变化率');
+  });
+  it('无 AI 段返回空（普通笔记不误显示）', () => {
+    expect(extract({ analysis: '我自己写的笔记' })).toBe('');
+  });
+  it('无 analysis 返回空', () => {
+    expect(extract({})).toBe('');
+  });
+});

@@ -158,7 +158,10 @@ const App={
         const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
         this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) } };
       } else {
-        this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} };
+        // 无会话缓存：若题目里存过 AI 解析（自动/手动保存），恢复到容器显示，避免重开后又要重新生成
+        const saved = this._extractSavedAi(nc);
+        if(saved){ this.aiX={ id:nid, view:'explain', text:saved, busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }; this.aiStates[nid]={ id:nid, view:'explain', text:saved, chat:[], model:'', cards:[], cardsModel:'', flip:{} }; }
+        else this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} };
       }
     },
     theme(v){ localStorage.setItem('zb_theme',v); this.applyTheme(); },
@@ -180,6 +183,11 @@ const App={
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
   methods:{
+    // 从题目 analysis 里提取自动/手动保存的 AI 内容（"**AI 解析**"或"**知识点卡片**"段），用于切题时恢复到 AI 容器显示
+    _extractSavedAi(q){ if(!q||!q.analysis)return ''; const a=String(q.analysis);
+      const i=a.search(/\*\*(AI 解析|知识点卡片)\*\*/); if(i<0)return '';
+      return a.slice(i).replace(/^\*\*(AI 解析|知识点卡片)\*\*\s*/,'').trim();
+    },
     applyTheme(){ const v=this.theme==='auto' ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light') : this.theme;
       document.documentElement.dataset.theme=v;
       try{ const m=document.getElementById('theme-color-dynamic'); if(m)m.setAttribute('content', v==='dark'?'#10141B':'#F5F6F2'); }catch(_){} },
