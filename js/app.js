@@ -1,5 +1,4 @@
 const { createApp } = Vue;
-const APP_VER = 'v4.4';
 // 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
 let qCache = {};
 let scrollCache = {};  // 各视图切走时的滚动位置，切回来恢复
@@ -38,7 +37,7 @@ const App={
     mineruUsageView:{ date:'', pages:0, files:0 },
     mineruTokenBad:false,
     bookExtract:{ busy:false, prog:'', done:0, total:0 },
-    extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0 },
+    extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
@@ -93,7 +92,9 @@ const App={
     sourcePreview(){ return this.makeSource(); },
     wrongTotal(){ if(!this.stats)return 0; return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); },
     cur(){ return this.queue[this.qi]||null; },
-    appVer(){ return APP_VER; },
+    // 版本号只有 js/constants.js 的 APP_VERSION 一份（npm run bump 会同步它）。
+    // 以前这里另有一个手写的 APP_VER 常量，bump 不管它，界面版本号从 v4.4 起就冻住了。
+    appVer(){ return APP_VERSION; },
     curStatus(){ const q=this.cur; if(!q)return null; if(q.mastered)return{t:'已掌握',c:'var(--ok)'}; if(q.wrong_count>0)return{t:'错过 '+q.wrong_count+' 次',c:'var(--bad)'}; if(q.right_count>0)return{t:'已做对',c:'var(--ok)'}; return null; },
     accPct(){ const t=this.statTotals; const d=t.right+t.wrong; return d?Math.round(t.right/d*100):0; },
     ringDash(){ const C=2*Math.PI*52; return (this.accPct/100*C).toFixed(1)+' '+C.toFixed(1); },
@@ -183,7 +184,9 @@ const App={
     'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
     view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); },
     mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
-    currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender(); },
+    currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender();
+      // 书架只载入了元信息，翻到这本书才把它的正文补齐（目录标题/阅读/抽题都依赖 content_md）
+      if(v)this.ensureBookContent(); },
     bookIdx(v){ this.genq.result=null; try{ if(this.currentBookId)localStorage.setItem('zb_readpos:'+this.currentBookId, String(v)); }catch(_){ } },
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },

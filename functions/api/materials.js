@@ -2,20 +2,25 @@ import { json, checkAuth, checkStorage } from './_utils.js';
 
 const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 
-function rowToMaterial(r) {
+// meta=true 时不返回 content_md / page_image（书架分组只需元信息，正文按 ids= 按需取）。
+// 注意：是「不带这两个键」而不是「给空串」——前端靠 content_md === undefined 判断"还没载入"。
+function rowToMaterial(r, meta = false) {
   const parse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
-  return {
+  const o = {
     id: r.id,
     subject: r.subject,
     title: r.title,
     source: r.source || '',
     page: r.page || 0,
-    page_image: r.page_image || '',
-    content_md: r.content_md || '',
     summary: r.summary || '',
     tags: parse(r.tags, []),
     created_at: r.created_at,
   };
+  if (!meta) {
+    o.page_image = r.page_image || '';
+    o.content_md = r.content_md || '';
+  }
+  return o;
 }
 
 async function ensureMaterialsTable(env) {
@@ -41,15 +46,30 @@ export async function onRequestGet({ request, env }) {
   await ensureMaterialsTable(env);
   const p = new URL(request.url).searchParams;
   const subject = p.get('subject');
-  const limit = Math.min(parseInt(p.get('limit') || '200', 10) || 200, 500);
+  const meta = p.get('meta') === '1';
+  const ids = (p.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 200);
+  // 元信息一行几十字节，几千行也就几百 KB，可以整架一次拉完；带正文的仍限 500 行（正文可能内嵌 base64 图，很重）
+  const MAXL = meta ? 5000 : 500;
+  const DEFL = meta ? 2000 : 200;
+  const limit = Math.min(Math.max(parseInt(p.get('limit') || String(DEFL), 10) || DEFL, 1), MAXL);
+  const offset = Math.max(0, parseInt(p.get('offset') || '0', 10) || 0);
   const where = [];
   const binds = [];
   if (subject && subject !== 'all') { where.push('subject = ?'); binds.push(subject); }
-  const sql = `SELECT * FROM materials ${where.length ? 'WHERE '+where.join(' AND ') : ''} ORDER BY created_at DESC, source, page LIMIT ?`;
-  binds.push(limit);
+  if (ids.length) { where.push(`id IN (${ids.map(() => '?').join(',')})`); binds.push(...ids); }
+  const W = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  // 排序末尾必须补 id：整本导入时同一批行的 created_at 往往同秒，没有唯一 tiebreaker 时
+  // LIMIT/OFFSET 翻页的行序不稳定，会漏行 + 重复行。
+  const sql = `SELECT ${meta ? 'id, subject, title, source, page, summary, tags, created_at' : '*'} FROM materials
+    ${W} ORDER BY created_at DESC, source, page, id LIMIT ? OFFSET ?`;
   try {
-    const rs = await env.DB.prepare(sql).bind(...binds).all();
-    return json({ items: rs.results.map(rowToMaterial) });
+    const rs = await env.DB.prepare(sql).bind(...binds, limit, offset).all();
+    const out = { items: rs.results.map((r) => rowToMaterial(r, meta)), limit, offset };
+    if (p.get('count') === '1') {
+      const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM materials ${W}`).bind(...binds).first();
+      if (c && c.n != null) out.total = c.n;
+    }
+    return json(out);
   } catch (e) {
     return json({ error: '查询教材失败：' + e.message }, 500);
   }

@@ -52,7 +52,13 @@ describe('导出选中 bankExportSel', () => {
     let clicked = false, dlName = '';
     global.URL.createObjectURL = () => 'blob:x'; global.URL.revokeObjectURL = () => {};
     const origCreate = global.document?.createElement;
-    global.document = { createElement: () => ({ href: '', download: '', set href(v) {}, click() { clicked = true; }, remove() {}, set download(v) { dlName = v; }, get download() { return dlName; } }), body: { appendChild() {}, removeChild() {} } };
+    // <a> 桩：href/download 各用一对存取器（原来同时写了同名数据属性，重复键被 no-dupe-keys 判红）
+    const mkAnchor = () => { let href = ''; return {
+      get href() { return href; }, set href(v) { href = v; },
+      get download() { return dlName; }, set download(v) { dlName = v; },
+      click() { clicked = true; }, remove() {},
+    }; };
+    global.document = { createElement: mkAnchor, body: { appendChild() {}, removeChild() {} } };
     global.Blob = class { constructor(parts) { this.parts = parts; } };
     const c = ctx({ bank: { items: [{ id: 'a' }], sel: ['a'], mode: 'all' } });
     c.api = async () => ({ items: [{ subject: 'math', type: 'single_choice', stem: 'x', options: [{ key: 'A', text: '1' }], answer: ['A'], difficulty: 3, tags: [] }] });

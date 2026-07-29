@@ -79,7 +79,10 @@ async offlineSync(){
         let questions=[], offset=0;
         for(let i=0;i<400;i++){ const d=await this.api('/api/questions?mode=all&order=seq&limit=500&offset='+offset+'&nocount=1'); const items=d.items||[]; questions=questions.concat(items); this.offlineSyncMsg='已下载题目 '+questions.length+' 道…'; if(items.length<500)break; offset+=items.length; }
         this.offlineSyncMsg='正在下载教材…';
-        let materials=[]; try{ const d=await this.api('/api/materials?limit=2000'); materials=d.items||[]; }catch(_){ }
+        // 离线要能读正文，所以不能用 meta=1；带正文的一页限 500 行，必须翻页拉全
+        // （旧版直接 ?limit=2000，服务端夹到 500，离线包静默只装了前 500 段）
+        let materials=[], moff=0;
+        try{ for(let i=0;i<200;i++){ const d=await this.api('/api/materials?limit=500&offset='+moff); const items=d.items||[]; materials=materials.concat(items); this.offlineSyncMsg='已下载教材 '+materials.length+' 段…'; if(items.length<500)break; moff+=items.length; } }catch(_){ }
         await this._offBulkPut('questions', questions);
         await this._offBulkPut('materials', materials);
         await this._offBulkPut('syncedAt', Date.now());

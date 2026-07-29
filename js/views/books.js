@@ -1,5 +1,8 @@
 // 教材阅读（Books）与 PDF 书架 / PDF 阅读器
 // —— 由 app.js 按功能域拆分而来；与其余 mixin 合并进同一个 Vue 实例，this.* 跨文件可用 ——
+// 正在补正文的 material id（模块级，不放实例上——同 app.js 的 qCache 用法）：
+// loadMaterials 结尾会补一次，currentBookId 的 watcher 也会补一次，用它去重避免同批重复下载。
+const matFilling = new Set();
 const BooksMixin = { methods: {
 bookKeyOf(m){ const s=String(m.source||'').replace(/[-_\s]*P\d+\s*$/i,'').trim(); if(s)return s; const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t||'未命名教材'; },
 async setBookSubject(subj){ const b=this.currentBook; if(!b)return; await this._setBookSubjectPages(b,subj); },
@@ -15,27 +18,54 @@ async deleteCurrentBook(){ return this.deleteBook(this.currentBook); },
 // 删除指定书（卡片上的删除入口）：删其全部页；若删的是当前打开的书则退出阅读
 async deleteBook(b){ if(!b){ this.flash('请先选择书籍',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除《'+b.title+'》及其全部 '+b.pages.length+' 页？此操作不可恢复（题库不受影响）。')) return; const ids=b.pages.map(m=>m.id).filter(Boolean); try{ const d=await this.api('/api/materials',{method:'DELETE',body:JSON.stringify({ids})}); this.flash('已删除《'+b.title+'》，共 '+(d.deleted||ids.length)+' 页'); try{ localStorage.removeItem('zb_readpos:'+b.key); }catch(_){ } if(this.currentBookId===b.key){ this.currentBookId=''; this.bookIdx=0; } await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
 async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } this.materials.loading=true; this.loadProgMsg='正在请求…';
-      const t0=Date.now(); const tmr=setInterval(()=>{ if(!this.loadProgMsg.includes('MB')&&!this.loadProgMsg.includes('KB')){ this.loadProgMsg='已等待 '+Math.round((Date.now()-t0)/1000)+' 秒…'; } },1000);
+      // 书架只拉元信息（meta=1，不含 content_md）并翻页拉全：
+      // 旧版是「一次 ?limit=500 拿全部含正文的行」，服务端又把 limit 硬夹到 500——
+      // 书一多（例如 388 页 + 112 页正好 500 行）窗口就被占满，且按 created_at DESC 排序，
+      // 新导入的书会把旧书顶出窗口，表现为「书架永远只有两本，新导入的把旧的替换掉」。
+      const PAGE=2000; let all=[]; let off=0; let over=false;
       try{
-        const self=this;
-        const d = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('GET', '/api/materials?limit=500');
-          xhr.setRequestHeader('authorization', 'Bearer ' + self.token);
-          xhr.onprogress = function(e){ const mb=e.loaded/1048576; let m=mb>=1?mb.toFixed(1)+' MB':Math.max(1,Math.round(e.loaded/1024))+' KB'; if(e.lengthComputable&&e.loaded<=e.total)m+=' · '+Math.round(e.loaded/e.total*100)+'%'; self.loadProgMsg=m; };
-          xhr.onload = function(){ if(xhr.status===401){ self.token=''; try{localStorage.removeItem('zb_token');}catch(_){} self.view='settings'; reject(new Error('unauth')); return; } if(xhr.status<200||xhr.status>=300){ reject(new Error('请求失败 '+xhr.status)); return; } try{resolve(JSON.parse(xhr.responseText));}catch(e){reject(e);} };
-          xhr.onerror = function(){ reject(new Error('网络错误')); };
-          xhr.send();
-        });
-        this.materials.items=d.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
-        this.loadProgMsg='已加载 '+(d.items||[]).length+' 段教材';
+        for(let i=0;i<50;i++){
+          const d=await this.api('/api/materials?meta=1&limit='+PAGE+'&offset='+off);
+          const items=d.items||[]; all=all.concat(items);
+          this.loadProgMsg='已加载目录 '+all.length+' 段…';
+          if(items.length<PAGE)break;          // 没拿满一页 = 已到底
+          if(d._offline)break;                 // 离线合成的响应一次给全量、不认 offset，别再翻
+          off+=items.length;
+          if(i===49)over=true;                 // 兜底：10 万段还没到底，别死循环
+        }
+        this.materials.items=all;
+        if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
+        this.loadProgMsg='共 '+this.materialBooks.length+' 本 · '+all.length+' 段'+(over?'（已达上限，仍有未载入）':'');
+        await this.ensureBookContent();
       }catch(e){
-        if(e.message==='unauth'){ clearInterval(tmr); this.materials.loading=false; this.materials.loaded=true; this.loadProgMsg=''; return; }
-        this.loadProgMsg='从缓存加载…';
-        try{ const d2=await this.api('/api/materials?limit=500'); this.materials.items=d2.items||[]; if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key; this.loadProgMsg='已加载 '+(d2.items||[]).length+' 段'; }
-        catch(e2){ if(e2.message!=='unauth')this.flash(e2.message,true); }
+        if(e.message==='unauth'){ this.materials.loading=false; this.materials.loaded=true; this.loadProgMsg=''; return; }
+        this.flash('载入书架失败：'+e.message,true); this.loadProgMsg='';
       }
-      clearInterval(tmr); this.materials.loading=false; this.materials.loaded=true; },
+      this.materials.loading=false; this.materials.loaded=true; },
+// 书架是元信息（没有 content_md），真正要读/抽题/建目录时才把这一本的正文补齐。
+// 只补当前这本：别的书不占带宽。已有正文的页跳过，所以来回切书不会重复下载。
+async ensureBookContent(book){
+      book=book||this.currentBook; if(!book||!book.pages||!book.pages.length)return;
+      const need=book.pages.filter(m=>m&&m.content_md===undefined).map(m=>m.id).filter(Boolean).filter(id=>!matFilling.has(id));
+      if(!need.length)return;
+      for(const id of need)matFilling.add(id);
+      const byId=new Map(); for(const m of (this.materials.items||[])){ if(m&&m.id)byId.set(m.id,m); }
+      const title=book.title||'';
+      this.materials.loading=true;
+      try{
+        // 单页正文可能内嵌 base64 图（几百 KB），一次别要太多，顺带给出分块进度
+        const CH=20;
+        for(let i=0;i<need.length;i+=CH){
+          const part=need.slice(i,i+CH);
+          this.loadProgMsg='正在载入《'+title+'》'+Math.min(i+CH,need.length)+'/'+need.length+' 页…';
+          const d=await this.api('/api/materials?ids='+encodeURIComponent(part.join(',')));
+          for(const r of (d.items||[])){ const m=byId.get(r.id); if(m)Object.assign(m,r); }
+          if(d._offline)break;               // 离线合成一次就给全量，已经都填上了
+        }
+        this.loadProgMsg='';
+      }catch(e){ if(e.message!=='unauth')this.flash('载入《'+title+'》内容失败：'+e.message,true); this.loadProgMsg=''; }
+      finally{ for(const id of need)matFilling.delete(id); }
+      this.materials.loading=false; },
 bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
 flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
 bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1); if(ni!==this.bookIdx)this.flashPageRender(); this.bookIdx=ni; this.bookTocOpen=false; },

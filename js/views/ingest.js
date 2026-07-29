@@ -226,11 +226,15 @@ extractUseCount(){ return this.extractPreview.items.filter(q=>q._use).length; },
 extractToggleMissing(){ const hasOn=this.extractPreview.items.some(q=>q._use&&!(q.answer&&q.answer.length)); this.extractPreview.items.forEach(q=>{ if(!(q.answer&&q.answer.length))q._use=!hasOn; }); },
 extractClose(){ this.extractPreview.open=false; this.extractPreview.items=[]; },
 ansLines(q){ return ((q&&q.answer)||[]).join('\n'); },
-async localExtractPage(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      if(this.ensureBookContent)await this.ensureBookContent();   // 书架只带元信息，抽题前先确保本书正文已载入
+      const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; }
       const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
       if(!arr.length){ this.flash('这一页没解析出题目（可能不是习题页，或编号格式特殊，可改用 AI 抽取）',true); return; }
       this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src); },
-async localExtractBook(){ const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md
+      const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; }
       const all=[]; for(const m of b.pages){ const part=this.mdToQuestions(m.content_md,{subject:m.subject||b.subject,source:b.title,page:m.page}); for(const q of part)all.push(q); }
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
       // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目

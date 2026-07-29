@@ -35,6 +35,7 @@ describe('公式反斜杠修复', () => {
       const r = parse(bad);
       expect(r.length).toBe(1);
       expect(r[0].formula.charCodeAt(1)).toBe(92);
+      // eslint-disable-next-line no-control-regex -- 本断言的目的就是「不含控制字符」，正则里必须写出它们
       expect(/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(r[0].formula)).toBe(false);
       expect(r[0].formula).toContain(cmd);
     }

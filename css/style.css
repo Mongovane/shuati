@@ -243,8 +243,13 @@ a{color:var(--accent)}
 .prev-lab{flex:none;font-size:11px;font-weight:700;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:2px 6px;height:fit-content}
 .prev-lab.ans{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
 .prev-q .rich{font-size:14px;line-height:1.6;flex:1;min-width:0;overflow-x:auto}
-.prev-opts{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px;font-size:13.5px;color:var(--ink)}
-.prev-opt b{color:var(--accent)}
+/* 选项文本走 rich-text（公式必须渲染），而 rich-text 是块级 div：
+   所以选项改为每项独占一行、行内 flex——字母钉左侧不跟着换行，正文占满剩余宽度、超宽公式横向滚动 */
+.prev-opts{display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:13.5px;color:var(--ink)}
+.prev-opt{display:flex;gap:6px;align-items:baseline;min-width:0}
+.prev-opt b{color:var(--accent);flex:none}
+.prev-opt .rich{flex:1;min-width:0;overflow-x:auto;line-height:1.6}
+.prev-opt .rich p{margin:0}
 .modal-f .muted{margin-right:auto}
 .modal-f{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px;border-top:1px solid var(--line)}
 .bank-row{background:var(--surface);border:1px solid var(--line)}
