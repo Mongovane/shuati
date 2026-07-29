@@ -89,9 +89,10 @@ const TPL_SHELL_CLOSE = `
           <span v-if="extractMissingCount()" class="muted" style="color:var(--bad)">其中 {{ extractMissingCount() }} 题没抽到答案</span>
           <button v-if="extractPreview.items.some(q=>!(q.answer&&q.answer.length))" class="btn subtle xs" @click="extractToggleMissing">勾选/取消「无答案」的题</button>
           <span class="muted" style="font-size:12px">提示：计算/证明题按「简答题」入库；导入后仍可在「题库」编辑修改。</span>
+          <span v-if="extractPages()>1" class="muted" style="font-size:12px;margin-left:auto">题量大，预览分页显示（勾选状态跨页保留）</span>
         </div>
         <div class="prev-list">
-          <div v-for="(q,i) in extractPreview.items" :key="i" class="prev-item" :class="{off:!q._use, noans:!(q.answer&&q.answer.length)}">
+          <div v-for="q in extractPageItems()" :key="q._k" class="prev-item" :class="{off:!q._use, noans:!(q.answer&&q.answer.length)}">
             <label class="prev-ck"><input type="checkbox" v-model="q._use" /></label>
             <div class="prev-body">
               <div class="prev-meta"><span class="tag2">{{ typeName(q.type) }}</span><span v-if="q.chapter" class="muted" style="font-size:12px">{{ q.chapter }}</span><span v-if="!(q.answer&&q.answer.length)" class="tag" style="color:var(--bad);border-color:var(--bad)">无答案</span></div>
@@ -101,6 +102,11 @@ const TPL_SHELL_CLOSE = `
               <div v-if="q.page" class="muted" style="font-size:11.5px;margin-top:6px;opacity:.8"><icon name="file-text" :size="13" /> 出自第 {{ q.page }} 页</div>
             </div>
           </div>
+        </div>
+        <div v-if="extractPages()>1" class="prev-pager">
+          <button class="btn subtle xs" :disabled="extractPreview.page<=1" @click="extractGoPage(extractPreview.page-1)"><icon name="arrow-left" :size="14" /> 上一页</button>
+          <span class="muted" style="font-size:13px">第 <b>{{ extractPreview.page }}</b> / {{ extractPages() }} 页 · 共 {{ extractPreview.items.length }} 题</span>
+          <button class="btn subtle xs" :disabled="extractPreview.page>=extractPages()" @click="extractGoPage(extractPreview.page+1)">下一页 <icon name="arrow-right" :size="14" /></button>
         </div>
       </div>
       <div class="modal-f">
