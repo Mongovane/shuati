@@ -2,7 +2,7 @@
 // —— 由 app.js 按功能域拆分而来；与其余 mixin 合并进同一个 Vue 实例，this.* 跨文件可用 ——
 // 正在补正文的 material id（模块级，不放实例上——同 app.js 的 qCache 用法）：
 // loadMaterials 结尾会补一次，currentBookId 的 watcher 也会补一次，用它去重避免同批重复下载。
-const matFilling = new Set();
+const matFilling = new Map();   // id -> 正在拉这一页的 Promise
 const BooksMixin = { methods: {
 bookKeyOf(m){ const s=String(m.source||'').replace(/[-_\s]*P\d+\s*$/i,'').trim(); if(s)return s; const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t||'未命名教材'; },
 async setBookSubject(subj){ const b=this.currentBook; if(!b)return; await this._setBookSubjectPages(b,subj); },
@@ -12,11 +12,29 @@ async setBookSubjectByKey(book,subj){ if(!book||!subj)return; await this._setBoo
 async pickBookSubject(subj){ const b=this.bookSubjPick.book; const val=String(subj||'').trim(); if(!val){ this.flash('请输入分类名',true); return; } this.bookSubjPick.open=false; this.bookSubjPick.custom=''; if(!b||b.subject===val)return; await this._setBookSubjectPages(b,val); },
 async _setBookSubjectPages(b,subj){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } const ids=(b.pages||[]).map(m=>m.id).filter(Boolean); if(!ids.length)return; this.materials.loading=true; try{ await this.api('/api/materials',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.flash('已将《'+b.title+'》归到「'+this.subjName(subj)+'」'); await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message||'修改科目失败',true); } this.materials.loading=false; },
 rewriteMdImages(s){ return String(s||'').replace(/\]\(\s*\.?\/?public\//g,'](/').replace(/\]\(\s*textbooks-pages\//g,'](/textbooks-pages/').replace(/(<img[^>]*\bsrc=["'])\.?\/?public\//g,'$1/'); },
-bookTitleOf(m){ const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t || this.bookKeyOf(m); },
-pageLabel(m){ if(!m)return ''; const lines=String(m.content_md||'').split('\n'); let head=''; for(let ln of lines){ ln=ln.trim(); if(!ln)continue; if(/^!\[/.test(ln))continue; if(/^\$\$/.test(ln)||ln==='$$')continue; if(/^<[a-zA-Z!/]/.test(ln))continue; if(/^[>|`]/.test(ln))continue; { const lc=ln.replace(/\\text\s*\{[^}]*\}/g,''); if(!/[\u4e00-\u9fa5]/.test(lc)&&/\\[a-zA-Z]{2,}|[\^_]\s*\{|\\frac|\\sqrt|\\begin|\\mid|\\left|\\overrightarrow|\\boldsymbol/.test(lc))continue; } if(this._mineruJunk&&this._mineruJunk(ln))continue; let clean=ln.replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/<[^>]*>?/g,'').replace(/[#*`>]/g,'').trim(); if(!clean)continue; const mt=clean.match(/^(第[一二三四五六七八九十百零\d]+[章节][^。.]{0,24}|\d+(?:\.\d+){0,3}[\s、.][^。.]{0,24})/); head=(mt?mt[0]:clean).slice(0,24); break; } const pg=m.page?('第'+m.page+'页'):''; if(head&&pg)return head+' · '+pg; return head||pg||(m.title||'未命名'); },
+// 书名一律取 source（导入时写入的干净书名）。
+// 不能用 title：它是「书名 · 该页首行标题」，首行是公式时 firstHeadingOf 会把
+// $\int_{0}^{+\infty}...$ 剥成 int {0} ^ {+ infty} 这种垃圾跟着进书名。
+bookTitleOf(m){ const s=String(m.source||'').replace(/[-_\s]*P\d+\s*$/i,'').trim(); if(s)return s;
+      const t=String(m.title||'').replace(/\s*·?\s*第\s*\d+\s*页\s*$/,'').trim(); return t || this.bookKeyOf(m); },
+// 页标题优先按「书本自带的目录页」命名（而不是猜正文首行）：
+// 取目录里页码 ≤ 本页的最后一条，就是本页所属的最细一级小节。
+pageLabelFromOutline(m){ if(!m)return ''; const pg=Number(m.page)||0; if(pg<=0)return '';
+      const out=this.bookOutline||[]; if(!out.length)return '';
+      let hit=null; for(const o of out){ if(o.page<=pg)hit=o; else break; }
+      return hit? String(hit.title||'').trim() : ''; },
+pageLabel(m){ if(!m)return '';
+      const pgTxt=m.page?('第'+m.page+'页'):'';
+      const toc=this.pageLabelFromOutline(m);        // 优先用书本目录里的小节名
+      if(toc)return pgTxt? (toc+' · '+pgTxt) : toc;
+      const lines=String(m.content_md||'').split('\n'); let head=''; for(let ln of lines){ ln=ln.trim(); if(!ln)continue; if(/^!\[/.test(ln))continue; if(/^\$\$/.test(ln)||ln==='$$')continue; if(/^<[a-zA-Z!/]/.test(ln))continue; if(/^[>|`]/.test(ln))continue; { const lc=ln.replace(/\\text\s*\{[^}]*\}/g,''); if(!/[\u4e00-\u9fa5]/.test(lc)&&/\\[a-zA-Z]{2,}|[\^_]\s*\{|\\frac|\\sqrt|\\begin|\\mid|\\left|\\overrightarrow|\\boldsymbol/.test(lc))continue; } if(this._mineruJunk&&this._mineruJunk(ln))continue; let clean=ln.replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/<[^>]*>?/g,'').replace(/\$[^$]*\$/g,' ').replace(/[#*`>$]/g,'').replace(/\s{2,}/g,' ').trim(); if(!clean)continue; const mt=clean.match(/^(第[一二三四五六七八九十百零\d]+[章节][^。.]{0,24}|\d+(?:\.\d+){0,3}[\s、.][^。.]{0,24})/); head=(mt?mt[0]:clean).slice(0,24); break; } if(head&&pgTxt)return head+' · '+pgTxt; return head||pgTxt||this.bookTitleOf(m)||'未命名'; },
 async deleteCurrentBook(){ return this.deleteBook(this.currentBook); },
 // 删除指定书（卡片上的删除入口）：删其全部页；若删的是当前打开的书则退出阅读
 async deleteBook(b){ if(!b){ this.flash('请先选择书籍',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除《'+b.title+'》及其全部 '+b.pages.length+' 页？此操作不可恢复（题库不受影响）。')) return; const ids=b.pages.map(m=>m.id).filter(Boolean); try{ const d=await this.api('/api/materials',{method:'DELETE',body:JSON.stringify({ids})}); this.flash('已删除《'+b.title+'》，共 '+(d.deleted||ids.length)+' 页'); try{ localStorage.removeItem('zb_readpos:'+b.key); }catch(_){ } if(this.currentBookId===b.key){ this.currentBookId=''; this.bookIdx=0; } await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+// 数字进度：total>0 时前端进度条走确定进度并显示 百分比 · cur/total
+_setProg(cur,total,unit){ const t=Math.max(0,total|0), c=Math.min(Math.max(0,cur|0),t||Infinity);
+      this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' }; },
+_clearProg(){ this.matProg={ cur:0, total:0, pct:0, unit:'段' }; },
 async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } this.materials.loading=true; this.loadProgMsg='正在请求…';
       // 书架只拉元信息（meta=1，不含 content_md）并翻页拉全：
       // 旧版是「一次 ?limit=500 拿全部含正文的行」，服务端又把 limit 硬夹到 500——
@@ -25,9 +43,11 @@ async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } th
       const PAGE=2000; let all=[]; let off=0; let over=false;
       try{
         for(let i=0;i<50;i++){
-          const d=await this.api('/api/materials?meta=1&limit='+PAGE+'&offset='+off);
+          const d=await this.api('/api/materials?meta=1&limit='+PAGE+'&offset='+off+(i===0?'&count=1':''));
+          if(i===0 && d.total!=null)this._setProg(0, d.total, '段');
           const items=d.items||[]; all=all.concat(items);
-          this.loadProgMsg='已加载目录 '+all.length+' 段…';
+          this._setProg(all.length, this.matProg.total||all.length, '段');
+          this.loadProgMsg='正在读取目录…';
           if(items.length<PAGE)break;          // 没拿满一页 = 已到底
           if(d._offline)break;                 // 离线合成的响应一次给全量、不认 offset，别再翻
           off+=items.length;
@@ -36,36 +56,56 @@ async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } th
         this.materials.items=all;
         if(!this.currentBook&&this.materialBooks[0])this.currentBookId=this.materialBooks[0].key;
         this.loadProgMsg='共 '+this.materialBooks.length+' 本 · '+all.length+' 段'+(over?'（已达上限，仍有未载入）':'');
+        this._clearProg();
         await this.ensureBookContent();
       }catch(e){
         if(e.message==='unauth'){ this.materials.loading=false; this.materials.loaded=true; this.loadProgMsg=''; return; }
         this.flash('载入书架失败：'+e.message,true); this.loadProgMsg='';
       }
-      this.materials.loading=false; this.materials.loaded=true; },
-// 书架是元信息（没有 content_md），真正要读/抽题/建目录时才把这一本的正文补齐。
-// 只补当前这本：别的书不占带宽。已有正文的页跳过，所以来回切书不会重复下载。
+      this._clearProg(); this.materials.loading=false; this.materials.loaded=true; },
+// 书架只有元信息（没有 content_md），真正要读/抽题/建目录时才把这一本的正文补齐。
+// matFilling 是 id -> 正在拉这一页的 Promise。关键点：撞上在途必须 **await 同一个 Promise**，
+// 不能「看到在途就直接 return」——那样 ensureBookContent 根本没"确保"到任何事，
+// 整本抽题会在正文只载入一半时开跑，静默少掉几百道题（线上实测 665 → 430）。
 async ensureBookContent(book){
       book=book||this.currentBook; if(!book||!book.pages||!book.pages.length)return;
-      const need=book.pages.filter(m=>m&&m.content_md===undefined).map(m=>m.id).filter(Boolean).filter(id=>!matFilling.has(id));
-      if(!need.length)return;
-      for(const id of need)matFilling.add(id);
-      const byId=new Map(); for(const m of (this.materials.items||[])){ if(m&&m.id)byId.set(m.id,m); }
-      const title=book.title||'';
-      this.materials.loading=true;
+      for(let round=0;round<3;round++){          // 拉完自己那批，再回头确认没有别人漏下的
+        const miss=book.pages.filter(m=>m&&m.content_md===undefined).map(m=>m.id).filter(Boolean);
+        if(!miss.length)return;
+        const waiting=[]; const todo=[];
+        for(const id of miss){ const p=matFilling.get(id); if(p)waiting.push(p); else todo.push(id); }
+        if(todo.length)await this._fillMatContent(todo, book.title||'');
+        if(waiting.length)await Promise.allSettled(waiting);
+        if(!todo.length&&!waiting.length)return;
+      } },
+// 整批共用一个 Promise 并登记到 matFilling：并发进来的调用方 await 它即可，
+// 既不重复下载，也不会提前返回。
+async _fillMatContent(ids,title){
+      const p=this._runMatFill(ids,title);
+      for(const id of ids)matFilling.set(id,p);
+      try{ await p; }
+      finally{ for(const id of ids)if(matFilling.get(id)===p)matFilling.delete(id); } },
+async _runMatFill(ids,title){
+      this.materials.loading=true; this._setProg(0, ids.length, '页');
       try{
-        // 单页正文可能内嵌 base64 图（几百 KB），一次别要太多，顺带给出分块进度
-        const CH=20;
-        for(let i=0;i<need.length;i+=CH){
-          const part=need.slice(i,i+CH);
-          this.loadProgMsg='正在载入《'+title+'》'+Math.min(i+CH,need.length)+'/'+need.length+' 页…';
+        const CH=20; let done=0;   // 单页正文可能内嵌 base64 图（几百 KB），一次别要太多
+        for(let i=0;i<ids.length;i+=CH){
+          const part=ids.slice(i,i+CH);
+          this.loadProgMsg='正在载入《'+title+'》';
           const d=await this.api('/api/materials?ids='+encodeURIComponent(part.join(',')));
+          // 合并时才查 items：中途若整体替换过 materials.items，早先的快照会变成孤儿对象，
+          // 正文写进去等于白下载（线上「已载入正文 0」就是这么来的）。
+          const byId=new Map(); for(const m of (this.materials.items||[])){ if(m&&m.id)byId.set(m.id,m); }
           for(const r of (d.items||[])){ const m=byId.get(r.id); if(m)Object.assign(m,r); }
+          done+=part.length; this._setProg(done, ids.length, '页');
           if(d._offline)break;               // 离线合成一次就给全量，已经都填上了
         }
         this.loadProgMsg='';
       }catch(e){ if(e.message!=='unauth')this.flash('载入《'+title+'》内容失败：'+e.message,true); this.loadProgMsg=''; }
-      finally{ for(const id of need)matFilling.delete(id); }
-      this.materials.loading=false; },
+      this._clearProg(); this.materials.loading=false; },
+// 抽题前的兜底自检：宁可报错，也别拿半本正文静默少抽
+matMissingCount(book){ book=book||this.currentBook; if(!book||!book.pages)return 0;
+      return book.pages.filter(m=>!m||m.content_md===undefined).length; },
 bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
 flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
 bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1); if(ni!==this.bookIdx)this.flashPageRender(); this.bookIdx=ni; this.bookTocOpen=false; },

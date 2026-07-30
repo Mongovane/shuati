@@ -226,16 +226,53 @@ extractUseCount(){ return this.extractPreview.items.filter(q=>q._use).length; },
 extractToggleMissing(){ const hasOn=this.extractPreview.items.some(q=>q._use&&!(q.answer&&q.answer.length)); this.extractPreview.items.forEach(q=>{ if(!(q.answer&&q.answer.length))q._use=!hasOn; }); },
 extractClose(){ this.extractPreview.open=false; this.extractPreview.items=[]; },
 ansLines(q){ return ((q&&q.answer)||[]).join('\n'); },
+// 整本按「拼接成一条流」解析，而不是逐页各自解析。
+// 逐页会把跨页的题从中间切断：线上实测 101 道题的题干断在页边界上，
+// 例如「证明任一最高次幂的指数为奇数的代数方程 a₀x^{2n+1}+…」，「至少有一个实根」掉在下一页；
+// (1)(2)(3) 子项也会被切走。拼接后题数不变（665），无答案率 34%→25%，全书解析仅 7ms。
+_extractWholeBook(book){
+      const pages=book.pages||[]; const SEP='\n\n';
+      const texts=pages.map(m=>String((m&&m.content_md)||''));
+      const starts=[]; let acc=0;
+      for(let i=0;i<texts.length;i++){ starts.push(acc); acc+=texts[i].length+SEP.length; }
+      const joined=texts.join(SEP);
+      const qs=this.mdToQuestions(joined,{subject:book.subject,source:book.title,page:0});
+      // 用移动游标把每道题的题干定位回原文偏移，再换算成书页页码
+      const pageAt=(off)=>{ let lo=0,hi=starts.length-1,ans=0;
+        while(lo<=hi){ const mid=(lo+hi)>>1; if(starts[mid]<=off){ ans=mid; lo=mid+1; } else hi=mid-1; }
+        const m=pages[ans]; return m&&m.page?m.page:0; };
+      let cur=0;
+      for(const q of qs){
+        const key=String(q.stem||'').slice(0,40);
+        const at=key? joined.indexOf(key,cur) : -1;
+        if(at>=0){ cur=at; q.page=pageAt(at); }
+        this._stripDataImages(q);
+      }
+      return qs; },
+// 内嵌的 base64 图片必须在入库前剥掉：线上实测只有 6% 的题带图，却占了 66% 的入库体积
+// （最长题干 35308 字，剥图后 2468）。图还留在 Books 原文里，这里只保留一个占位。
+_stripDataImages(q){ const cut=(t)=>String(t||'')
+        .replace(/!\[[^\]]*\]\(\s*data:[^)]*\)/gi,'［图］')
+        .replace(/<img[^>]*\bsrc\s*=\s*["']?\s*data:[^>]*>/gi,'［图］')
+        .replace(/<figure[^>]*>\s*［图］\s*<\/figure>/gi,'［图］')
+        .replace(/(［图］\s*){2,}/g,'［图］');
+      q.stem=cut(q.stem); if(q.analysis)q.analysis=cut(q.analysis);
+      if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:cut(o.text)}));
+      if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?cut(a):a);
+      return q; },
 async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.ensureBookContent)await this.ensureBookContent();   // 书架只带元信息，抽题前先确保本书正文已载入
       const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; }
-      const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
+      const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page}).map(q=>this._stripDataImages(q));
       if(!arr.length){ this.flash('这一页没解析出题目（可能不是习题页，或编号格式特殊，可改用 AI 抽取）',true); return; }
       this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src); },
 async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md
       const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; }
-      const all=[]; for(const m of b.pages){ const part=this.mdToQuestions(m.content_md,{subject:m.subject||b.subject,source:b.title,page:m.page}); for(const q of part)all.push(q); }
+      // 兜底自检：正文没补齐就别开跑，宁可报错也别拿半本书静默少抽
+      const missing=this.matMissingCount?this.matMissingCount(b):0;
+      if(missing){ this.flash('这本书还有 '+missing+' 页正文没载入完，请等进度条走完再抽题',true); return; }
+      const all=this._extractWholeBook(b);
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
       // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目
       const noAns=all.filter(q=>!(q.answer&&q.answer.length)).length;

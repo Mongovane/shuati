@@ -286,6 +286,10 @@ a{color:var(--accent)}
 .bk-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:240px;padding:40px}
 .bk-loadbar{width:200px;max-width:60%;height:4px;border-radius:3px;background:var(--surface-2);overflow:hidden;position:relative}
 .bk-loadbar::after{content:'';position:absolute;left:-40%;top:0;bottom:0;width:40%;border-radius:3px;background:var(--accent);animation:bkload 1s ease-in-out infinite}
+/* 已知总数时切成确定进度：关掉无限滑动的假动画，用真实百分比撑宽度 */
+.bk-loadbar.det::after{display:none}
+.bk-loadbar>i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:var(--accent);transition:width .18s ease}
+.bk-loadpct{margin-top:6px;font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;letter-spacing:.02em}
 @keyframes bkload{0%{left:-40%}100%{left:100%}}
 .bk-body .summary{font-size:13px;color:var(--accent);font-weight:600;margin:0 0 16px;padding-left:12px;border-left:3px solid var(--accent)}
 .bk-body .rich{font-size:16px;line-height:1.95;color:var(--ink)}

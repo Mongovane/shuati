@@ -82,7 +82,10 @@ describe('bookGotoBookPage 就近跳转', () => {
 
 describe('pageLabel 标题清理（HTML 标签不泄漏）', () => {
   const P = Books.methods.pageLabel;
-  const ctx = { _mineruJunk: () => false };
+  // 没有书本目录时（bookOutline 为空）走正文首行启发式，本组测的就是这条回退路径
+  const ctx = { _mineruJunk: () => false, bookOutline: [],
+    pageLabelFromOutline: Books.methods.pageLabelFromOutline,
+    bookTitleOf: Books.methods.bookTitleOf, bookKeyOf: Books.methods.bookKeyOf };
   it('跳过 <figure>/<img> 等标签行，取后面的真实标题', () => {
     expect(P.call(ctx, { content_md: '<figure class="fig"><img src="x"></figure>\n第七章 微分方程', page: 130 }))
       .toBe('第七章 微分方程 · 第130页');
@@ -209,5 +212,78 @@ describe('PDF 目录页码偏移校正（扫描版书签粗时回退）', () => 
     expect(mapped[0].page).toBe(18);   // 第一章 → PDF 18
     expect(mapped[1].page).toBe(18);   // 第一节 → PDF 18
     expect(mapped[2].page).toBe(35);   // 第二节 书内18 → PDF 35
+  });
+});
+
+describe('pageLabel 优先按书本目录命名（用户看到的是「$[a, · 第51页」这种垃圾）', () => {
+  const P = Books.methods.pageLabel;
+  const outline = [
+    { title: '第一章 函数与极限', page: 3, level: 0 },
+    { title: '习题1-1 映射与函数', page: 3, level: 1 },
+    { title: '习题1-6 极限存在准则 两个重要极限', page: 27, level: 1 },
+    { title: '习题1-10 闭区间上连续函数的性质', page: 48, level: 1 },
+    { title: '第二章 导数与微分', page: 60, level: 0 },
+  ];
+  const ctx = { _mineruJunk: () => false, bookOutline: outline,
+    pageLabelFromOutline: Books.methods.pageLabelFromOutline,
+    bookTitleOf: Books.methods.bookTitleOf, bookKeyOf: Books.methods.bookKeyOf };
+
+  it('第51页落在「习题1-10」区间，用目录里的小节名，不再从正文首行猜', () => {
+    // 正文首行是纯公式：旧逻辑会剥成「$[a,」当标题
+    const m = { content_md: '$[a, b]$ 上连续\n后续正文', page: 51 };
+    expect(P.call(ctx, m)).toBe('习题1-10 闭区间上连续函数的性质 · 第51页');
+  });
+
+  it('取页码 ≤ 本页的最后一条（同页有章+节时用更细的节）', () => {
+    expect(P.call(ctx, { content_md: 'x', page: 3 })).toBe('习题1-1 映射与函数 · 第3页');
+    expect(P.call(ctx, { content_md: 'x', page: 30 })).toBe('习题1-6 极限存在准则 两个重要极限 · 第30页');
+    expect(P.call(ctx, { content_md: 'x', page: 60 })).toBe('第二章 导数与微分 · 第60页');
+  });
+
+  it('页码早于目录第一条时不硬套，回退正文启发式', () => {
+    expect(P.call(ctx, { content_md: '扉页说明', page: 1 })).toBe('扉页说明 · 第1页');
+  });
+
+  it('没有目录（bookOutline 为空）时回退正文，且行内公式被整段剥掉不再漏出', () => {
+    const bare = { ...ctx, bookOutline: [] };
+    expect(P.call(bare, { content_md: '$[a, b]$ 上连续', page: 51 })).toBe('上连续 · 第51页');
+    // 整页只有公式 → 没有可用标题，回退纯页码（而不是 int {0} ^ {+ infty} 这类垃圾）
+    expect(P.call(bare, { content_md: '$\\int_{0}^{+\\infty} y(x)\\mathrm{d}x =$', page: 240 })).toBe('第240页');
+  });
+});
+
+describe('bookTitleOf 用 source 当书名（title 里混着公式垃圾）', () => {
+  const T = Books.methods.bookTitleOf;
+  const ctx = { bookKeyOf: Books.methods.bookKeyOf };
+  it('有 source 就用 source，忽略 title 里跟着的首行标题', () => {
+    const m = { source: '高等数学习题全解指导 上册', title: '高等数学习题全解指导 上册 · int {0} ^ {+ infty} y (x) mathrm{d} x =', page: 240 };
+    expect(T.call(ctx, m)).toBe('高等数学习题全解指导 上册');
+  });
+  it('没有 source 才回退剥 title 的「· 第N页」', () => {
+    expect(T.call(ctx, { title: '某本书 · 第12页' })).toBe('某本书');
+  });
+  it('与 bookKeyOf 对同一条记录给出一致的书名（书架分组与显示不会打架）', () => {
+    const m = { source: '谭浩强C程序设计', title: '谭浩强C程序设计 · printf 用法' };
+    expect(T.call(ctx, m)).toBe(Books.methods.bookKeyOf.call(ctx, m));
+  });
+});
+
+describe('firstHeadingOf 不把公式行当标题（根治新导入的 title 垃圾）', () => {
+  const Mineru = new Function(fs.readFileSync(path.join(ROOT, 'js/views/mineru.js'), 'utf8') + ';return MineruMixin;')();
+  const ctx = Object.assign(Object.create(Mineru.methods), { _mineruJunk: () => false });
+  const F = Mineru.methods.firstHeadingOf;
+  it('纯公式行被跳过，取后面的中文标题', () => {
+    expect(F.call(ctx, '$\\int_{0}^{+\\infty} y(x)\\mathrm{d}x =$\n第一章 函数与极限')).toBe('第一章 函数与极限');
+  });
+  it('整页只有公式时返回空串（让调用方回退成「第N页」）', () => {
+    expect(F.call(ctx, '$\\int_{0}^{+\\infty} y(x)\\mathrm{d}x =$\n$$x^2+1$$')).toBe('');
+  });
+  it('中文里夹着行内公式：公式被剥掉，留下中文', () => {
+    expect(F.call(ctx, '设 $f(x)$ 在 $[a,b]$ 上连续')).toBe('设 在 上连续');
+  });
+  it('# 标题里是公式时也跳过，不再剥成 int{0}^{+infty}', () => {
+    const out = F.call(ctx, '## $\\int_{0}^{+\\infty}$\n## 第二章 导数');
+    expect(out).toBe('第二章 导数');
+    expect(out).not.toContain('infty');
   });
 });

@@ -101,9 +101,10 @@ describe('前端：书架翻页拉全 + 按书补正文', () => {
   // fake this：记录每次请求路径，按 offset 返回对应批次
   function ctx(total, pageSize) {
     const calls = [];
-    return {
+    return Object.assign(Object.create(M), {
       calls,
       token: 't', materials: { items: [], loading: false, loaded: false }, loadProgMsg: '',
+      matProg: { cur: 0, total: 0, pct: 0, unit: '段' },
       currentBookId: '', currentBook: null, materialBooks: [],
       flash() {},
       async ensureBookContent() {},
@@ -113,7 +114,7 @@ describe('前端：书架翻页拉全 + 按书补正文', () => {
         const n = Math.max(0, Math.min(pageSize, total - off));
         return { items: Array.from({ length: n }, (_, i) => ({ id: 'm' + (off + i), source: '书A', page: off + i + 1 })) };
       },
-    };
+    });
   }
 
   it('loadMaterials 一直翻到拿不满一页为止（500 行不再是天花板）', async () => {
@@ -135,15 +136,16 @@ describe('前端：书架翻页拉全 + 按书补正文', () => {
     const pages = Array.from({ length: 45 }, (_, i) => ({ id: 'm' + i, page: i + 1 }));
     pages[0].content_md = '已有';                       // 这页不该再被请求
     const got = [];
-    const c = {
+    const c = Object.assign(Object.create(M), {
       token: 't', materials: { items: pages, loading: false }, loadProgMsg: '', flash() {},
+      matProg: { cur: 0, total: 0, pct: 0, unit: '段' },
       currentBook: { title: '书A', pages },
       async api(path) {
         const ids = decodeURIComponent((path.match(/ids=([^&]+)/) || [])[1] || '').split(',');
         got.push(ids);
         return { items: ids.map((id) => ({ id, content_md: '正文' + id })) };
       },
-    };
+    });
     await M.ensureBookContent.call(c);
     expect(got.length).toBe(3);                          // 44 页 / 每批 20
     expect(got.flat()).not.toContain('m0');
@@ -168,8 +170,9 @@ describe('前端：书架翻页拉全 + 按书补正文', () => {
   it('两处入口并发补同一本书时，同一页不会被下载两次', async () => {
     const pages = Array.from({ length: 30 }, (_, i) => ({ id: 'm' + i, page: i + 1 }));
     const got = [];
-    const c = {
+    const c = Object.assign(Object.create(M), {
       token: 't', materials: { items: pages, loading: false }, loadProgMsg: '', flash() {},
+      matProg: { cur: 0, total: 0, pct: 0, unit: '段' },
       currentBook: { title: '书A', pages },
       async api(path) {
         const ids = decodeURIComponent((path.match(/ids=([^&]+)/) || [])[1] || '').split(',');
@@ -177,7 +180,7 @@ describe('前端：书架翻页拉全 + 按书补正文', () => {
         await new Promise((r) => setTimeout(r, 0));
         return { items: ids.map((id) => ({ id, content_md: '正文' + id })) };
       },
-    };
+    });
     // loadMaterials 结尾补一次、currentBookId 的 watcher 又补一次——模拟这两个入口同时进来
     await Promise.all([M.ensureBookContent.call(c), M.ensureBookContent.call(c)]);
     expect(got.length).toBe(30);                         // 30 页各下一次，没有重复
@@ -239,5 +242,92 @@ describe('版本号单一来源（界面显示过 v4.4 而实际是 v167）', ()
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     const stale = [...html.matchAll(/\?v=(\d+)/g)].map((m) => 'v' + m[1]).filter((v) => v !== ver);
     expect(stale).toEqual([]);
+  });
+});
+
+describe('数字进度条（原来是无限滑动的假进度）', () => {
+  const load = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+  const Books = new Function(load('js/views/books.js') + ';return BooksMixin;')();
+
+  it('_setProg 算出百分比，总数为 0 时不谎报进度', () => {
+    const c = { matProg: {} };
+    Books.methods._setProg.call(c, 240, 388, '页');
+    expect(c.matProg).toEqual({ cur: 240, total: 388, pct: 62, unit: '页' });
+    Books.methods._setProg.call(c, 5, 0, '段');
+    expect(c.matProg.pct).toBe(0);
+  });
+
+  it('首个目录请求带 count=1 拿总数，进度才有分母', () => {
+    expect(load('js/views/books.js')).toMatch(/i===0\?'&count=1':''/);
+  });
+
+  it('模板在 total>0 时切换成确定进度条并显示百分比', () => {
+    const tpl = load('js/tpl/view-books.js');
+    expect(tpl).toMatch(/:class="\{det:matProg\.total>0\}"/);
+    expect(tpl).toMatch(/matProg\.pct \}\}% · \{\{ matProg\.cur \}\} \/ \{\{ matProg\.total \}\}/);
+    const css = load('css/style.css');
+    expect(css).toMatch(/\.bk-loadbar\.det::after\{display:none\}/);
+  });
+});
+
+describe('ensureBookContent 必须「等在途」而不是提前返回（线上 665 题静默变 430 的根因）', () => {
+  const load = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+  const Books = new Function(load('js/views/books.js') + ';return BooksMixin;')();
+  const M = Books.methods;
+
+  function ctx(nPages) {
+    const pages = Array.from({ length: nPages }, (_, i) => ({ id: 'm' + i, page: i + 1 }));
+    const gate = [];
+    const c = Object.assign(Object.create(M), {
+      pages, gate,
+      token: 't', materials: { items: pages, loading: false }, loadProgMsg: '', flash() {},
+      matProg: { cur: 0, total: 0, pct: 0, unit: '段' },
+      currentBook: { title: '书A', pages },
+      async api(path) {
+        const ids = decodeURIComponent((path.match(/ids=([^&]+)/) || [])[1] || '').split(',');
+        await new Promise((r) => gate.push(() => r()));      // 卡住，直到测试放行
+        return { items: ids.map((id) => ({ id, content_md: '正文' + id })) };
+      },
+    });
+    return c;
+  }
+  const drain = async (c) => { for (let i = 0; i < 60 && (c.gate.length || i < 3); i++) { const g = c.gate.shift(); if (g) g(); await new Promise((r) => setTimeout(r, 0)); } };
+
+  it('第二个调用方要等第一批拉完，返回那一刻正文必须已经齐', async () => {
+    const c = ctx(45);                       // 45 页 = 3 个分块
+    const a = M.ensureBookContent.call(c);   // 先发起，不 await
+    await new Promise((r) => setTimeout(r, 0));
+    // 关键：记录「b 兑现的那一瞬间」还缺多少页。
+    // 旧实现看到在途就 return，b 会在下一个微任务就兑现，那时还缺 45 页 —— 这一条能红。
+    let missingAtResolve = -1;
+    const b = M.ensureBookContent.call(c).then(() => {
+      missingAtResolve = c.pages.filter((p) => p.content_md === undefined).length;
+    });
+    await drain(c);
+    await Promise.all([a, b]);
+    expect(missingAtResolve).toBe(0);
+    expect(M.matMissingCount.call(c)).toBe(0);
+  });
+
+  it('同一页不会被两个调用方各下一次', async () => {
+    const c = ctx(30);
+    const got = [];
+    const realApi = c.api;
+    c.api = async function (p) { got.push(...decodeURIComponent((p.match(/ids=([^&]+)/) || [])[1] || '').split(',')); return realApi.call(this, p); };
+    const a = M.ensureBookContent.call(c);
+    await new Promise((r) => setTimeout(r, 0));
+    const b = M.ensureBookContent.call(c);
+    await drain(c);
+    await Promise.all([a, b]);
+    expect(got.length).toBe(30);
+    expect(new Set(got).size).toBe(30);
+  });
+
+  it('matMissingCount 如实报告缺多少页（抽题自检要用）', () => {
+    const pages = [{ id: 'a', content_md: 'x' }, { id: 'b' }, { id: 'c' }];
+    const c = Object.assign(Object.create(M), { currentBook: { pages } });
+    expect(M.matMissingCount.call(c)).toBe(2);
+    pages[1].content_md = ''; pages[2].content_md = 'y';
+    expect(M.matMissingCount.call(c)).toBe(0);            // 空串是「已载入但这页没正文」，不算缺
   });
 });

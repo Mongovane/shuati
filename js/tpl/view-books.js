@@ -144,7 +144,11 @@ const TPL_VIEW_BOOKS = `
       </div>
       <div v-show="booksMode==='notes'">
       <template v-if="!materials.loaded">
-        <div class="bk-loading" style="min-height:200px"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载教材… {{ loadProgMsg }}</span></div>
+        <div class="bk-loading" style="min-height:200px">
+          <span class="bk-loadbar" :class="{det:matProg.total>0}"><i v-if="matProg.total>0" :style="{width:matProg.pct+'%'}"></i></span>
+          <span class="muted" style="margin-top:10px">{{ loadProgMsg || '正在加载教材…' }}</span>
+          <span v-if="matProg.total>0" class="bk-loadpct">{{ matProg.pct }}% · {{ matProg.cur }} / {{ matProg.total }} {{ matProg.unit }}</span>
+        </div>
       </template>
       <template v-else-if="!materialBooks.length">
         <div class="empty">

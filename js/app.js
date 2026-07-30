@@ -28,6 +28,7 @@ const App={
     modelPick:{ busy:false, list:[] }, modelBoxOpen:false,  // 「从端点拉取」到的模型候选列表
     explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
     materials:{ subject:'all', items:[], loading:false, loaded:false }, loadProgMsg:'',
+    matProg:{ cur:0, total:0, pct:0, unit:'段' },   // 教材加载的数字进度（total>0 时进度条走确定进度）
     booksMode:'notes', bookFold:{},
     pageRendering:false,
     offline:false,

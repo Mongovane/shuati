@@ -81,10 +81,28 @@ describe('P1/P2 源码层面守卫', () => {
     expect((src.match(/const CH=80/g) || []).length).toBe(2);
     expect(src).not.toMatch(/const CH=40/);
   });
-  it('整本抽题不再用 concat 累积（避免 O(n²) 重建数组）', () => {
+  it('整本抽题不用 concat 累积（避免 O(n²) 重建数组）', () => {
+    // 现在整本走 _extractWholeBook：拼接成一条流后一次解析，连累积循环都不需要了
     const body = src.match(/async localExtractBook\(\)[\s\S]*?_openPreview\(all[^\n]*/)[0];
     expect(body).not.toMatch(/all=all\.concat/);
-    expect(body).toMatch(/all\.push\(q\)/);
+    expect(body).toMatch(/_extractWholeBook\(b\)/);
+    const whole = src.match(/_extractWholeBook\(book\)\{[\s\S]*?return qs; \},/)[0];
+    expect(whole).not.toMatch(/\.concat\(/);
+  });
+  it('整本改为「拼接成一条流」解析，修跨页被切断的题', () => {
+    const whole = src.match(/_extractWholeBook\(book\)\{[\s\S]*?return qs; \},/)[0];
+    expect(whole).toMatch(/texts\.join\(SEP\)/);
+    expect(whole).toMatch(/mdToQuestions\(joined/);
+    // 只解析一次，不是逐页各来一发
+    expect((whole.match(/mdToQuestions\(/g) || []).length).toBe(1);
+    // 页码要靠偏移回填，不能整本都记成同一页
+    expect(whole).toMatch(/indexOf\(key,cur\)/);
+    expect(whole).toMatch(/q\.page=pageAt\(at\)/);
+  });
+  it('抽题前有正文完整性自检，不拿半本书静默少抽', () => {
+    const body = src.match(/async localExtractBook\(\)[\s\S]*?_openPreview\(all[^\n]*/)[0];
+    expect(body).toMatch(/matMissingCount/);
+    expect(body).toMatch(/没载入完/);
   });
   it('P3：整本抽题对大题量有 confirm 预警', () => {
     const body = src.match(/async localExtractBook\(\)[\s\S]*?_openPreview\(all[^\n]*/)[0];
@@ -104,5 +122,88 @@ describe('批内去重仍然有效（原有能力不回退）', () => {
     ], 't', 'math', 's');
     expect(c.extractPreview.items.length).toBe(2);
     expect(c.extractPreview.dup).toBe(2);
+  });
+});
+
+describe('_stripDataImages：入库前剥掉内嵌 base64 图（线上占 66% 体积）', () => {
+  it('markdown 图与 <img> 都换成占位，正文其余部分不动', () => {
+    const c = ctx();
+    const big = 'data:image/png;base64,' + 'A'.repeat(5000);
+    const q = M._stripDataImages.call(c, {
+      stem: '对图 1-9 所示的函数 $y=f(x)$\n\n<figure class="fig"><img src="' + big + '"></figure>\n\n下列陈述哪些对？',
+      analysis: '解：见 ![图](' + big + ') 所示',
+    });
+    expect(q.stem).not.toContain('base64');
+    expect(q.stem).toContain('对图 1-9 所示的函数 $y=f(x)$');
+    expect(q.stem).toContain('下列陈述哪些对？');
+    expect(q.stem).toContain('［图］');
+    expect(q.analysis).toContain('［图］');
+    expect(q.stem.length).toBeLessThan(120);
+  });
+
+  it('连续多张图折叠成一个占位，且不误伤外链图片', () => {
+    const c = ctx();
+    const d = 'data:image/jpeg;base64,AAAA';
+    const q = M._stripDataImages.call(c, { stem: '![a](' + d + ')![b](' + d + ')![c](' + d + ')' });
+    expect((q.stem.match(/［图］/g) || []).length).toBe(1);
+    const q2 = M._stripDataImages.call(c, { stem: '![图](https://r2.example.com/x.png)' });
+    expect(q2.stem).toBe('![图](https://r2.example.com/x.png)');   // R2 外链要留着
+  });
+
+  it('选项与答案里的图也一起剥', () => {
+    const c = ctx();
+    const d = 'data:image/png;base64,' + 'B'.repeat(2000);
+    const q = M._stripDataImages.call(c, {
+      stem: 'x', options: [{ key: 'A', text: '看图 ![](' + d + ')' }], answer: ['选 ![](' + d + ')'],
+    });
+    expect(q.options[0].text).toBe('看图 ［图］');
+    expect(q.answer[0]).toBe('选 ［图］');
+  });
+});
+
+describe('_extractWholeBook：整本拼接解析，修跨页被切断的题', () => {
+  // 一道题的题干被切在两页之间（线上实测有 101 道这样的题）
+  const bookPages = [
+    { page: 48, content_md: '1. 求下列极限：\n\n$\\lim_{x\\to0}\\frac{\\sin x}{x}$ .\n\n解 原式 $=1$ .' },
+    { page: 49, content_md: '2. 证明任一最高次幂的指数为奇数的代数方程\n\n$a_0x^{2n+1}+\\dots+a_{2n+1}=0$' },
+    { page: 50, content_md: '至少有一个实根,其中 $a_0,\\dots,a_{2n+1}$ 均为常数.\n\n证 设 $f(x)$ 连续,由零点定理即得.' },
+  ];
+  const book = { title: '高等数学习题全解', subject: 'math', pages: bookPages };
+
+  it('跨页的题干被拼回完整，不再断在句子中间', () => {
+    const c = ctx();
+    const qs = M._extractWholeBook.call(c, book);
+    const hit = qs.find((q) => /最高次幂的指数为奇数/.test(q.stem));
+    expect(hit).toBeTruthy();
+    expect(hit.stem).toContain('至少有一个实根');       // 逐页解析时这半句会丢
+  });
+
+  it('页码按题干在原文里的偏移回填，不是整本记成同一页', () => {
+    const c = ctx();
+    const qs = M._extractWholeBook.call(c, book);
+    const pages = qs.map((q) => q.page);
+    expect(pages.every((p) => bookPages.some((m) => m.page === p))).toBe(true);
+    expect(new Set(pages).size).toBeGreaterThan(1);
+    const first = qs.find((q) => /求下列极限/.test(q.stem));
+    expect(first.page).toBe(48);
+    const second = qs.find((q) => /最高次幂/.test(q.stem));
+    expect(second.page).toBe(49);                       // 题干起点所在页，不是结尾那页
+  });
+
+  it('只调用 mdToQuestions 一次，且顺带剥掉了图', () => {
+    const c = ctx();
+    let calls = 0;
+    const real = M.mdToQuestions;
+    c.mdToQuestions = function (...a) { calls++; return real.apply(this, a); };
+    const d = 'data:image/png;base64,' + 'C'.repeat(3000);
+    const qs = M._extractWholeBook.call(c, { title: 't', subject: 'math', pages: [{ page: 1, content_md: '1. 看图 ![](' + d + ') 求值.\n\n解 略.' }] });
+    expect(calls).toBe(1);
+    expect(qs.length).toBeGreaterThan(0);
+    expect(qs.some((q) => /base64/.test(q.stem))).toBe(false);
+  });
+
+  it('空书不炸', () => {
+    const c = ctx();
+    expect(M._extractWholeBook.call(c, { title: 't', subject: 'math', pages: [] })).toEqual([]);
   });
 });
