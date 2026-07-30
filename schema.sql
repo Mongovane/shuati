@@ -38,10 +38,12 @@ CREATE TABLE IF NOT EXISTS questions (
   analysis    TEXT,                             -- 解析
   tags        TEXT,                             -- JSON 字符串：["指针","链表"]
   status      TEXT,                             -- 'draft' = AI 导入待审核；NULL/'ok' = 已发布
-  ai_cards    TEXT,                             -- JSON 字符串：AI 知识点卡片 [{term,formula,plain,example}]（开启自动保存时写入）
+  ai_cards    TEXT,                             -- JSON 字符串：AI 知识点卡片 [{term,formula,plain,example}]（开启自动保存时写入）,
+  shape_key TEXT,             -- 题干剥掉插图标记后的指纹：重导时据此认领已有行，避免插图形态变化产生重复
   created_at  INTEGER DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS idx_q_subject ON questions(subject);
+CREATE INDEX IF NOT EXISTS idx_q_shape ON questions(shape_key);
 CREATE INDEX IF NOT EXISTS idx_q_chapter ON questions(chapter);
 CREATE INDEX IF NOT EXISTS idx_q_type    ON questions(type);
 CREATE INDEX IF NOT EXISTS idx_q_subject_chapter ON questions(subject, chapter);

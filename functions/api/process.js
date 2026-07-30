@@ -17,6 +17,26 @@ export function stableQid(subject, stem) {
   return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
 }
 
+// —— 题目「形状指纹」：把插图标记剥掉后的题干 ——
+// 插图形态会变（MinerU 内嵌 base64 → 转存 R2 短链 → 早期版本剥成「［图］」占位），
+// 但那不该改变一道题的身份。stableQid 拿的是 subject+stem 的哈希，题干一变 id 就变，
+// 于是重新导入会**新增一行**而不是更新同一行 —— 同一道题在库里留下两份
+// （线上实测：16 行带「［图］」的旧行，其中 10 行能找到带真图的孪生行）。
+// 有了 shape_key，重导时先按它找到已有行、复用其 id，ON CONFLICT(id) 就会原地更新。
+export function stemShape(stem) {
+  return String(stem || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '\u00a7')        // markdown 图（含 data: 与短链）
+    .replace(/<img[^>]*>/gi, '\u00a7')
+    .replace(/<figure[^>]*>|<\/figure>/gi, '')
+    .replace(/[［[]\s*图\s*[］\]]/g, '\u00a7')            // 早期版本剥出来的「［图］」占位
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+// 章节一起进指纹：不同章节里出现字面相同的小题（「求下列极限」）不该被并成一道
+export function shapeKey(subject, chapter, stem) {
+  return stableQid(String(subject || '') + '|' + String(chapter || ''), stemShape(stem));
+}
+
 // —— 按题型规范化 + 校验答案 ——
 // 返回 { answer:[...], warn:'...'|null }。策略保守：能修的修（大写/去重/限定选项内），
 // 修不了的（如多选只给 1 个、答案不在选项里）保留原值但给出 warn，交由前端提示，不静默吞掉错题。
@@ -176,6 +196,7 @@ export async function onRequestPost({ request, env }) {
       analysis: (q.analysis || '').trim() || null,
       tags: JSON.stringify(Array.isArray(q.tags) ? q.tags : []),
       status: trusted ? null : 'draft',   // AI 整理的先进「待审核」，人工过目再发布；JSON 直导视为已校对
+      shape_key: shapeKey(subj, (q.chapter || defChapter || '').trim(), q.stem),
     });
   }
 
@@ -203,24 +224,68 @@ export async function onRequestPost({ request, env }) {
     return json({ error: '没有解析出有效内容（既无题目也无可整理的教材）' }, 422);
   }
 
+  const dupGroups = [];
   try {
     if (cleanedQ.length) {
       await ensureQuestionsSchema(env);
+      // —— 按「形状指纹」认领已有行 ——
+      // 目的：题干里的插图形态变了（base64 / R2 短链 /「［图］」占位）也算同一道题，
+      // 复用它原来的 id，让下面的 ON CONFLICT(id) 原地更新，而不是新增一行。
+      const subjs = [...new Set(cleanedQ.map((q) => q.subject).filter(Boolean))];
+      if (subjs.length) {
+        // (a) 历史行没有 shape_key，先就地回填（只扫本次涉及的科目，且封顶，避免大库卡住）
+        try {
+          const ph = subjs.map(() => '?').join(',');
+          const old = await env.DB.prepare(
+            `SELECT id, subject, chapter, stem FROM questions
+             WHERE shape_key IS NULL AND subject IN (${ph}) LIMIT 3000`
+          ).bind(...subjs).all();
+          const rows = (old && old.results) || [];
+          if (rows.length) {
+            await batchChunked(env, rows.map((r) => env.DB.prepare(
+              `UPDATE questions SET shape_key = ? WHERE id = ?`
+            ).bind(shapeKey(r.subject, r.chapter || '', r.stem), r.id)), 80);
+          }
+        } catch (_) { /* 回填失败不该挡住导入，退化成按 id 去重 */ }
+        // (b) 查这批 shape 对应的已有行
+        try {
+          const keys = [...new Set(cleanedQ.map((q) => q.shape_key))];
+          const found = new Map();          // shape -> [id...]
+          for (let i = 0; i < keys.length; i += 80) {
+            const part = keys.slice(i, i + 80);
+            const rs = await env.DB.prepare(
+              `SELECT id, shape_key FROM questions WHERE shape_key IN (${part.map(() => '?').join(',')}) ORDER BY id`
+            ).bind(...part).all();
+            for (const r of (rs && rs.results) || []) {
+              if (!found.has(r.shape_key)) found.set(r.shape_key, []);
+              found.get(r.shape_key).push(r.id);
+            }
+          }
+          for (const q of cleanedQ) {
+            const ids = found.get(q.shape_key);
+            if (!ids || !ids.length) continue;
+            // 认领第一个（按 id 排序，结果稳定）；同一 shape 还有别的行说明库里本来就有重复，如实报出来
+            q._claimed = true;
+            if (ids[0] !== q.id) q.id = ids[0];
+            if (ids.length > 1) dupGroups.push({ kept: ids[0], others: ids.slice(1) });
+          }
+        } catch (_) { /* 查不到就按原 id 走，等于退回旧行为 */ }
+      }
       // UPSERT 而非 OR REPLACE：保留 rowid/created_at 与关联的 progress 学习进度
       // （OR REPLACE = 先删后插，外键级联会顺带清掉该题的错题/收藏记录），且能正确触发 FTS 索引更新
       const sql = `INSERT INTO questions
-        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags, page, status)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (id, subject, chapter, type, difficulty, source, passage, stem, options, answer, analysis, tags, page, status, shape_key)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           subject=excluded.subject, chapter=excluded.chapter, type=excluded.type,
           difficulty=excluded.difficulty, source=excluded.source, passage=excluded.passage,
           stem=excluded.stem, options=excluded.options, answer=excluded.answer,
           analysis=excluded.analysis, tags=excluded.tags, page=excluded.page,
-          status=excluded.status`;
+          status=excluded.status, shape_key=excluded.shape_key`;
       await batchChunked(env, cleanedQ.map((q) =>
         env.DB.prepare(sql).bind(
           q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
-          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.page, q.status
+          q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.page, q.status, q.shape_key
         )
       ), 80);
     }
@@ -253,6 +318,11 @@ export async function onRequestPost({ request, env }) {
     inserted_materials: cleanedM.length,
     inserted_drafts: cleanedQ.filter((q) => q.status === 'draft').length,   // 其中进「待审核」的数量（AI 整理路径）
     answer_warns: answerWarns.slice(0, 8),   // 答案疑点（不在选项内/单选多答/多选单答等），前端提示，不阻断入库
+    // 本次认领时发现库里同一道题有多行（历史上插图形态不同导致的重复），如实报出来给人工处置。
+    // 这里只更新其中第一行，不擅自删别的行。
+    updated_in_place: cleanedQ.filter((q) => q._claimed).length,
+    dup_groups: dupGroups.slice(0, 30),
+    dup_total: dupGroups.length,
     sample: cleanedQ.slice(0, 3).map((q) => ({ subject: q.subject, type: q.type, stem: q.stem.slice(0, 60) })),
     material_sample: cleanedM.slice(0, 3).map((m) => ({ subject: m.subject, title: m.title })),
   });

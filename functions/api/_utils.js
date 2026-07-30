@@ -106,9 +106,11 @@ export async function ensureSrsSchema(env) {
     `ALTER TABLE questions ADD COLUMN page INTEGER`,
     `ALTER TABLE questions ADD COLUMN ai_cards TEXT`,          // 知识点卡片 JSON（自动保存用，恢复时重建翻转卡片）
     `ALTER TABLE mock_results ADD COLUMN score REAL`,          // 多选半分制得分（可空，旧记录无）
+    `ALTER TABLE questions ADD COLUMN shape_key TEXT`,         // 题干「剥掉插图后」的指纹，见 process.js stemShape
   ];
   for (const sql of alters) { try { await env.DB.prepare(sql).run(); } catch (_) { /* duplicate column：已存在 */ } }
   try { await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_pr_due ON progress(due_at)`).run(); } catch (_) {}
+  try { await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_q_shape ON questions(shape_key)`).run(); } catch (_) {}
   try {
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS answer_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -63,7 +63,11 @@ async importXlsx(){ const rows=(this.ingest.xl&&this.ingest.xl.rows)||[]; if(!ro
         this.bankDirty=true; this.statsDirty=true; this.loadMeta(true);
       }catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); }
       this.ingest.busy=false; },
-importMsg(d){ const q=d.inserted_questions??d.inserted??0; const m=d.inserted_materials??0; const dr=d.inserted_drafts||0; const dn=dr?('，其中 '+dr+' 题进了「题库 → 待审核」，过目后一键通过'):''; if(q&&m)return '识别为「题目+教材」，已导入 '+q+' 题、整理 '+m+' 段教材'+dn; if(m)return '识别为教材，已整理 '+m+' 段（去「教材阅读」查看）'; return '识别为题库，已导入 '+q+' 题'+dn; },
+// 「原地更新」= 按题干形状指纹认领到了已有行（插图形态变了也算同一道题），
+// 所以重导不会再产生重复行。dup_total 是库里本来就存在的历史重复，只提示不擅自删。
+_dupNote(d){ const u=d&&d.updated_in_place||0; const dp=d&&d.dup_total||0;
+      return (u?('，其中 '+u+' 题是更新已有行'):'')+(dp?('；另有 '+dp+' 道题在库里存在重复行（历史遗留），可去题库核对后删除'):''); },
+importMsg(d){ const q=d.inserted_questions??d.inserted??0; const m=d.inserted_materials??0; const dr=d.inserted_drafts||0; const dn=(dr?('，其中 '+dr+' 题进了「题库 → 待审核」，过目后一键通过'):'')+this._dupNote(d); if(q&&m)return '识别为「题目+教材」，已导入 '+q+' 题、整理 '+m+' 段教材'+dn; if(m)return '识别为教材，已整理 '+m+' 段（去「教材阅读」查看）'; return '识别为题库，已导入 '+q+' 题'+dn; },
 makeSource(){ if(!this.ingest.bookMode)return this.ingest.source||''; const parts=[this.ingest.bookName||'小红本', this.subjName(this.ingest.subject), this.ingest.chapter||'未分章']; if(this.ingest.pageNo)parts.push('P'+String(this.ingest.pageNo).trim()); if(this.ingest.questionNo)parts.push('第'+String(this.ingest.questionNo).trim()+'题'); return parts.join('-'); },
 currentSource(){ return (this.ingest.tab==='manual' && this.ingest.bookMode) ? this.makeSource() : (this.ingest.source||''); },
 sourceForPage(p){ const old=this.ingest.pageNo; this.ingest.pageNo=String(p||''); const v=this.currentSource(); this.ingest.pageNo=old; return v; },
@@ -423,8 +427,8 @@ async _localExtractBookInner(){
       this._openPreview(all, '《'+b.title+'》整本'+tocNote+'（预览）', b.subject, b.title); },
 async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
-      try{ let inserted=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); this.bookExtract.done=Math.min(i+CH,arr.length); }
-        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.extractClose(); }
+      try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
+        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.extractClose(); }
       catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
 saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },
 logPage(p,t,msg){ const arr=this.ingest.local.log; arr.push({p,t,msg}); if(arr.length>500)arr.splice(0,arr.length-500); },
