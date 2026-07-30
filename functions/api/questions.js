@@ -72,6 +72,32 @@ export async function onRequestGet({ request, env }) {
                       FROM questions q
                       LEFT JOIN progress pr ON pr.question_id = q.id`;
 
+  // —— 只要 id（idsonly=1）——
+  // 「全选全部匹配」要跨页拿到所有 id，但题干里可能内嵌 base64 插图，
+  // 整批拉回前端会是几 MB。这里只查 id 列，几千条也就几十 KB。
+  const idsCap = Math.min(Math.max(parseInt(p.get('cap') || '5000', 10) || 5000, 1), 20000);
+  if (p.get('idsonly') === '1') {
+    const doIds = async (useFts) => {
+      const { w, b } = withSearch(useFts);
+      const conds = draftCond ? [...w, draftCond] : w;
+      const whereSql = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+      const rs = await env.DB.prepare(
+        `SELECT q.id FROM questions q LEFT JOIN progress pr ON pr.question_id = q.id
+         ${whereSql} ORDER BY q.rowid LIMIT ?`
+      ).bind(...b, idsCap).all();
+      return ((rs && rs.results) || []).map((r) => r.id);
+    };
+    try {
+      const ids = await doIds(ftsTry);
+      return json({ ids, count: ids.length, truncated: ids.length >= idsCap });
+    } catch (e) {
+      if (ftsTry) {
+        try { const ids = await doIds(false); return json({ ids, count: ids.length, truncated: ids.length >= idsCap }); } catch (_) { /* 落到下面报错 */ }
+      }
+      return json({ error: '查询 id 失败：' + e.message }, 500);
+    }
+  }
+
   const run = async (useFts) => {
     const { w, b } = withSearch(useFts);
     const where = w, binds = b;
@@ -138,7 +164,9 @@ export async function onRequestDelete({ request, env }) {
   if (!auth.ok) return auth.resp;
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
-  const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
+  // 上限 200：id IN (?,?,…) 每个 id 占一个绑定变量，一次几百个会撞 D1 的变量上限。
+  // 前端按 80 分批发，这里只是兜底（超出的截断而不是静默失败，deleted 会如实反映）。
+  const ids = (Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : [])).slice(0, 200);
   if (!ids.length) return json({ error: '缺少要删除的题目 id' }, 400);
   try {
     const ph = ids.map(() => '?').join(',');

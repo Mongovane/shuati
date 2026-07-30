@@ -12,7 +12,7 @@ const MIXINS = [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin,
 // 加了守卫会把正常的重新开局静默吞掉，所以不在名单里（它本身只是 GET，重入无害）。
 const GUARDED_OPS = [
   'dropFromReview', 'deleteCurrentQuestion',
-  'bankDelete', 'bankBatchDelete', 'bankBatchSubject', 'bankBatchChapter', 'bankBatchTag', 'bankAutoClassify', 'bankAiFillAnswers',
+  'bankDelete', 'bankBatchDelete', 'bankBatchSubject', 'bankBatchChapter', 'bankBatchTag', 'bankAutoClassify', 'bankAiFillAnswers', 'bankSelectAllMatching',
   'favUnstarOne', 'favUnstarSel',
   'deleteBook', 'deleteMock', 'subjSave', 'subjDelete', 'loadSample',
   'bankExportSel', 'favExportSel', 'resumeMock', 'reviewMock',
@@ -79,7 +79,7 @@ const App={
     bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0 },   // AI 补答案进度
     extractSkippedToc:0,
     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
-    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'' },
+    bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
     pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },

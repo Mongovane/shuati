@@ -3,7 +3,16 @@
 // —— 近似查重：simhash(字符 3-gram) 指纹 + 4×16 位分带 LSH 找候选对 ——
 //    判定双闸：汉明距离 ≤4 直接判相似；5~10 之间再用字符 bigram Jaccard ≥0.72 复核，
 //    防「下列说法正确的是…」这类同套话头、不同题尾被误并。纯前端计算，不吃服务端配额。
-const _dsNorm=(x)=>String(x||'').toLowerCase().replace(/[\s，。！？；：、,.!?;:'"()（）\[\]【】<>《》\-—_·…]/g,'');
+// 剥掉插图标记：与后端 process.js 的 stemShape 保持同一套规则（tests/shape-dedupe 里有一致性断言）。
+// 不剥的话，30KB 的 base64 题干和「［图］」占位题干 simhash 完全不同，
+// 同一道题的两个插图版本永远查不出重复 —— 线上就是这么留下 16 行的。
+const _stripFigs=(x)=>String(x||'')
+  .replace(/!\[[^\]]*\]\([^)]*\)/g,'\u00a7')
+  .replace(/<img[^>]*>/gi,'\u00a7')
+  .replace(/<figure[^>]*>|<\/figure>/gi,'')
+  .replace(/[［[]\s*图\s*[］\]]/g,'\u00a7')
+  .replace(/\s+/g,' ').trim();
+const _dsNorm=(x)=>_stripFigs(x).toLowerCase().replace(/[\s，。！？；：、,.!?;:'"()（）\[\]【】<>《》\-—_·…]/g,'');
 function _fnv(str,seed){ let h=seed>>>0; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619)>>>0; } return h>>>0; }
 function simhash64(text){ const t=_dsNorm(text); if(!t)return [0,0];
   const v=new Array(64).fill(0);
@@ -27,7 +36,34 @@ bankToggle(id){ const i=this.bank.sel.indexOf(id); i>=0?this.bank.sel.splice(i,1
 bankAllOnPage(){ const ids=this.bank.items.map(q=>q.id); const allSel=ids.every(id=>this.bank.sel.includes(id)); this.bank.sel = allSel ? this.bank.sel.filter(id=>!ids.includes(id)) : Array.from(new Set(this.bank.sel.concat(ids))); },
 async bankSetSubject(q,subj){ if(!q||!subj||subj===q.subject)return; try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
 async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); const si=this.bank.sel.indexOf(q.id); if(si>=0)this.bank.sel.splice(si,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
-async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
+// 「全选全部匹配」：跨页选中当前筛选条件下的全部题。
+// 只拉 id（idsonly=1），因为题干里可能有内嵌 base64 插图，整批拉回来是几 MB。
+async bankSelectAllMatching(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      this.bank.loading=true;
+      try{
+        const p=new URLSearchParams(); p.set('idsonly','1'); p.set('mode',this.bank.mode||'all');
+        if(this.bank.subject&&this.bank.subject!=='all')p.set('subject',this.bank.subject);
+        if(this.bank.type)p.set('type',this.bank.type);
+        if(this.bank.kw)p.set('q',this.bank.kw);
+        if(this.bank.tag)p.set('tag',this.bank.tag);
+        if(this.bank.status)p.set('status',this.bank.status);
+        if(this.bank.chapter)p.set('chapter',this.bank.chapter);
+        const d=await this.api('/api/questions?'+p.toString());
+        this.bank.sel=(d.ids||[]).slice();
+        this.flash('已选中全部匹配的 '+this.bank.sel.length+' 题'+(d.truncated?'（已达上限，仍有未选入）':''), !!d.truncated);
+      }catch(e){ if(e.message!=='unauth')this.flash('全选失败：'+e.message,true); }
+      this.bank.loading=false; },
+bankClearSel(){ this.bank.sel=[]; },
+async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{
+        // 分批 80：DELETE 用 id IN (?,?,…)，每个 id 占一个绑定变量，一次几百个会撞 D1 上限
+        let deleted=0; const CH=80;
+        for(let i=0;i<ids.length;i+=CH){ const part=ids.slice(i,i+CH);
+          if(ids.length>CH)this.bank.batchProg='正在删除 '+Math.min(i+CH,ids.length)+' / '+ids.length;
+          const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:part})});
+          deleted+=(d.deleted!=null?d.deleted:part.length); }
+        this.bank.batchProg='';
+        const gone=new Set(ids);
+        this.bank.items=this.bank.items.filter(q=>!gone.has(q.id)); this.bank.total=Math.max(0,this.bank.total-deleted); this.bank.sel=[]; this.flash('已删除 '+deleted+' 题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
 async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const ch=prompt('把选中 '+ids.length+' 题的章节改为（留空清除章节）：'); if(ch===null)return; const chapter=ch.trim(); try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,chapter})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.chapter=chapter; }); this.flash('已把 '+(d.updated||ids.length)+' 题章节改为「'+(chapter||'（无）')+'」'); this.bank.sel=[]; this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改章节失败：'+e.message,true); } },
 // AI 补答案：给「抽出来但没答案」的题批量生成参考答案。
 // 落库时一律标 status='draft'，走仓库里已有的「待审」流程人工过一遍再发布 ——
@@ -91,7 +127,7 @@ async bankExportSel(){ const ids=this.bank.sel.length?[...this.bank.sel]:this.ba
 async bankBatchSubject(){ const ids=[...this.bank.sel]; const subj=this.bank.batchSubject; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!subj){ this.flash('请选择目标科目',true); return; } try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,subject:subj})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.subject=subj; }); this.flash('已将 '+(d.updated||ids.length)+' 题改为「'+this.subjName(subj)+'」'); this.bank.sel=[]; this.bank.batchSubject=''; this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改科目失败：'+e.message,true); } },
 async bankDedup(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('扫描整个题库，删除题干完全相同的重复题（每组只保留一道）。\n建议先备份。继续？'))return; this.bank.loading=true; try{
         let all=[]; let off=0; const lim=200; while(true){ const p=new URLSearchParams(); p.set('mode','all'); p.set('order','seq'); p.set('limit',lim); p.set('offset',off); const d=await this.api('/api/questions?'+p.toString()); const items=d.items||[]; all=all.concat(items); if(items.length<lim)break; off+=lim; if(off>40000)break; }
-        const seen=new Set(); const dupIds=[]; for(const q of all){ const k=(q.subject||'')+'|'+String(q.stem||'').replace(/\s+/g,' ').trim(); if(seen.has(k))dupIds.push(q.id); else seen.add(k); }
+        const seen=new Set(); const dupIds=[]; for(const q of all){ const k=(q.subject||'')+'|'+(q.chapter||'')+'|'+_stripFigs(q.stem); if(seen.has(k))dupIds.push(q.id); else seen.add(k); }
         if(!dupIds.length){ this.flash('没有发现重复题（共 '+all.length+' 题）'); this.bank.loading=false; return; }
         if(!confirm('共扫描 '+all.length+' 题，发现 '+dupIds.length+' 道重复，将删除（每组保留第一道）。确认？')){ this.bank.loading=false; return; }
         let del=0; const CH=100; for(let i=0;i<dupIds.length;i+=CH){ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:dupIds.slice(i,i+CH)})}); del+=(d.deleted||dupIds.slice(i,i+CH).length); }
@@ -115,7 +151,7 @@ async bankDupScan(){ if(!this.token){ this.flash('请先在设置中填写访问
             all.push(...got); offset+=got.length; this.dup.scanned=all.length;
             if(got.length<200||all.length>=8000)break; } }
         const norms=all.map(q=>_dsNorm(q.stem||''));
-        const sig=all.map(q=>simhash64((q.stem||'')+' '+((q.options||[]).map(o=>o&&o.text).join(' '))));
+        const sig=all.map(q=>simhash64(_stripFigs(q.stem||'')+' '+_stripFigs((q.options||[]).map(o=>o&&o.text).join(' '))));
         const cand=new Map();
         sig.forEach((sg,i)=>{ const keys=['a'+(sg[0]&0xffff),'b'+(sg[0]>>>16),'c'+(sg[1]&0xffff),'d'+(sg[1]>>>16)];
           for(const k of keys){ let a=cand.get(k); if(!a){ a=[]; cand.set(k,a); } a.push(i); } });
