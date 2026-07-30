@@ -370,6 +370,17 @@ async _hoistImages(arr){
           if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
       }
       return stat; },
+// 让浏览器有机会把 spinner 画出来再进同步解析。
+// 只 await 一个微任务不够——渲染发生在下一帧，所以要等两个 rAF。
+// （v174 我用「切片替换」改这一段时，把这个定义连带删掉了，调用点还留着 4 处，
+//   结果两个抽题按钮一点就抛 TypeError、被 finally 吞掉，表现为「点击没反应」。）
+// 必须带超时兜底：后台/不可见标签页里 requestAnimationFrame 根本不触发，
+// 只靠 rAF 会让这个 Promise 永远不 resolve —— bookExtract.busy 卡在 true，
+// 两个抽题按钮永久置灰，防重入守卫又让后续点击全部 return，只能刷新才能恢复。
+_yieldToPaint(){ return new Promise(r=>{ let done=false;
+      const fin=()=>{ if(done)return; done=true; r(); };
+      setTimeout(fin, 60);
+      try{ requestAnimationFrame(()=>requestAnimationFrame(fin)); }catch(_){ fin(); } }); },
 async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.bookExtract.busy)return;                            // 防重入：慢的时候用户会连点
       this.bookExtract.busy=true; this.bookExtract.prog='正在准备正文…';

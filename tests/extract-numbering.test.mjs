@@ -181,7 +181,9 @@ describe('抽题按钮的忙碌态（原来只在导入时置位，抽题阶段�
     return Object.assign(Object.create(M), {
       token: 't', bookExtract: { busy: false, prog: '', done: 0, total: 0 },
       extractPreview: {}, flash() {}, matMissingCount: () => 0,
-      _yieldToPaint: () => Promise.resolve(),
+      // 注意：这里**不要**桩 _yieldToPaint。
+      // 原来桩了它，结果 v174 误删真实定义时测试照样全绿，线上却一点就炸。
+      // 走 Object.create(M) 继承真实实现（Node 里没有 rAF，会走 setTimeout 兜底）。
       currentBook: { title: 'b', subject: 'x', pages: [{ page: 1, content_md: '1. 求下列极限.\n\n解 略.' }] },
       currentPageMat: { page: 1, subject: 'x', content_md: '1. 求下列极限.\n\n解 略.', title: 'p1' },
       async ensureBookContent() { await new Promise((r) => setTimeout(r, 5)); },
