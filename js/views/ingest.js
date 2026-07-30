@@ -325,23 +325,51 @@ _extractWholeBook(book){
         const key=String(q.stem||'').slice(0,40);
         const at=key? joined.indexOf(key,cur) : -1;
         if(at>=0){ cur=at; q.page=pageAt(at); }
-        this._stripDataImages(q);
       }
       return qs; },
-// 内嵌的 base64 图片必须在入库前剥掉：线上实测只有 6% 的题带图，却占了 66% 的入库体积
-// （最长题干 35308 字，剥图后 2468）。图还留在 Books 原文里，这里只保留一个占位。
-_stripDataImages(q){ const cut=(t)=>String(t||'')
-        .replace(/!\[[^\]]*\]\(\s*data:[^)]*\)/gi,'［图］')
-        .replace(/<img[^>]*\bsrc\s*=\s*["']?\s*data:[^>]*>/gi,'［图］')
-        .replace(/<figure[^>]*>\s*［图］\s*<\/figure>/gi,'［图］')
-        .replace(/(［图］\s*){2,}/g,'［图］');
-      q.stem=cut(q.stem); if(q.analysis)q.analysis=cut(q.analysis);
-      if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:cut(o.text)}));
-      if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?cut(a):a);
-      return q; },
-// 让浏览器有机会把 spinner 画出来再进同步解析。
-// 只 await 一个微任务是不够的——渲染发生在下一帧，所以要等两个 rAF。
-_yieldToPaint(){ return new Promise(r=>{ try{ requestAnimationFrame(()=>requestAnimationFrame(()=>r())); }catch(_){ setTimeout(r,0); } }); },
+// 内嵌的 base64 图片转存到 R2（复用现成的 /api/qimg），题干里换成短链。
+// 之前这里是直接剥成「［图］」占位来省入库体积——那是错的：
+// 「对图 1-9 所示的函数 y=f(x)，下列陈述中哪些是对的」这类题，离开插图根本没法做。
+// 转存同样能省体积（一条短链 ~40 字节 vs 几百 KB base64），而且图还在。
+_collectDataImages(q){ const out=[];
+      const scan=(t)=>{ const s=String(t||''); const re=/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g; let m; while((m=re.exec(s)))out.push(m[0]); };
+      scan(q&&q.stem); scan(q&&q.analysis);
+      if(q&&Array.isArray(q.options))for(const o of q.options)scan(o&&o.text);
+      if(q&&Array.isArray(q.answer))for(const a of q.answer)if(typeof a==='string')scan(a);
+      return out; },
+_dataUrlToBlob(u){ const m=/^data:([^;,]+);base64,([\s\S]*)$/.exec(String(u||'')); if(!m)return null;
+      try{ const bin=atob(m[2].replace(/\s/g,'')); const buf=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)buf[i]=bin.charCodeAt(i);
+        return new Blob([buf],{type:m[1]}); }catch(_){ return null; } },
+// 小图留在题干里（省一次往返），大图传 R2。传不上去就保留原样——宁可胖，不可丢图。
+async _hoistImages(arr){
+      const INLINE_MAX=32*1024;
+      const seen=new Set();
+      for(const q of (arr||[]))for(const u of this._collectDataImages(q))seen.add(u);
+      const stat={ total:seen.size, uploaded:0, inlined:0, failed:0 };
+      if(!seen.size)return stat;
+      const map=new Map(); let i=0;
+      for(const u of seen){ i++;
+        this.bookExtract.prog='正在转存插图 '+i+' / '+seen.size+'…';
+        if(u.length<=INLINE_MAX){ stat.inlined++; continue; }
+        const blob=this._dataUrlToBlob(u);
+        if(!blob){ stat.failed++; continue; }
+        try{
+          const ext=(blob.type.split('/')[1]||'png').replace('jpeg','jpg');
+          const fd=new FormData(); fd.append('file', blob, 'fig.'+ext);
+          const res=await fetch('/api/qimg',{method:'POST',headers:{authorization:'Bearer '+this.token},body:fd});
+          const d=await res.json().catch(()=>({}));
+          if(!res.ok||!d.url)throw new Error(d.error||('HTTP '+res.status));
+          map.set(u,d.url); stat.uploaded++;
+        }catch(_){ stat.failed++; }        // 保留内嵌，图不能丢
+      }
+      if(map.size){
+        const swap=(t)=>{ let s=String(t||''); for(const [k,v] of map)s=s.split(k).join(v); return s; };
+        for(const q of arr){ q.stem=swap(q.stem); if(q.analysis)q.analysis=swap(q.analysis);
+          if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:swap(o.text)}));
+          if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
+      }
+      return stat; },
 async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.bookExtract.busy)return;                            // 防重入：慢的时候用户会连点
       this.bookExtract.busy=true; this.bookExtract.prog='正在准备正文…';
@@ -351,8 +379,10 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写�
         const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; }
         if(this._looksLikeTocPage(m.content_md)){ this.flash('这一页是书本目录，不是习题页（目录行会被误判成题目，已跳过）',true); return; }
         this.bookExtract.prog='正在解析本页…'; await this._yieldToPaint();
-        const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page}).map(q=>this._stripDataImages(q));
+        const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
         if(!arr.length){ this.flash('这一页没解析出题目（可能不是习题页，或编号格式特殊，可改用 AI 抽取）',true); return; }
+        const ist=await this._hoistImages(arr);
+        if(ist.failed)this.flash(ist.failed+' 张插图没能转存到 R2（已保留内嵌，可能偏大）',true);
         this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src);
       } finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
 async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
@@ -376,6 +406,8 @@ async _localExtractBookInner(){
       // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目
       const noAns=all.filter(q=>!(q.answer&&q.answer.length)).length;
       if(all.length>800 && !confirm('整本解析出 '+all.length+' 题，其中 '+noAns+' 题没抽到答案。\n\n题量较大，规则抽取可能把页眉/目录行误判成题目，建议在预览里筛一遍再导入（可用「勾选/取消无答案的题」快速排除）。\n\n继续打开预览？'))return;
+      const ist=await this._hoistImages(all);
+      if(ist.failed)this.flash(ist.failed+' 张插图没能转存到 R2（已保留内嵌，可能偏大）',true);
       const tocNote=this.extractSkippedToc? '（已跳过 '+this.extractSkippedToc+' 页目录）':'';
       this._openPreview(all, '《'+b.title+'》整本'+tocNote+'（预览）', b.subject, b.title); },
 async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }

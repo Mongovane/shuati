@@ -125,39 +125,76 @@ describe('批内去重仍然有效（原有能力不回退）', () => {
   });
 });
 
-describe('_stripDataImages：入库前剥掉内嵌 base64 图（线上占 66% 体积）', () => {
-  it('markdown 图与 <img> 都换成占位，正文其余部分不动', () => {
-    const c = ctx();
-    const big = 'data:image/png;base64,' + 'A'.repeat(5000);
-    const q = M._stripDataImages.call(c, {
-      stem: '对图 1-9 所示的函数 $y=f(x)$\n\n<figure class="fig"><img src="' + big + '"></figure>\n\n下列陈述哪些对？',
-      analysis: '解：见 ![图](' + big + ') 所示',
+describe('插图转存到 R2（原来是剥成「［图］」，把图题弄成了没法做的题）', () => {
+  const bigData = 'data:image/png;base64,' + 'A'.repeat(60000);
+  const smallData = 'data:image/png;base64,' + 'B'.repeat(400);
+
+  function ctx2(uploader) {
+    const c = Object.assign(Object.create(M), {
+      token: 't', bookExtract: { busy: false, prog: '' }, flash() {},
     });
-    expect(q.stem).not.toContain('base64');
-    expect(q.stem).toContain('对图 1-9 所示的函数 $y=f(x)$');
-    expect(q.stem).toContain('下列陈述哪些对？');
-    expect(q.stem).toContain('［图］');
-    expect(q.analysis).toContain('［图］');
-    expect(q.stem.length).toBeLessThan(120);
+    global.FormData = class { constructor(){ this.d={}; } append(k,v,n){ this.d[k]={v,n}; } };
+    global.Blob = class { constructor(parts, o){ this.parts=parts; this.type=(o&&o.type)||''; this.size=(parts[0]&&parts[0].length)||0; } };
+    global.atob = (b) => b;                       // 测试里不关心真实解码
+    global.fetch = uploader;
+    return c;
+  }
+
+  it('大图上传 R2 并把 data URL 换成短链，小图留在题干里', async () => {
+    let calls = 0;
+    const c = ctx2(async () => { calls++; return { ok: true, json: async () => ({ ok: true, url: '/api/qimg?k=qimg/abc.png' }) }; });
+    const qs = [{ stem: '对图 1-9 所示的函数\n\n<figure><img src="' + bigData + '"></figure>\n\n下列哪些对？', analysis: '解 见 ![](' + smallData + ')' }];
+    const stat = await M._hoistImages.call(c, qs);
+    expect(calls).toBe(1);                        // 只有大图上传
+    expect(stat).toMatchObject({ total: 2, uploaded: 1, inlined: 1, failed: 0 });
+    expect(qs[0].stem).toContain('/api/qimg?k=qimg/abc.png');
+    expect(qs[0].stem).not.toContain('base64,AAA');
+    expect(qs[0].stem).toContain('对图 1-9 所示的函数');   // 题干正文没被动
+    expect(qs[0].analysis).toContain(smallData);   // 小图原样保留
   });
 
-  it('连续多张图折叠成一个占位，且不误伤外链图片', () => {
-    const c = ctx();
-    const d = 'data:image/jpeg;base64,AAAA';
-    const q = M._stripDataImages.call(c, { stem: '![a](' + d + ')![b](' + d + ')![c](' + d + ')' });
-    expect((q.stem.match(/［图］/g) || []).length).toBe(1);
-    const q2 = M._stripDataImages.call(c, { stem: '![图](https://r2.example.com/x.png)' });
-    expect(q2.stem).toBe('![图](https://r2.example.com/x.png)');   // R2 外链要留着
+  it('同一张图在多道题里只上传一次，替换却要全覆盖', async () => {
+    let calls = 0;
+    const c = ctx2(async () => { calls++; return { ok: true, json: async () => ({ ok: true, url: '/api/qimg?k=qimg/one.png' }) }; });
+    const qs = [{ stem: 'A ![](' + bigData + ')' }, { stem: 'B ![](' + bigData + ')' }, { stem: 'C 无图' }];
+    const stat = await M._hoistImages.call(c, qs);
+    expect(calls).toBe(1);
+    expect(stat.uploaded).toBe(1);
+    expect(qs[0].stem).toContain('qimg/one.png');
+    expect(qs[1].stem).toContain('qimg/one.png');
   });
 
-  it('选项与答案里的图也一起剥', () => {
-    const c = ctx();
-    const d = 'data:image/png;base64,' + 'B'.repeat(2000);
-    const q = M._stripDataImages.call(c, {
-      stem: 'x', options: [{ key: 'A', text: '看图 ![](' + d + ')' }], answer: ['选 ![](' + d + ')'],
-    });
-    expect(q.options[0].text).toBe('看图 ［图］');
-    expect(q.answer[0]).toBe('选 ［图］');
+  it('上传失败时保留内嵌——宁可胖也不能把图丢了', async () => {
+    const c = ctx2(async () => ({ ok: false, json: async () => ({ error: '未绑定 R2' }) }));
+    const qs = [{ stem: '看图 ![](' + bigData + ')' }];
+    const stat = await M._hoistImages.call(c, qs);
+    expect(stat.failed).toBe(1);
+    expect(stat.uploaded).toBe(0);
+    expect(qs[0].stem).toContain('base64');       // 图还在
+    expect(qs[0].stem).not.toContain('［图］');
+  });
+
+  it('选项与答案里的图也一起转存', async () => {
+    const c = ctx2(async () => ({ ok: true, json: async () => ({ ok: true, url: '/api/qimg?k=qimg/o.png' }) }));
+    const qs = [{ stem: 'x', options: [{ key: 'A', text: '看 ![](' + bigData + ')' }], answer: ['选 ![](' + bigData + ')'] }];
+    await M._hoistImages.call(c, qs);
+    expect(qs[0].options[0].text).toContain('qimg/o.png');
+    expect(qs[0].answer[0]).toContain('qimg/o.png');
+  });
+
+  it('没有内嵌图时不发任何请求', async () => {
+    let calls = 0;
+    const c = ctx2(async () => { calls++; return { ok: true, json: async () => ({}) }; });
+    const stat = await M._hoistImages.call(c, [{ stem: '求下列极限' }, { stem: '![](https://r2/x.png)' }]);
+    expect(calls).toBe(0);
+    expect(stat.total).toBe(0);
+  });
+
+  it('外链图片不动（不会被当成 data URL）', async () => {
+    const c = ctx2(async () => ({ ok: true, json: async () => ({ ok: true, url: '/api/qimg?k=q.png' }) }));
+    const qs = [{ stem: '![图](https://r2.example.com/x.png)' }];
+    await M._hoistImages.call(c, qs);
+    expect(qs[0].stem).toBe('![图](https://r2.example.com/x.png)');
   });
 });
 
@@ -190,7 +227,7 @@ describe('_extractWholeBook：整本拼接解析，修跨页被切断的题', ()
     expect(second.page).toBe(49);                       // 题干起点所在页，不是结尾那页
   });
 
-  it('只调用 mdToQuestions 一次，且顺带剥掉了图', () => {
+  it('只调用 mdToQuestions 一次（图交给 _hoistImages，这里不动）', () => {
     const c = ctx();
     let calls = 0;
     const real = M.mdToQuestions;
@@ -199,7 +236,6 @@ describe('_extractWholeBook：整本拼接解析，修跨页被切断的题', ()
     const qs = M._extractWholeBook.call(c, { title: 't', subject: 'math', pages: [{ page: 1, content_md: '1. 看图 ![](' + d + ') 求值.\n\n解 略.' }] });
     expect(calls).toBe(1);
     expect(qs.length).toBeGreaterThan(0);
-    expect(qs.some((q) => /base64/.test(q.stem))).toBe(false);
   });
 
   it('空书不炸', () => {

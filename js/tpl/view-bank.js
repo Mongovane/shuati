@@ -28,7 +28,9 @@ const TPL_VIEW_BANK = `
           <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
         </div>
         <div class="tb-right">
-          <button class="btn subtle" v-if="bank.items.length" :disabled="busyOps.bankAutoClassify" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
+          <button class="btn subtle" v-if="bank.items.length" :disabled="bankAiFill.busy" @click="bankAiFillAnswers" title="给本页（或勾选中）缺答案的题用 AI 补参考答案，结果标为待审草稿"><span v-if="bankAiFill.busy" class="spin"></span><icon name="wand-sparkles" :size="15" /> AI 补答案</button>
+              <span v-if="bankAiFill.busy && bankAiFill.prog" class="muted" style="font-size:12px">{{ bankAiFill.prog }}</span>
+              <button class="btn subtle" v-if="bank.items.length" :disabled="busyOps.bankAutoClassify" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
           <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
           <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似或完全相同的重复题，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 查重</button>
         </div>

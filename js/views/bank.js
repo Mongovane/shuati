@@ -29,6 +29,46 @@ async bankSetSubject(q,subj){ if(!q||!subj||subj===q.subject)return; try{ await 
 async bankDelete(q){ if(!q)return; if(!confirm('确定删除这道题？此操作不可恢复。'))return; try{ await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids:[q.id]})}); const i=this.bank.items.findIndex(x=>x.id===q.id); if(i>=0)this.bank.items.splice(i,1); const si=this.bank.sel.indexOf(q.id); if(si>=0)this.bank.sel.splice(si,1); this.bank.total=Math.max(0,this.bank.total-1); this.flash('已删除'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
 async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } if(!confirm('确定删除选中的 '+ids.length+' 道题？此操作不可恢复。'))return; try{ const d=await this.api('/api/questions',{method:'DELETE',body:JSON.stringify({ids})}); this.bank.items=this.bank.items.filter(q=>!ids.includes(q.id)); this.bank.total=Math.max(0,this.bank.total-(d.deleted||ids.length)); this.bank.sel=[]; this.flash('已删除 '+(d.deleted||ids.length)+' 题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
 async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const ch=prompt('把选中 '+ids.length+' 题的章节改为（留空清除章节）：'); if(ch===null)return; const chapter=ch.trim(); try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,chapter})}); this.bank.items.forEach(q=>{ if(ids.includes(q.id))q.chapter=chapter; }); this.flash('已把 '+(d.updated||ids.length)+' 题章节改为「'+(chapter||'（无）')+'」'); this.bank.sel=[]; this.loadMeta(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改章节失败：'+e.message,true); } },
+// AI 补答案：给「抽出来但没答案」的题批量生成参考答案。
+// 落库时一律标 status='draft'，走仓库里已有的「待审」流程人工过一遍再发布 ——
+// AI 补的数学推导必须当草稿看，直接当正确答案用会把错的东西背进去。
+async bankAiFillAnswers(){
+      if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      if(this.offline){ this.flash('离线状态下无法调用 AI',true); return; }
+      const sel=new Set(this.bank.sel||[]);
+      const pool=(this.bank.items||[]).filter(q=>(sel.size?sel.has(q.id):true))
+        .filter(q=>!(Array.isArray(q.answer)&&q.answer.length));
+      if(!pool.length){ this.flash(sel.size?'勾选的题都已经有答案了':'本页没有缺答案的题',true); return; }
+      if(!confirm('给 '+pool.length+' 道缺答案的题用 AI 补参考答案？\n\n· 会消耗 AI 额度（每 6 题一次请求）\n· 补出来的一律标成「待审」草稿，需要你在题库里筛出来逐条过一遍再发布\n· 依赖插图的题 AI 会跳过，不会硬编\n\n继续？'))return;
+      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0 };
+      try{
+        const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
+        for(let i=0;i<pool.length;i+=CH){
+          const part=pool.slice(i,i+CH);
+          this.bankAiFill.prog='正在生成 '+Math.min(i+CH,pool.length)+' / '+pool.length+'…';
+          let d=null;
+          try{
+            d=await this.api('/api/answerfill',{method:'POST',body:JSON.stringify(Object.assign({
+              questions: part.map(q=>({ id:q.id, type:q.type, stem:q.stem, options:q.options, passage:q.passage, subject:q.subject })),
+            }, this.aiOv()))});
+          }catch(e){ if(e.message==='unauth')throw e; this.bankAiFill.failed+=part.length; continue; }
+          for(const it of (d.items||[])){
+            if(!it || !Array.isArray(it.answer) || !it.answer.length){ this.bankAiFill.skipped++; continue; }
+            try{
+              await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({
+                ids:[it.id], answer:it.answer, analysis:it.analysis||'', status:'draft' })});
+              const q=(this.bank.items||[]).find(x=>x.id===it.id);
+              if(q){ q.answer=it.answer; if(it.analysis)q.analysis=it.analysis; q.status='draft'; }
+              this.bankAiFill.filled++;
+            }catch(e){ if(e.message==='unauth')throw e; this.bankAiFill.failed++; }
+          }
+          this.bankAiFill.skipped+=((d&&d.missing)||[]).length;
+        }
+        const f=this.bankAiFill;
+        this.flash('已补 '+f.filled+' 题'+(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')+(f.failed?('；失败 '+f.failed+' 题'):'')+'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
+        this.bankDirty=true; this.statsDirty=true;
+      }catch(e){ if(e.message!=='unauth')this.flash('AI 补答案失败：'+e.message,true); }
+      this.bankAiFill.busy=false; this.bankAiFill.prog=''; },
 async bankBatchTag(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const t=prompt('给选中 '+ids.length+' 题添加标签（逗号分隔；会与原标签合并去重）：'); if(t===null)return; const add=t.split(/[,，、]/).map(s=>s.trim()).filter(Boolean); if(!add.length){ this.flash('未输入标签',true); return; } try{
         // 合并交给服务端（addTags）：一个请求搞定任意条数，
         // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。

@@ -12,7 +12,7 @@ const MIXINS = [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin,
 // 加了守卫会把正常的重新开局静默吞掉，所以不在名单里（它本身只是 GET，重入无害）。
 const GUARDED_OPS = [
   'dropFromReview', 'deleteCurrentQuestion',
-  'bankDelete', 'bankBatchDelete', 'bankBatchSubject', 'bankBatchChapter', 'bankBatchTag', 'bankAutoClassify',
+  'bankDelete', 'bankBatchDelete', 'bankBatchSubject', 'bankBatchChapter', 'bankBatchTag', 'bankAutoClassify', 'bankAiFillAnswers',
   'favUnstarOne', 'favUnstarSel',
   'deleteBook', 'deleteMock', 'subjSave', 'subjDelete', 'loadSample',
   'bankExportSel', 'favExportSel', 'resumeMock', 'reviewMock',
@@ -76,6 +76,7 @@ const App={
     mineruTokenBad:false,
     bookExtract:{ busy:false, prog:'', done:0, total:0 },
     busyOps:{},   // 防重入标志，键是方法名；模板可用 :disabled="busyOps.xxx" 拿到反馈
+    bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0 },   // AI 补答案进度
     extractSkippedToc:0,
     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'' },
