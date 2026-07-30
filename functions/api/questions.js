@@ -1,4 +1,4 @@
-import { json, checkAuth, rowToQuestion, ensureSrsSchema, ensureFts, ftsQuote } from './_utils.js';
+import { json, checkAuth, rowToQuestion, ensureSrsSchema, ensureFts, ftsQuote, batchChunked } from './_utils.js';
 
 export async function onRequestGet({ request, env }) {
   const auth = await checkAuth(request, env);
@@ -173,6 +173,48 @@ export async function onRequestPatch({ request, env }) {
       if (k === 'difficulty') vals.push(Number(body[k]) || 3);
       else if (JSON_FIELDS.has(k)) vals.push(JSON.stringify(Array.isArray(body[k]) ? body[k] : (body[k] === '' ? [] : [body[k]])));
       else vals.push(String(body[k]));
+    }
+  }
+  // —— 标签增量改：addTags / removeTags ——
+  // 前端原来的做法是「读本页 items 里的 tags → 在前端合并 → 每题发一个 PATCH」，
+  // 两个毛病：(a) 勾 50 题就是 50 个请求；(b) 跨页勾选的 id 不在 items 里会被静默跳过，
+  // 但提示照样说「已给 N 题加标签」。改成服务端读改写，任意条数都是常数次 D1 调用。
+  const normTags = (v) => (Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]))
+    .map((x) => String(x).trim().slice(0, 40)).filter(Boolean).slice(0, 50);
+  const addTags = normTags(body.addTags);
+  const delTags = normTags(body.removeTags);
+  if (addTags.length || delTags.length) {
+    if (body.tags !== undefined && body.tags !== null) {
+      return json({ error: 'tags 与 addTags/removeTags 不能同时使用' }, 400);
+    }
+    try {
+      // id IN (...) 的占位符要分块，否则条数一多就撞 D1 的变量上限
+      const CH = 80;
+      const rows = [];
+      for (let i = 0; i < ids.length; i += CH) {
+        const part = ids.slice(i, i + CH);
+        const rs = await env.DB.prepare(
+          `SELECT id, tags FROM questions WHERE id IN (${part.map(() => '?').join(',')})`
+        ).bind(...part).all();
+        for (const r of (rs && rs.results) || []) rows.push(r);
+      }
+      const del = new Set(delTags);
+      const stmts = [];
+      for (const r of rows) {
+        let cur = [];
+        try { const p = JSON.parse(r.tags); if (Array.isArray(p)) cur = p.map((x) => String(x)); } catch { /* 脏数据当空数组 */ }
+        const merged = [...new Set([...cur, ...addTags])].filter((t) => !del.has(t)).slice(0, 50);
+        const same = merged.length === cur.length && merged.every((t, i) => t === cur[i]);
+        if (same) continue;                                  // 没变化就不写，省 D1 写次数
+        stmts.push(env.DB.prepare(`UPDATE questions SET tags = ? WHERE id = ?`).bind(JSON.stringify(merged), r.id));
+      }
+      if (stmts.length) await batchChunked(env, stmts, 80);
+      if (!sets.length) {
+        // 找不到的 id 如实报出来，不再假装全部成功
+        return json({ ok: true, updated: stmts.length, matched: rows.length, missing: ids.length - rows.length });
+      }
+    } catch (e) {
+      return json({ error: '更新标签失败：' + e.message }, 500);
     }
   }
   if (!sets.length) return json({ error: '没有可更新的字段' }, 400);

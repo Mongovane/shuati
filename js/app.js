@@ -2,8 +2,45 @@ const { createApp } = Vue;
 // 队列缓存：放在模块级（不在 Vue 实例上），绕过 Vue 3 代理对动态属性的限制
 let qCache = {};
 let scrollCache = {};  // 各视图切走时的滚动位置，切回来恢复
+const MIXINS = [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin, IngestMixin, MineruMixin, BooksMixin, PdfToolMixin, SavedMixin, SettingsMixin];
+
+// —— 通用防重入 ——
+// 这些操作都写库（批量改/删、取消收藏、AI 归类）或触发下载，而按钮上没有 :disabled，
+// 慢的时候用户会连点：轻则重复下载、重复扣 AI 额度，重则第二次点击落在已经变化的状态上
+// （例如删题：第一次 await 期间队列还没 splice，第二次会把相邻的题一起从队列里抹掉）。
+// 只列「纯由点击触发」的方法——startSession 有 onFilter 等 4 处程序化调用，
+// 加了守卫会把正常的重新开局静默吞掉，所以不在名单里（它本身只是 GET，重入无害）。
+const GUARDED_OPS = [
+  'dropFromReview', 'deleteCurrentQuestion',
+  'bankDelete', 'bankBatchDelete', 'bankBatchSubject', 'bankBatchChapter', 'bankBatchTag', 'bankAutoClassify',
+  'favUnstarOne', 'favUnstarSel',
+  'deleteBook', 'deleteMock', 'subjSave', 'subjDelete', 'loadSample',
+  'bankExportSel', 'favExportSel', 'resumeMock', 'reviewMock',
+];
+// 放在 mixins 末尾：Vue 按顺序合并 methods，后面的同名方法覆盖前面的，
+// 于是这里包装过的版本生效，而原实现通过闭包保留。
+const GuardMixin = { methods: (function(){
+  const out = {};
+  for(const name of GUARDED_OPS){
+    let orig = null;
+    for(const mx of MIXINS){ if(mx.methods && mx.methods[name])orig = mx.methods[name]; }
+    if(!orig)continue;                       // 名字写错就跳过；tests/reentrancy 会红
+    out[name] = function(...args){
+      if(this.busyOps[name])return;          // 正在跑，忽略这次点击
+      this.busyOps[name] = true;
+      const done = () => { this.busyOps[name] = false; };
+      let r;
+      try{ r = orig.apply(this, args); }
+      catch(e){ done(); throw e; }
+      if(r && typeof r.then === 'function')return r.then((v)=>{ done(); return v; }, (e)=>{ done(); throw e; });
+      done(); return r;
+    };
+  }
+  return out;
+})() };
+
 const App={
-  mixins: [ApiMixin, ReaderMixin, PracticeMixin, BankMixin, MockStatsMixin, IngestMixin, MineruMixin, BooksMixin, PdfToolMixin, SavedMixin, SettingsMixin],
+  mixins: [...MIXINS, GuardMixin],
   components:{ QuestionCard, RichText },
   data(){ return {
     token: localStorage.getItem('zb_token')||'',
@@ -38,6 +75,8 @@ const App={
     mineruUsageView:{ date:'', pages:0, files:0 },
     mineruTokenBad:false,
     bookExtract:{ busy:false, prog:'', done:0, total:0 },
+    busyOps:{},   // 防重入标志，键是方法名；模板可用 :disabled="busyOps.xxx" 拿到反馈
+    extractSkippedToc:0,
     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'' },
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },

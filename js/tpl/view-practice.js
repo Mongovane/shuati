@@ -49,10 +49,10 @@ const TPL_VIEW_PRACTICE = `
             <label class="bank-check"><input type="checkbox" :checked="fav.items.length && fav.items.every(q=>fav.sel.includes(q.id))" @change="favAllOnPage" /> 全选本页</label>
             <span class="muted">已选 {{ fav.sel.length }} · 共 {{ fav.total }} 收藏(已加载 {{ fav.items.length }})</span>
             <button class="btn subtle" @click="favPractice" title="把收藏的题作为一轮练习逐题刷">▶ 开始刷这些收藏</button>
-            <button class="btn subtle" v-if="!fav.sel.length" @click="favExportSel" title="导出当前收藏为 JSON"><icon name="download" :size="15" /> 导出本页</button>
+            <button class="btn subtle" v-if="!fav.sel.length" :disabled="busyOps.favExportSel" @click="favExportSel" title="导出当前收藏为 JSON"><icon name="download" :size="15" /> 导出本页</button>
             <template v-if="fav.sel.length">
-              <button class="btn subtle" @click="favExportSel" title="导出选中为 JSON"><icon name="download" :size="15" /> 导出 ({{ fav.sel.length }})</button>
-              <button class="bk-del" @click="favUnstarSel">取消收藏 ({{ fav.sel.length }})</button>
+              <button class="btn subtle" :disabled="busyOps.favExportSel" @click="favExportSel" title="导出选中为 JSON"><icon name="download" :size="15" /> 导出 ({{ fav.sel.length }})</button>
+              <button class="bk-del" :disabled="busyOps.favUnstarSel" @click="favUnstarSel"><span v-if="busyOps.favUnstarSel" class="spin"></span>取消收藏 ({{ fav.sel.length }})</button>
             </template>
           </div>
           <div v-for="q in fav.items" :key="q.id" class="bank-row" :class="{sel:fav.sel.includes(q.id)}">

@@ -331,3 +331,66 @@ describe('ensureBookContent 必须「等在途」而不是提前返回（线上 
     expect(M.matMissingCount.call(c)).toBe(0);            // 空串是「已载入但这页没正文」，不算缺
   });
 });
+
+describe('正文拉取并发（串行会让 278 页排成 14 个来回、抽题前干等十几秒）', () => {
+  const load = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+  const Books = new Function(load('js/views/books.js') + ';return BooksMixin;')();
+  const M = Books.methods;
+
+  it('同时最多 3 路在飞，且每页只拉一次', async () => {
+    const pages = Array.from({ length: 200 }, (_, i) => ({ id: 'm' + i, page: i + 1 }));   // 10 个分块
+    let inFlight = 0, peak = 0; const got = [];
+    const c = Object.assign(Object.create(M), {
+      token: 't', materials: { items: pages, loading: false }, loadProgMsg: '', flash() {},
+      matProg: { cur: 0, total: 0, pct: 0, unit: '段' },
+      currentBook: { title: '书A', pages },
+      async api(p) {
+        inFlight++; peak = Math.max(peak, inFlight);
+        const ids = decodeURIComponent((p.match(/ids=([^&]+)/) || [])[1] || '').split(',');
+        got.push(...ids);
+        await new Promise((r) => setTimeout(r, 3));
+        inFlight--;
+        return { items: ids.map((id) => ({ id, content_md: 'c' + id })) };
+      },
+    });
+    await M.ensureBookContent.call(c);
+    expect(peak).toBe(3);
+    expect(peak).toBeLessThanOrEqual(3);
+    expect(got.length).toBe(200);
+    expect(new Set(got).size).toBe(200);
+    expect(pages.filter((p) => p.content_md === undefined).length).toBe(0);
+  });
+
+  it('分块数少于并发数时不会开多余的 worker', async () => {
+    const pages = Array.from({ length: 15 }, (_, i) => ({ id: 'm' + i, page: i + 1 }));    // 1 个分块
+    let peak = 0, inFlight = 0;
+    const c = Object.assign(Object.create(M), {
+      token: 't', materials: { items: pages, loading: false }, loadProgMsg: '', flash() {},
+      matProg: { cur: 0, total: 0, pct: 0, unit: '段' },
+      currentBook: { title: '书A', pages },
+      async api(p) { inFlight++; peak = Math.max(peak, inFlight);
+        const ids = decodeURIComponent((p.match(/ids=([^&]+)/) || [])[1] || '').split(',');
+        await new Promise((r) => setTimeout(r, 1)); inFlight--;
+        return { items: ids.map((id) => ({ id, content_md: 'c' + id })) }; },
+    });
+    await M.ensureBookContent.call(c);
+    expect(peak).toBe(1);
+  });
+
+  it('进度条按已完成页数推进，收尾是 100%', async () => {
+    const pages = Array.from({ length: 60 }, (_, i) => ({ id: 'm' + i, page: i + 1 }));
+    const seen = [];
+    const c = Object.assign(Object.create(M), {
+      token: 't', materials: { items: pages, loading: false }, loadProgMsg: '', flash() {},
+      matProg: { cur: 0, total: 0, pct: 0, unit: '段' },
+      currentBook: { title: '书A', pages },
+      async api(p) { const ids = decodeURIComponent((p.match(/ids=([^&]+)/) || [])[1] || '').split(',');
+        return { items: ids.map((id) => ({ id, content_md: 'c' + id })) }; },
+    });
+    const realSet = M._setProg;
+    c._setProg = function (cur, total, unit) { realSet.call(this, cur, total, unit); seen.push(this.matProg.pct); };
+    await M.ensureBookContent.call(c);
+    expect(Math.max(...seen)).toBe(100);
+    expect(seen.filter((p) => p > 100).length).toBe(0);
+  });
+});

@@ -105,7 +105,7 @@ const TPL_VIEW_INGEST = `
         <div class="hint">已有结构化题目用这里，零 AI 成本；格式见 README。</div>
         <div class="row" style="margin-top:12px">
           <button class="btn" :disabled="ingest.busy" @click="doIngest"><span v-if="ingest.busy" class="spin"></span>导入</button>
-          <button class="btn subtle" @click="loadSample">加载示例题集</button>
+          <button class="btn subtle" :disabled="busyOps.loadSample" @click="loadSample"><span v-if="busyOps.loadSample" class="spin"></span>加载示例题集</button>
         </div>
       </template>
       <template v-else-if="ingest.tab==='pdf'">

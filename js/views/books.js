@@ -88,18 +88,23 @@ async _fillMatContent(ids,title){
 async _runMatFill(ids,title){
       this.materials.loading=true; this._setProg(0, ids.length, '页');
       try{
-        const CH=20; let done=0;   // 单页正文可能内嵌 base64 图（几百 KB），一次别要太多
-        for(let i=0;i<ids.length;i+=CH){
-          const part=ids.slice(i,i+CH);
-          this.loadProgMsg='正在载入《'+title+'》';
+        // 单页正文可能内嵌 base64 图（几百 KB），一批别要太多；
+        // 但串行会让 278 页排成 14 个来回、整本抽题前要干等十几秒——所以开 3 路并发。
+        const CH=20, CONC=3; const chunks=[];
+        for(let i=0;i<ids.length;i+=CH)chunks.push(ids.slice(i,i+CH));
+        let done=0, next=0, offline=false;
+        this.loadProgMsg='正在载入《'+title+'》';
+        const worker=async()=>{ while(true){ if(offline)return; const k=next++; if(k>=chunks.length)return;
+          const part=chunks[k];
           const d=await this.api('/api/materials?ids='+encodeURIComponent(part.join(',')));
           // 合并时才查 items：中途若整体替换过 materials.items，早先的快照会变成孤儿对象，
           // 正文写进去等于白下载（线上「已载入正文 0」就是这么来的）。
           const byId=new Map(); for(const m of (this.materials.items||[])){ if(m&&m.id)byId.set(m.id,m); }
           for(const r of (d.items||[])){ const m=byId.get(r.id); if(m)Object.assign(m,r); }
           done+=part.length; this._setProg(done, ids.length, '页');
-          if(d._offline)break;               // 离线合成一次就给全量，已经都填上了
-        }
+          if(d._offline)offline=true;        // 离线合成一次就给全量，已经都填上了
+        } };
+        await Promise.all(Array.from({length:Math.min(CONC,chunks.length)},()=>worker()));
         this.loadProgMsg='';
       }catch(e){ if(e.message!=='unauth')this.flash('载入《'+title+'》内容失败：'+e.message,true); this.loadProgMsg=''; }
       this._clearProg(); this.materials.loading=false; },

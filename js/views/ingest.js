@@ -191,13 +191,85 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
       let chapter=ctx.chapter||''; const items=[]; let cur=null;
       const xiti=/(习题|练习|复习题|总习题|自测题|思考题|例题)\s*[0-9０-９]/; const zhang=/第\s*[0-9０-９一二三四五六七八九十百]+\s*[章节]/;
       const headRe=/^#{1,6}\s+(.+?)\s*#*$/; const boldRe=/^\s*\*\*(.+?)\*\*\s*$/; const numRe=/^\s*\*{0,2}\s*([0-9０-９]{1,3})\s*[.．、)）]\s*(.+)$/;
-      const flush=()=>{ if(cur&&cur.lines.join('').trim())items.push(cur); cur=null; };
+      // 括号题号：中文教材的选择/填空题普遍写成「（1）…」「(1)…」，数字被括号包住，numRe 匹配不到。
+      // 必须左右括号都在才认，否则会把正文里任何以数字开头的行都吃掉。
+      const braRe=/^\s*\*{0,2}\s*[（(]\s*([0-9０-９]{1,3})\s*[）)]\s*(.+)$/;
+      // 「习题」小节标题（不带数字的也算，如 `## 习题`）；括号题号只在习题区里才允许独立成题，
+      // 否则正文里大量的「（1）初始化…（2）比较…」算法步骤会被当成题目。
+      const xitiHead=/^(习\s*题|练\s*习|复习题|总习题|自测题|思考题)/;
+      let inEx=false, exLabel='';     // exLabel：当前小节是不是「选择/判断题」
+      const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n')))items.push(cur); cur=null; };
       for(const raw of lines){ let head=null; const h=raw.match(headRe); if(h)head=h[1]; else { const b=raw.match(boldRe); if(b)head=b[1]; }
-        if(head){ const t=head.replace(/\*\*/g,'').trim(); if(xiti.test(t)||zhang.test(t)){ chapter=t; flush(); continue; } if(h){ flush(); continue; } }
-        const nm=raw.match(numRe); if(nm){ flush(); cur={ num:nm[1], chapter, lines:[nm[2]] }; continue; }
+        if(head){ const t=head.replace(/\*\*/g,'').trim();
+          if(xitiHead.test(t)){ inEx=true; exLabel=''; } else if(zhang.test(t)){ inEx=false; exLabel=''; }
+          if(this._isChoiceLabel(t))exLabel='choice'; else if(this._isSectionLabel(t))exLabel='other';
+          if(xiti.test(t)||zhang.test(t)){ chapter=t; flush(); continue; } if(h){ flush(); continue; } }
+        const nm=raw.match(numRe); if(nm){ flush();
+          if(this._isChoiceLabel(nm[2]))exLabel='choice'; else if(this._isSectionLabel(nm[2]))exLabel='other';
+          cur={ num:nm[1], chapter, lines:[nm[2]], bra:false }; continue; }
+        const bm=raw.match(braRe);
+        // 「（1）」是独立题还是子项？
+        //  · 在习题区、且当前小节是「选择题/判断题」→ 独立题（数据结构 p25/p58）
+        //  · 已经在括号模式里 → 兄弟题，必须切开
+        //  · 其余一律当子项留在当前题里 —— 高数「1. 根据定义证明：(1)…(2)…」「填空：(1)…(2)…」
+        //    都靠这一条保持原样，不会被拆散、不会和后面的「解」失联。
+        const standalone = inEx && exLabel==='choice';
+        const sibling = !!(cur && cur.bra);
+        if(bm && (standalone || sibling)){
+          flush(); cur={ num:bm[1], chapter, lines:[bm[2]], bra:true }; continue; }
         if(cur)cur.lines.push(raw); }
       flush();
-      const out=[]; for(const it of items){ const q=this._buildQuestionFromItem(it, ctx); if(q)out.push(q); } return out; },
+      const out=[]; for(const it of items){ const q=this._buildQuestionFromItem(it, ctx); if(!q)continue;
+        if(this._isRefEntry(q.stem))continue;      // 参考书目条目，不是题
+        out.push(q); } return out; },
+// 「阅读文献 / 参考书目」条目会被 numRe 当成编号题吃进来。
+// 政治理论那本实测 64 道里 35 道（55%）是这种条目，例如
+// 「邓小平：《对起草〈…〉的意见》，《三中全会以来重要文献选编》上，中央文献出版社 2011 年版。」
+// 判定要保守：必须有书名号 + 出版社/年版这类出版信息，且剥掉书名号内的文字后不含任何设问词
+//（书名本身可能带问号，如《人的正确思想是从哪里来的？》，所以必须先剥再判）。
+_isRefEntry(t){ const raw=String(t||''); if(raw.length>240)return false;
+      if(!/《[^》]{2,}》/.test(raw))return false;
+      if(!/(出版社|年版|文献选编|重要文献|文选|译文集|全集|选集)/.test(raw))return false;
+      const bare=raw.replace(/《[^》]*》/g,'').replace(/〈[^〉]*〉/g,'');
+      if(/[？?]/.test(bare))return false;
+      if(/(是什么|如何|为什么|怎样|试述|论述|简述|谈谈|说明|阐述|分析|评价|结合|举例|比较|理解)/.test(bare))return false;
+      return true; },
+// 只有「选择题/判断题」这类小节的括号项才拆成独立题：它们每项自带选项、互不共享解答。
+// 「填空：(1)(2)(3)」不能拆——它们共用一个「解」，拆开后 N-1 项丢答案，
+// 而整段解答会全压到最后一项上，甚至把解答正文顶成题干（实测无答案率 25%→27% 且有泄漏）。
+_isChoiceLabel(t){ const s=String(t||'').replace(/[\s*#]/g,'').replace(/^[（(]?[0-9０-９一二三四五六七八九十]{1,3}[）).．、]?/,'');
+      return /^(单项选择|多项选择|不定项选择|选择|判断)题?[:：]?$/.test(s); },
+// 「选择题」「二、填空题」这类只是分节小标题，本身不是题目
+_isSectionLabel(t){ const s=String(t||'').replace(/[\s*#]/g,'').replace(/^[（(]?[0-9０-９一二三四五六七八九十]{1,3}[）).．、]?/,'');
+      return /^(单项选择|多项选择|不定项选择|选择|填空|判断|简答|名词解释|计算|证明|应用|综合|分析|论述|设计|编程|阅读程序)题?[:：]?$/.test(s); },
+// 同一行里的 A. / B. / C. / D. 选项拆出来。
+// MinerU 常把整道选择题压成一行：「…分成（）。A. 甲 B. 乙 C. 丙 D. 丁」，
+// 原来的 optRe 只认独占一行的选项，所以这类题全都退化成简答。
+_splitInlineOptions(text){ const t=String(text||''); const re=/([A-DＡ-Ｄ])\s*[.．、]\s*/g; const found=[]; let m;
+      while((m=re.exec(t))){ found.push({ key:this._fullToHalf(m[1]), at:m.index, end:m.index+m[0].length }); }
+      // 必须是 A,B,C[,D] 严格递进且至少三个，否则正文里偶然出现的「A.」会被误判
+      const want=['A','B','C','D']; const seq=[];
+      for(const f of found){ if(f.key===want[seq.length])seq.push(f); }
+      if(seq.length<3)return null;
+      const stem=t.slice(0,seq[0].at).trim(); if(!stem)return null;
+      const options=[];
+      for(let i=0;i<seq.length;i++){ const e=(i+1<seq.length)?seq[i+1].at:t.length;
+        const txt=t.slice(seq[i].end,e).trim(); if(!txt)return null; options.push({ key:seq[i].key, text:txt }); }
+      return { stem, options }; },
+// 目录页识别：这种页整页都是「章节号 标题 页码」，抽题时必须整页跳过。
+// 数据结构那本的目录（第 6/7/8 页）就被当成习题吃进了 149 道垃圾。
+// 注意它的目录用空格而非点线做 leader，所以不能只认点线。
+_looksLikeTocPage(md){ const t=String(md||''); if(!t.trim())return false;
+      if(/(^|\n)\s*#{0,6}\s*(目\s*录|contents)\s*$/im.test(t))return true;
+      const lines=t.split('\n').map(x=>x.trim()).filter(x=>x&&!/^#/.test(x)&&!/^<(figure|img)/i.test(x));
+      if(lines.length<8)return false;
+      // 两种目录行都要认，末尾必须是页码：
+      //  · tocNum：「1.2.3 标题 页码」——章节号开头，leader 可以只是空格（数据结构那本就是这样）
+      //  · tocDot：「任意标题……页码」——有点线/省略号 leader 就够，不要求行首是数字（高数那本）
+      const tocNum=/^[（(]?[0-9０-９]{1,2}(?:[.．][0-9０-９]{1,2}){0,3}[）)]?\s+\S.*?(?:[.．]{2,}|…+|\s)\s*[0-9０-９]{1,4}\s*$/;
+      const tocDot=/^\S.*?(?:[.．]{2,}|…+)\s*[0-9０-９]{1,4}\s*$/;
+      const hit=lines.filter(x=>tocNum.test(x)||tocDot.test(x)).length;
+      return hit>=8 && hit/lines.length>=0.55; },
 _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body)return null;
       // 找"解/证/解答/证明/分析/答案"边界：可在行首，也可在句末标点后（MinerU 常把题目和解答放在同一段）
       const solRe=/(^|[\n。．.；;！!？?）)\]】」])\s*[>*【「\[]?\s*(解答|证明|分析|解|证|答案|答)\s*[】」\]]?\s*[：:．.、]?\s*(?=[\s$（(\\A-Za-z\u4e00-\u9fa5\d])/;
@@ -207,6 +279,9 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
       const optRe=/^\s*[（(]?\s*([A-DＡ-Ｄ])\s*[）).．、]\s*(.+)$/; const sl=stemPart.split('\n'); const opts=[]; const keep=[];
       for(const ln of sl){ const om=ln.match(optRe); if(om){ opts.push({ key:this._fullToHalf(om[1]), text:om[2].trim() }); } else keep.push(ln); }
       let type='short_answer', options=[], answer=[], analysis='';
+      // 独占一行的选项没找到时，再试同一行内的 A./B./C./D.
+      if(opts.length<2){ const inl=this._splitInlineOptions(keep.join('\n').trim()||stemPart);
+        if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0; keep.push(inl.stem); } }
       if(opts.length>=2){ type='single_choice'; options=opts; stemPart=keep.join('\n').trim();
         const am=solPart.match(/(?:答案|正确答案|答|选|应选)\s*[是为：:]?\s*([A-DＡ-Ｄ](?:\s*[,，、和]\s*[A-DＡ-Ｄ])*)/);
         if(am){ const keys=this._fullToHalf(am[1]).split(/[,，、和\s]+/).filter(Boolean); answer=keys; if(keys.length>1)type='multiple_choice'; }
@@ -232,7 +307,11 @@ ansLines(q){ return ((q&&q.answer)||[]).join('\n'); },
 // (1)(2)(3) 子项也会被切走。拼接后题数不变（665），无答案率 34%→25%，全书解析仅 7ms。
 _extractWholeBook(book){
       const pages=book.pages||[]; const SEP='\n\n';
-      const texts=pages.map(m=>String((m&&m.content_md)||''));
+      // 目录页整页跳过（置空而不是删掉，这样偏移→页码的映射仍然对齐）
+      let skipped=0;
+      const texts=pages.map(m=>{ const t=String((m&&m.content_md)||'');
+        if(this._looksLikeTocPage(t)){ skipped++; return ''; } return t; });
+      this.extractSkippedToc=skipped;
       const starts=[]; let acc=0;
       for(let i=0;i<texts.length;i++){ starts.push(acc); acc+=texts[i].length+SEP.length; }
       const joined=texts.join(SEP);
@@ -260,24 +339,45 @@ _stripDataImages(q){ const cut=(t)=>String(t||'')
       if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:cut(o.text)}));
       if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?cut(a):a);
       return q; },
+// 让浏览器有机会把 spinner 画出来再进同步解析。
+// 只 await 一个微任务是不够的——渲染发生在下一帧，所以要等两个 rAF。
+_yieldToPaint(){ return new Promise(r=>{ try{ requestAnimationFrame(()=>requestAnimationFrame(()=>r())); }catch(_){ setTimeout(r,0); } }); },
 async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
-      if(this.ensureBookContent)await this.ensureBookContent();   // 书架只带元信息，抽题前先确保本书正文已载入
-      const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; }
-      const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page}).map(q=>this._stripDataImages(q));
-      if(!arr.length){ this.flash('这一页没解析出题目（可能不是习题页，或编号格式特殊，可改用 AI 抽取）',true); return; }
-      this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src); },
+      if(this.bookExtract.busy)return;                            // 防重入：慢的时候用户会连点
+      this.bookExtract.busy=true; this.bookExtract.prog='正在准备正文…';
+      try{
+        await this._yieldToPaint();
+        if(this.ensureBookContent)await this.ensureBookContent();  // 书架只带元信息，抽题前先确保本书正文已载入
+        const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; }
+        if(this._looksLikeTocPage(m.content_md)){ this.flash('这一页是书本目录，不是习题页（目录行会被误判成题目，已跳过）',true); return; }
+        this.bookExtract.prog='正在解析本页…'; await this._yieldToPaint();
+        const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page}).map(q=>this._stripDataImages(q));
+        if(!arr.length){ this.flash('这一页没解析出题目（可能不是习题页，或编号格式特殊，可改用 AI 抽取）',true); return; }
+        this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src);
+      } finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
 async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+      if(this.bookExtract.busy)return;                            // 防重入
+      this.bookExtract.busy=true;
+      try{ return await this._localExtractBookInner(); }
+      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
+async _localExtractBookInner(){
+      const b0=this.currentBook;
+      const need=this.matMissingCount?this.matMissingCount(b0):0;
+      this.bookExtract.prog=need? ('正在载入正文 '+need+' 页…') : '正在准备…';
+      await this._yieldToPaint();
       if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md
       const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; }
       // 兜底自检：正文没补齐就别开跑，宁可报错也别拿半本书静默少抽
       const missing=this.matMissingCount?this.matMissingCount(b):0;
       if(missing){ this.flash('这本书还有 '+missing+' 页正文没载入完，请等进度条走完再抽题',true); return; }
+      this.bookExtract.prog='正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
       const all=this._extractWholeBook(b);
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
       // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目
       const noAns=all.filter(q=>!(q.answer&&q.answer.length)).length;
       if(all.length>800 && !confirm('整本解析出 '+all.length+' 题，其中 '+noAns+' 题没抽到答案。\n\n题量较大，规则抽取可能把页眉/目录行误判成题目，建议在预览里筛一遍再导入（可用「勾选/取消无答案的题」快速排除）。\n\n继续打开预览？'))return;
-      this._openPreview(all, '《'+b.title+'》整本（预览）', b.subject, b.title); },
+      const tocNote=this.extractSkippedToc? '（已跳过 '+this.extractSkippedToc+' 页目录）':'';
+      this._openPreview(all, '《'+b.title+'》整本'+tocNote+'（预览）', b.subject, b.title); },
 async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
       try{ let inserted=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); this.bookExtract.done=Math.min(i+CH,arr.length); }

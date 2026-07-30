@@ -198,6 +198,22 @@ export async function onRequestPost({ request, env }) {
       return json({ ok: true, count: items.length });
     }
 
+    // —— 批量收藏 / 掌握 ——
+    // 必须放在下面的单个 question_id 校验之前。
+    // 「取消收藏」一页最多勾 30 题，前端原来是发 30 个请求。
+    if ((action === 'favorite' || action === 'master') && Array.isArray(b.question_ids)) {
+      const col = action === 'favorite' ? 'favorited' : 'mastered';   // 由 action 派生，不是用户可控字段
+      const val = b.value ? 1 : 0;
+      const bulkIds = b.question_ids.map((x) => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, 2000);
+      if (!bulkIds.length) return json({ error: '缺少 question_ids' }, 400);
+      const stmts = bulkIds.map((id) => env.DB.prepare(
+        `INSERT INTO progress (question_id, ${col}, updated_at) VALUES (?, ?, unixepoch())
+         ON CONFLICT(question_id) DO UPDATE SET ${col} = ?, updated_at = unixepoch()`
+      ).bind(id, val, val));
+      await batchChunked(env, stmts, 80);
+      return json({ ok: true, count: bulkIds.length });
+    }
+
     const qid = b.question_id;
     if (!qid) return json({ error: '缺少 question_id' }, 400);
 

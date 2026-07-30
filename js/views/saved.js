@@ -31,7 +31,8 @@ const SavedMixin = {
       const ids=[...this.fav.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; }
       if(!confirm('取消收藏选中的 '+ids.length+' 题？（题目仍保留在题库，只是移出收藏）'))return;
       try{
-        for(const id of ids){ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:id,value:0})}); }
+        // 一个请求批量取消（原来是每题一个 POST，勾 30 题就 30 个请求）
+        await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_ids:ids,value:0})});
         this.fav.items=this.fav.items.filter(q=>!ids.includes(q.id));
         this.fav.total=Math.max(0,this.fav.total-ids.length);
         this.fav.sel=[];

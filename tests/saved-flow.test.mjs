@@ -47,12 +47,15 @@ describe('多选与批量取消收藏', () => {
     Saved.methods.favToggleSel.call(c, 'a');
     expect(c.fav.sel).toEqual([]);
   });
-  it('favUnstarSel 对每题发 favorite=0、本地移除、更新总数', async () => {
+  it('favUnstarSel 只发一个批量请求（原来是每题一个 POST）、本地移除、更新总数', async () => {
     const c = ctx({ fav: { items: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], total: 3, sel: ['a', 'b'], offset: 0, limit: 30 } });
     await Saved.methods.favUnstarSel.call(c);
     const posts = c.calls.filter((x) => x.method === 'POST');
-    expect(posts.length).toBe(2);
-    expect(posts.every((p) => p.body.action === 'favorite' && p.body.value === 0)).toBe(true);
+    expect(posts.length).toBe(1);                                  // 勾 30 题也只发 1 个
+    expect(posts[0].body.action).toBe('favorite');
+    expect(posts[0].body.value).toBe(0);
+    expect(posts[0].body.question_ids).toEqual(['a', 'b']);
+    expect(posts[0].body.question_id).toBe(undefined);              // 批量分支不该带单个字段
     expect(c.fav.items.map((q) => q.id)).toEqual(['c']);
     expect(c.fav.total).toBe(1);
     expect(c.fav.sel).toEqual([]);
