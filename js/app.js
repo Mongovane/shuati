@@ -151,12 +151,7 @@ const App={
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? (this.aiX.chat||[]) : []; },
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
-    // 底部固定条存在时，.wrap 要让出 84px（否则遮住正文末尾），fab-top 也要上移。
-    // 教材阅读的翻页条现在也是 fixed，所以一并纳入；沉浸阅读有自己的全屏交互，排除。
-    hasBottomBar(){
-      if(!!this.cur && ['practice','wrong','favorite'].includes(this.view))return true;
-      return this.view==='books' && !!this.currentBook && !!this.currentPageMat && !this.reader.open;
-    },
+    hasBottomBar(){ return !!this.cur && ['practice','wrong','favorite'].includes(this.view); },
     // 任何全屏浮层/弹窗/沉浸阅读打开时，回顶按钮应隐藏，避免遮挡浮层内的操作按钮
     anyOverlayOpen(){ return !!(this.extractPreview&&this.extractPreview.open) || !!(this.bankEdit&&this.bankEdit.open) || !!(this.dup&&this.dup.open) || !!(this.reader&&this.reader.open) || !!(this.pdfv&&this.pdfv.open) || !!(this.rdAi&&this.rdAi.open) || !!(this.stealth&&this.stealth.hidden) || this.segActive; },
     // 从当前书的「目录页」解析出「章节标题 → 页码」列表，供内嵌目录导航（像 PDF 书签那样可点跳转）

@@ -230,7 +230,7 @@ const TPL_VIEW_BOOKS = `
                 <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
               </div>
               <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
-              <div class="bk-nav" :class="{fixed:!reader.open}">
+              <div class="bk-nav">
                 <button :disabled="bookIdx<=0" @click="bookPrev"><icon name="arrow-left" :size="15" /> 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 <icon name="arrow-right" :size="15" /></button>
               </div>

@@ -84,12 +84,6 @@ textarea.code{font-family:var(--mono);font-size:13.5px}
 .card img,.stem img,.rich img{max-width:100%;height:auto}
 .q-nav-bar{position:fixed;bottom:0;left:0;right:0;margin:0;background:var(--bg);z-index:90;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 18px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .q-nav-bar>.btn{flex:0 0 auto}
-/* 教材阅读的翻页条钉底：与 .q-nav-bar 同一套范式（含 safe-area 与宽屏内容宽度对齐）。
-   之前它在页面最底部，正文长的书每翻一页都要滚到最底才摸到按钮；
-   而 .bk-page/.bk-reader 都是 overflow:hidden，position:sticky 在那里是失效的，所以只能 fixed。
-   祖先链上没有 transform/filter/will-change（已在真机核对），fixed 会相对视口定位。
-   沉浸阅读有自己的翻页交互，所以只在非沉浸模式加 .fixed。 */
-.bk-nav.fixed{position:fixed;bottom:0;left:0;right:0;margin:0;z-index:90;box-sizing:border-box;background:var(--bg);border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 18px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .q-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .chip{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-soft)}
 .chip.accent{background:var(--accent-soft);color:var(--accent)}
@@ -189,7 +183,7 @@ a{color:var(--accent)}
 /* 刷题固定底栏为内容预留空间 + 回顶按钮避让（全设备，仅刷题视图有 .has-bottombar） */
 .wrap.has-bottombar{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 /* 宽屏：底栏按钮与内容区(max 860)对齐居中，不贴到屏幕两端 */
-@media(min-width:900px){ .q-nav-bar,.bk-nav.fixed{padding-left:calc((100vw - 824px)/2);padding-right:calc((100vw - 824px)/2)} }
+@media(min-width:900px){ .q-nav-bar{padding-left:calc((100vw - 824px)/2);padding-right:calc((100vw - 824px)/2)} }
 /* —— 教材阅读 Books 美化 —— */
 .bk-shelf{margin-bottom:20px}
 .bk-shelf-label{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--ink-soft);margin:0 0 10px;display:flex;align-items:center;gap:10px}
