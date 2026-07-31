@@ -98,7 +98,7 @@ const App={
     qimgInline:false,   /* 插图：小图内嵌 dataURL */
     mockSaved:null,               // 未完成模考的快照（供「继续上次考试」横幅）
     restoring:false, restoreReplace:false,  // 备份恢复：进行中标记 / 覆盖式开关
-    toast:null, toastTimer:null, showTop:false, segActive:false,
+    toast:null, toastTimer:null, showTop:false, scrollDown:false, segActive:false,
     fav:{ items:[], total:0, loading:false, offset:0, limit:30, sel:[], listMode:true, loadedOnce:false }, favDirty:false,
     reviewScope:'due',   // 错题页范围：due=今日到期(SRS) / all=全部错题
     bookSubjPick:{ open:false, book:null, custom:'' },
@@ -262,7 +262,20 @@ const App={
       document.documentElement.dataset.theme=v;
       try{ const m=document.getElementById('theme-color-dynamic'); if(m)m.setAttribute('content', v==='dark'?'#10141B':'#F5F6F2'); }catch(_){} },
     cycleTheme(){ this.theme = this.theme==='light'?'dark':(this.theme==='dark'?'auto':'light'); this.flash({light:'浅色主题',dark:'深色主题',auto:'跟随系统'}[this.theme]); },
-    onScroll(){ const y=window.pageYOffset||document.documentElement.scrollTop||0; const show=y>600; if(show!==this.showTop)this.showTop=show; },
+    onScroll(){ const y=window.pageYOffset||document.documentElement.scrollTop||0;
+      const show=y>600; if(show!==this.showTop)this.showTop=show;
+      // 悬浮按钮跟随滚动方向：往下滚就给「到底部」，往上滚就给「回顶部」。
+      // 长篇 AI 解析里「跳到底部」很实用（追问输入框和下一题都在最下面）。
+      const last=this._lastScrollY||0;
+      if(Math.abs(y-last)>8){
+        const D=document.documentElement;
+        const nearBottom=(D.scrollHeight-(y+window.innerHeight))<120;
+        const down=y>last && !nearBottom;      // 已经贴底了就别再给「到底部」
+        if(down!==this.scrollDown)this.scrollDown=down;
+        this._lastScrollY=y;
+      } },
+    scrollBottom(){ const h=document.documentElement.scrollHeight;
+      try{ window.scrollTo({top:h,behavior:'smooth'}); }catch(_){ window.scrollTo(0,h); } },
     scrollTop(){ try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){ window.scrollTo(0,0); } },
 bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } else { const s=localStorage.getItem('zb_readpos:'+b.key); if(s==null)return ''; i=parseInt(s,10)||0; }
       if(!b.pages||!b.pages.length||i<=0)return ''; const pct=Math.min(100,Math.round((i+1)/b.pages.length*100));

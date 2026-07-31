@@ -158,7 +158,7 @@ const TPL_SHELL_CLOSE = `
       </template>
     </div>
     <div v-if="toast" class="toast" :class="{err:toast.err}">{{ toast.msg }}</div>
-  <teleport to="body"><button v-show="showTop && !anyOverlayOpen" class="fab-top" :class="{'above-bar':hasBottomBar}" @click="scrollTop" title="回到顶部" aria-label="回到顶部"><icon name="arrow-up" :size="20" /></button></teleport>
+  <teleport to="body"><button v-show="showTop && !anyOverlayOpen" class="fab-top" :class="{'above-bar':hasBottomBar}" @click="scrollDown ? scrollBottom() : scrollTop()" :title="scrollDown ? '到底部' : '回到顶部'" :aria-label="scrollDown ? '到底部' : '回到顶部'"><icon :name="scrollDown ? 'arrow-down' : 'arrow-up'" :size="20" /></button></teleport>
   <div v-if="stealth.hidden" class="stealth" @click="stealthShow">
     <div class="stealth-vane">Vane</div>
   </div>
