@@ -210,7 +210,7 @@ const TPL_VIEW_BOOKS = `
               <button class="bk-toctoggle" @click="readerOpen" title="全屏沉浸阅读：可调字号、行距、主题，点两侧翻篇"><icon name="book" :size="15" /> 沉浸阅读</button>
               <button class="btn subtle" @click="currentBookId=''" style="flex:none">关闭</button>
             </div>
-            <div class="bk-body">
+            <div class="bk-body" @touchstart.passive="_bookTouchStart" @touchend.passive="_bookTouchEnd">
               <div v-if="pageRendering" class="bk-loading"><span class="bk-loadbar"></span><span class="muted" style="margin-top:10px">正在加载本页…</span></div>
               <template v-else>
                 <div v-if="currentPageMat.summary" class="summary">{{ currentPageMat.summary }}</div>

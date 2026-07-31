@@ -8,9 +8,12 @@ const Books = new Function(fs.readFileSync(path.join(ROOT, 'js/views/books.js'),
 
 describe('parseBookOutline 目录页解析', () => {
   const P = Books.methods.parseBookOutline;
+  // 必须继承真实 methods：parseBookOutline 会回退调用 _parseTocSpaced，
+  // 手搓一个空 this 的话缺方法就直接抛错（上一次 _yieldToPaint 也是这么被掩盖/暴露的）
+  const octx = () => Object.create(Books.methods);
   it('解析「标题 …… 页码」为 {title,page,level}', () => {
     const toc = '第八章 向量代数与空间解析几何 …… 3 习题8-1 向量及其线性运算 …… 3 习题8-2 数量积 …… 8 总习题八 …… 28';
-    const out = P.call({}, toc);
+    const out = P.call(octx(), toc);
     expect(out.length).toBe(4);
     expect(out[0]).toEqual({ title: '第八章 向量代数与空间解析几何', page: 3, level: 0 });
     expect(out[1].title).toBe('习题8-1 向量及其线性运算');
@@ -19,7 +22,7 @@ describe('parseBookOutline 目录页解析', () => {
   });
   it('识别"第X节"为二级（缩进到章下）', () => {
     const toc = '第一章　函数与极限 …… 1 第一节　映射与函数 …… 1 第二节　数列的极限 …… 18 总习题一 …… 68 第二章　导数与微分 …… 71 第一节　导数概念 …… 71';
-    const out = P.call({}, toc);
+    const out = P.call(octx(), toc);
     const byTitle = (t) => out.find((o) => o.title.includes(t));
     expect(byTitle('第一章').level).toBe(0);
     expect(byTitle('第一节　映射').level).toBe(1);
@@ -30,7 +33,7 @@ describe('parseBookOutline 目录页解析', () => {
   it('多页目录拼接后，后半部分章节不丢（模拟目录跨页）', () => {
     const tocPage1 = '第1章 绪论 …… 1 1.1 概述 …… 3 第2章 算法 …… 15 3.2 数据 …… 39';
     const tocPage2 = '第4章 循环结构 …… 41 4.1 while 语句 …… 42 第10章 文件 …… 380';
-    const out = P.call({}, tocPage1 + '\n' + tocPage2);
+    const out = P.call(octx(), tocPage1 + '\n' + tocPage2);
     const titles = out.map((o) => o.title);
     expect(titles.some((t) => t.startsWith('第4章'))).toBe(true);
     expect(titles.some((t) => t.startsWith('第10章'))).toBe(true);
@@ -38,7 +41,7 @@ describe('parseBookOutline 目录页解析', () => {
   });
   it('多级层级：章=0，"1 xx"=1，"2.2 xx"=2，习题=1', () => {
     const toc = '第2章 算法 …… 15 1 什么是算法 …… 16 2.2 数据的表现形式 …… 39 习题 …… 35';
-    const out = P.call({}, toc);
+    const out = P.call(octx(), toc);
     const byTitle = (t) => out.find((o) => o.title.startsWith(t));
     expect(byTitle('第2章').level).toBe(0);
     expect(byTitle('1 什么是算法').level).toBe(1);
@@ -46,16 +49,16 @@ describe('parseBookOutline 目录页解析', () => {
     expect(byTitle('习题').level).toBe(1);
   });
   it('兼容英文点号引导 .... 与全角省略号 ……', () => {
-    expect(P.call({}, 'Chapter 1 .... 5').length).toBe(1);
-    expect(P.call({}, '第一章 绪论 …… 1')[0].page).toBe(1);
+    expect(P.call(octx(), 'Chapter 1 .... 5').length).toBe(1);
+    expect(P.call(octx(), '第一章 绪论 …… 1')[0].page).toBe(1);
   });
   it('空文本 / 无页码 → 空数组', () => {
-    expect(P.call({}, '')).toEqual([]);
-    expect(P.call({}, '这是一段没有目录结构的正文内容')).toEqual([]);
+    expect(P.call(octx(), '')).toEqual([]);
+    expect(P.call(octx(), '这是一段没有目录结构的正文内容')).toEqual([]);
   });
   it('最多 400 条，防超长目录卡顿', () => {
     const toc = Array.from({ length: 500 }, (_, i) => `条目${i} …… ${i + 1}`).join(' ');
-    expect(P.call({}, toc).length).toBe(400);
+    expect(P.call(octx(), toc).length).toBe(400);
   });
 });
 

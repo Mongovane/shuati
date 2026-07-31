@@ -112,13 +112,55 @@ async _runMatFill(ids,title){
 matMissingCount(book){ book=book||this.currentBook; if(!book||!book.pages)return 0;
       return book.pages.filter(m=>!m||m.content_md===undefined).length; },
 bookHashId(str){ let h=5381; const s=String(str); for(let i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))>>>0; } return h.toString(36); },
-flashPageRender(){ this.pageRendering=true; try{ requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.pageRendering=false; })); }catch(_){ this.$nextTick(()=>{ this.pageRendering=false; }); } },
-bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1); if(ni!==this.bookIdx)this.flashPageRender(); this.bookIdx=ni; this.bookTocOpen=false; },
+// 必须带超时兜底：后台/不可见标签页里 requestAnimationFrame 不触发，
+// 只靠 rAF 会让 pageRendering 永久停在 true，骨架屏卡死不散（同 _yieldToPaint 那个坑）。
+flashPageRender(){ this.pageRendering=true;
+      let done=false; const fin=()=>{ if(done)return; done=true; this.pageRendering=false; };
+      setTimeout(fin, 400);
+      try{ requestAnimationFrame(()=>requestAnimationFrame(fin)); }catch(_){ this.$nextTick(fin); } },
+bookGoto(i){ const b=this.currentBook; if(!b)return; const ni=Math.min(Math.max(0,i),b.pages.length-1);
+      const moved=ni!==this.bookIdx;
+      if(moved)this.flashPageRender();
+      this.bookIdx=ni; this.bookTocOpen=false;
+      // 翻页后把正文顶部对齐到视口顶端。
+      // 不做的话滚动位置会被浏览器按新页面高度裁剪：实测从 1831 掉到 706（正好是新页面最底部），
+      // 于是每翻一页都要先往上滚才能看到正文开头。
+      if(moved)this.$nextTick(()=>this._scrollReaderTop());
+    },
+_scrollReaderTop(){ try{
+      const el=document.querySelector('.bk-body')||document.querySelector('.bk-page'); if(!el)return;
+      const y=el.getBoundingClientRect().top+window.scrollY-10;
+      window.scrollTo({ top:Math.max(0,y), behavior:'auto' });   // 用 auto：即时、可预期，也不依赖 rAF
+    }catch(_){ } },
+// 触屏左右滑动翻页。阅读器原来完全没有 touch 监听，手机上只能滚到页面最底部去点按钮。
+_bookTouchStart(e){ try{ const t=e.touches&&e.touches[0]; if(!t)return;
+      this._bkTouch={ x:t.clientX, y:t.clientY, t:Date.now() }; }catch(_){ } },
+_bookTouchEnd(e){ try{
+      const s0=this._bkTouch; this._bkTouch=null; if(!s0)return;
+      const t=e.changedTouches&&e.changedTouches[0]; if(!t)return;
+      const dx=t.clientX-s0.x, dy=t.clientY-s0.y;
+      // 要求横向位移够大、且明显比纵向大 —— 否则会把正常的上下滚动误判成翻页
+      if(Math.abs(dx)<60 || Math.abs(dx)<Math.abs(dy)*2)return;
+      if(Date.now()-s0.t>800)return;                              // 慢速拖拽不算滑动
+      if(dx<0)this.bookNext(); else this.bookPrev();
+    }catch(_){ } },
 bookPrev(){ this.bookGoto(this.bookIdx-1); },
 bookNext(){ this.bookGoto(this.bookIdx+1); },
 bookJumpPage(p){ const b=this.currentBook; if(!b)return; const n=parseInt(p,10); if(!Number.isFinite(n))return; const idx=b.pages.findIndex(m=>Number(m.page)===n); if(idx>=0)this.bookGoto(idx); else this.flash('没有第 '+n+' 页',true); },
 // 跳到「书内页码」最接近 n 的那一篇（目录里的页码常和整理后的分篇页码不完全一致，取 ≤n 的最大页）
 bookGotoBookPage(n){ const b=this.currentBook; if(!b||!Number.isFinite(n))return; let best=-1,bestPg=-1; b.pages.forEach((m,i)=>{ const pg=Number(m.page)||0; if(pg<=n && pg>bestPg){ bestPg=pg; best=i; } }); if(best<0){ best=0; } this.bookGoto(best); this.bookTocOpen=false; },
+// 空格式目录：有些书的目录不用点线 leader，而是「1.2.3 标题   22」。
+// 这类书原来解析出 0 条，273 页只能靠「输入第几篇跳转」导航。
+// 只在点线式解析结果很少时才启用，避免影响已经正常的书。
+_parseTocSpaced(tocText){ const out=[];
+      const re=/^\s*([0-9０-９]{1,2}(?:[.．][0-9０-９]{1,2}){0,3})\s+(\S.*?)\s+([0-9０-９]{1,4})\s*$/;
+      for(const raw of String(tocText||'').split('\n')){
+        const m=raw.trim().match(re); if(!m)continue;
+        const num=m[1], title=m[2].replace(/[.．\s]+$/,'').trim(), page=parseInt(m[3],10);
+        if(!title||!page||page>9999)continue;
+        out.push({ title:(num+' '+title).slice(0,80), page, level:(num.match(/[.．]/g)||[]).length });
+      }
+      return out; },
 parseBookOutline(tocText){ if(!tocText)return []; const items=[]; const re=/((?:[^\n.\u2026]|\.(?!\.))+?)\s*(?:\.{2,}|\u2026+)\s*(\d{1,4})/g; let mm;
       while((mm=re.exec(tocText))!==null){ const title=mm[1].replace(/^[\s*#>]+/,'').trim(); const page=parseInt(mm[2],10);
         if(!title||!Number.isFinite(page))continue;
@@ -130,6 +172,8 @@ parseBookOutline(tocText){ if(!tocText)return []; const items=[]; const re=/((?:
         else if(/^\d+[\s、.]/.test(title)) level=1;
         else if(/^\*?(习题|总习题|本章小结|小结|思考题|练习|复习题)/.test(title)) level=1;
         items.push({ title:title.slice(0,50), page, level }); if(items.length>=400)break; }
+      // 点线式没解析出东西（或极少）时，退回「空格 leader」那一套再试一次
+      if(items.length<5){ const sp=this._parseTocSpaced(tocText); if(sp.length>items.length)return sp.slice(0,400); }
       return items; },
 async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI && !(this.explainCfg&&this.explainCfg.base&&this.explainCfg.key)){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; } if(this._genqCtrl){ try{ this._genqCtrl.abort(); }catch(_){} } const ctrl=new AbortController(); this._genqCtrl=ctrl; this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',signal:ctrl.signal,body:JSON.stringify({...this.aiOv(false),subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.name!=='AbortError' && e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; if(this._genqCtrl===ctrl)this._genqCtrl=null; },
 // 停止 AI 出题

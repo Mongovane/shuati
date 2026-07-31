@@ -112,7 +112,11 @@ describe('接线与触屏点击区', () => {
     const i = appSrc.indexOf('view(v){');
     expect(i).toBeGreaterThan(-1);
     expect(appSrc.slice(i, i + 260)).toMatch(/_syncTabStrip/);
-    expect(appSrc).toMatch(/mounted\(\)\{[\s\S]{0,500}_syncTabStrip/);
+    // 用 indexOf 而不是固定字符窗口：mounted 里后续还会插别的初始化逻辑，
+    // 卡死一个 500 字符的窗口会让这条断言随无关改动而误红（已经发生过一次）
+    const mi = appSrc.indexOf('mounted()');
+    expect(mi).toBeGreaterThan(-1);
+    expect(appSrc.slice(mi).indexOf('_syncTabStrip')).toBeGreaterThan(-1);
   });
 
   it('监听 tabs 滚动与窗口尺寸变化，且是 passive', () => {

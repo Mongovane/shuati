@@ -411,6 +411,18 @@ onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
 onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
   },
   mounted(){ try{ window.__hideSplash&&window.__hideSplash(); }catch(_){}
+    // 阅读器键盘翻页：桌面端读一本 273 页的书，原来只能每翻一页都滚到页面最底部点按钮。
+    // 只在 Books 页、且焦点不在输入框里时生效，避免抢走正常打字。
+    try{ window.addEventListener('keydown',(e)=>{
+      if(this.view!=='books')return;
+      if(e.metaKey||e.ctrlKey||e.altKey)return;
+      const t=e.target, tag=t&&t.tagName;
+      if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
+      if(this.bookTocOpen||(this.rdAi&&this.rdAi.open))return;     // 目录/问 AI 打开时不抢键
+      if(!this.currentBook)return;
+      if(e.key==='ArrowRight'||e.key==='PageDown'){ e.preventDefault(); this.bookNext(); }
+      else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.bookPrev(); }
+    }); }catch(_){ }
     // 导航条：首屏就把激活项滚进可视区，并跟随滚动/尺寸变化更新渐变提示
     this.$nextTick(()=>{ this._syncTabStrip();
       try{ const t=document.querySelector('.tabs');
