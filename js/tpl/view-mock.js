@@ -82,7 +82,8 @@ const TPL_VIEW_MOCK = `
               <span v-else class="muted">自评</span>
             </template>
           </div>
-          <question-card ref="mockCards" :q="q" mode="exam" :exam-reveal="mock.finished" @answered="onMockAnswer" />
+          <question-card ref="mockCards" :q="q" mode="exam" :exam-reveal="mock.finished" @answered="onMockAnswer"
+                @favorite="onFav" @master="onMaster" @note="onNote" @save-state="onSaveState" />
         </div>
 
         <button v-if="mock.started" class="btn" style="width:100%" @click="submitMock">提交</button>

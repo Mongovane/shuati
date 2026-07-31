@@ -129,8 +129,12 @@ async resumeMock(){ const s=this.mockSnapPeek(); if(!s){ this.flash('没有可�
       this.mock.questions=s.questions; this.mock.answers={}; this.mock.finished=false; this.mock.started=true;
       this.mock.remaining=Math.max(30, s.remaining|0); this.mock.elapsed=s.elapsed|0; /* 至少留 30 秒缓冲 */
       this.mockSaved=null;
-      await this.$nextTick();
-      for(const c of (this.$refs.mockCards||[])){ if(c&&c.q&&s.states&&s.states[c.q.id]&&c.restoreState)c.restoreState(s.states[c.q.id]); }
+      // 恢复卡片状态可能因快照损坏而抛错。前面已经把 mock.started 置成 true，
+      // 不兜住的话会留下一个「已开始但没走计时器」的半启动模考，且界面毫无提示。
+      try{
+        await this.$nextTick();
+        for(const c of (this.$refs.mockCards||[])){ if(c&&c.q&&s.states&&s.states[c.q.id]&&c.restoreState)c.restoreState(s.states[c.q.id]); }
+      }catch(e){ this.flash('上次模考的作答状态恢复失败，已按空白卷继续：'+e.message,true); }
       this._mockStartTimer();
       this.flash('已恢复上次模考，剩余 '+this.fmtTime(this.mock.remaining)+'（中断期间计时暂停）');
       window.scrollTo({top:0});

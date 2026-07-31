@@ -41,6 +41,11 @@ input,select,textarea{font-family:inherit;font-size:15px}
 .icon-btn:hover{border-color:var(--accent);color:var(--accent)}
 .tabs{max-width:860px;margin:0 auto;padding:10px 12px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
+/* 横滚提示：滚动条被隐藏了，用两侧渐变告诉用户还有内容（.more-l/.more-r 由 _syncTabFade 切换）。
+   mask 作用在 padding box 上，不随内容滚动，所以遮罩位置是固定的。 */
+.tabs.more-r{mask-image:linear-gradient(to right,#000 calc(100% - 26px),transparent);-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 26px),transparent)}
+.tabs.more-l{mask-image:linear-gradient(to right,transparent,#000 26px);-webkit-mask-image:linear-gradient(to right,transparent,#000 26px)}
+.tabs.more-l.more-r{mask-image:linear-gradient(to right,transparent,#000 26px,#000 calc(100% - 26px),transparent);-webkit-mask-image:linear-gradient(to right,transparent,#000 26px,#000 calc(100% - 26px),transparent)}
 .tab{flex:0 0 auto;padding:8px 14px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--ink-soft);font-size:14px;font-weight:600;white-space:nowrap;transition:.15s}
 .tab:hover{color:var(--ink)}
 .tab.active{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
@@ -511,6 +516,9 @@ a{color:var(--accent)}
 /* —— iOS：触屏设备输入字号 ≥16px，聚焦不再自动放大 —— */
 @media (pointer:coarse){
   input,select,textarea,.inp{font-size:16px !important}
+  /* 触屏点击区：导航项原来只有 35px 高，低于 44px 的可点区域指引 */
+  .tabs{padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .tab{min-height:44px;display:inline-flex;align-items:center}
 }
 
 /* —— 阅读器：选段悬浮条 + 问 AI 抽屉 —— */

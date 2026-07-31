@@ -223,7 +223,7 @@ const App={
     'ingest.pageNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.questionNo'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
-    view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); },
+    view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); this.$nextTick(()=>this._syncTabStrip()); },
     mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
     currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender();
       // 书架只载入了元信息，翻到这本书才把它的正文补齐（目录标题/阅读/抽题都依赖 content_md）
@@ -237,6 +237,27 @@ const App={
       const i=a.search(/\*\*(AI 解析|知识点卡片)\*\*/); if(i<0)return '';
       return a.slice(i).replace(/^\*\*(AI 解析|知识点卡片)\*\*\s*/,'').trim();
     },
+    // 导航条在窄屏是横向滚动的（9 项，500px 宽只放得下 6 项）。两件事必须做：
+    //  1) 切到靠右的项（Bank/Import/Settings）时把它滚进可视区 —— 否则手机上刷新进设置页，
+    //     导航条停在最左边，看起来「什么都没选中」。
+    //  2) 两侧加渐变遮罩提示还有内容 —— 滚动条被 scrollbar-width:none 藏了，
+    //     不给提示的话用户根本不知道右边还有三项。
+    // 用 scrollLeft 算术而不是 scrollIntoView：后者会连带滚动祖先，把整个页面顶走。
+    _syncTabStrip(){ try{
+      const t=document.querySelector('.tabs'); if(!t)return;
+      const a=t.querySelector('.tab.active');
+      if(a){ const tr=t.getBoundingClientRect(), ar=a.getBoundingClientRect();
+        if(ar.left<tr.left+1 || ar.right>tr.right-1){
+          t.scrollLeft += (ar.left-tr.left) - Math.max(0,(t.clientWidth-ar.width)/2);
+        } }
+      this._syncTabFade(t);
+    }catch(_){ } },
+    _syncTabFade(t){ try{
+      t=t||document.querySelector('.tabs'); if(!t)return;
+      const max=t.scrollWidth-t.clientWidth;
+      t.classList.toggle('more-l', t.scrollLeft>2);
+      t.classList.toggle('more-r', max>2 && t.scrollLeft<max-2);
+    }catch(_){ } },
     applyTheme(){ const v=this.theme==='auto' ? ((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light') : this.theme;
       document.documentElement.dataset.theme=v;
       try{ const m=document.getElementById('theme-color-dynamic'); if(m)m.setAttribute('content', v==='dark'?'#10141B':'#F5F6F2'); }catch(_){} },
@@ -390,6 +411,12 @@ onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
 onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
   },
   mounted(){ try{ window.__hideSplash&&window.__hideSplash(); }catch(_){}
+    // 导航条：首屏就把激活项滚进可视区，并跟随滚动/尺寸变化更新渐变提示
+    this.$nextTick(()=>{ this._syncTabStrip();
+      try{ const t=document.querySelector('.tabs');
+        if(t)t.addEventListener('scroll',()=>this._syncTabFade(t),{passive:true});
+        window.addEventListener('resize',()=>this._syncTabStrip(),{passive:true});
+      }catch(_){ } });
     if(this.token)this.settFold.token=true;
     try{ console.log('[shuati] 前端版本 '+APP_VERSION); }catch(_){}
     this.applyTheme(); document.title=this.appName;

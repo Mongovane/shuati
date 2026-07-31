@@ -399,11 +399,15 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写�
         const ist=await this._hoistImages(arr);
         if(ist.failed)this.flash(ist.failed+' 张插图没能转存到 R2（已保留内嵌，可能偏大）',true);
         this._openPreview(arr, (m.title||'本页')+'（预览）', m.subject, src);
-      } finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
+      // 必须有 catch：只有 try/finally 的话异常会变成 unhandled rejection，
+      // busy 复位了、界面却一个字都不说 —— 用户看到的就是「点了没反应」。
+      } catch(e){ if(e.message!=='unauth')this.flash('本页抽题失败：'+e.message,true); }
+      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
 async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.bookExtract.busy)return;                            // 防重入
       this.bookExtract.busy=true;
       try{ return await this._localExtractBookInner(); }
+      catch(e){ if(e.message!=='unauth')this.flash('整本抽题失败：'+e.message,true); }
       finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
 async _localExtractBookInner(){
       const b0=this.currentBook;
