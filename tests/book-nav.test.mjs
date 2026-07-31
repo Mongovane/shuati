@@ -162,7 +162,18 @@ describe('空格式目录解析（原来这类书目录 0 条）', () => {
 });
 
 describe('键盘翻页的接线与守卫', () => {
-  const blk = appSrc.slice(appSrc.indexOf("window.addEventListener('keydown'"), appSrc.indexOf('// 导航条：首屏'));
+  // 折进已有的 onKey，而不是另起一个 keydown 监听
+  const blk = appSrc.slice(appSrc.indexOf("// —— 内联阅读器"), appSrc.indexOf('// —— 刷题快捷键'));
+
+  it('全站只有一个 keydown 监听器，避免两个处理器同时翻页', () => {
+    expect((appSrc.match(/addEventListener\('keydown'/g) || []).length).toBe(1);
+  });
+
+  it('沉浸阅读模式优先：内联分支必须排除 reader.open', () => {
+    expect(blk).toMatch(/!this\.reader\.open/);
+    // reader.open 的处理必须出现在内联分支之前
+    expect(appSrc.indexOf('if(this.reader.open){')).toBeLessThan(appSrc.indexOf('// —— 内联阅读器'));
+  });
 
   it('绑了 ←/→ 与 PageUp/PageDown', () => {
     expect(blk).toMatch(/ArrowRight/); expect(blk).toMatch(/ArrowLeft/);
@@ -171,17 +182,58 @@ describe('键盘翻页的接线与守卫', () => {
   });
 
   it('只在 Books 页生效，且焦点在输入框里时不抢键', () => {
-    expect(blk).toMatch(/this\.view!=='books'\)return/);
-    expect(blk).toMatch(/INPUT/); expect(blk).toMatch(/TEXTAREA/); expect(blk).toMatch(/isContentEditable/);
+    expect(blk).toMatch(/this\.view==='books'/);
+    expect(blk).toMatch(/tag!=='INPUT'/); expect(blk).toMatch(/tag!=='TEXTAREA'/); expect(blk).toMatch(/isContentEditable/);
   });
 
   it('目录或问 AI 打开时让位，且不吞带修饰键的组合', () => {
-    expect(blk).toMatch(/bookTocOpen/);
+    expect(blk).toMatch(/!this\.bookTocOpen/);
     expect(blk).toMatch(/rdAi/);
-    expect(blk).toMatch(/metaKey\|\|e\.ctrlKey\|\|e\.altKey\)return/);
+    expect(blk).toMatch(/!e\.metaKey && !e\.ctrlKey && !e\.altKey/);
   });
 
   it('没有当前书时不响应', () => {
-    expect(blk).toMatch(/!this\.currentBook\)return/);
+    expect(blk).toMatch(/this\.currentBook/);
+  });
+});
+
+describe('翻页条钉底（抄 .q-nav-bar 的既有范式）', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  const tpl = fs.readFileSync(path.join(ROOT, 'js/tpl/view-books.js'), 'utf8');
+  const rule = css.slice(css.indexOf('.bk-nav.fixed{'), css.indexOf('}', css.indexOf('.bk-nav.fixed{')) + 1);
+
+  it('用 fixed 而不是 sticky —— .bk-page/.bk-reader 都是 overflow:hidden，sticky 在那里没有作用区间', () => {
+    expect(rule).toMatch(/position:fixed/);
+    expect(rule).not.toMatch(/position:sticky/);
+    // 确认前提仍然成立：这两个容器确实是 overflow:hidden
+    expect(css).toMatch(/\.bk-page\{[^}]*overflow:hidden/);
+  });
+
+  it('带 safe-area 底部内边距（iPhone home indicator）', () => {
+    expect(rule).toMatch(/env\(safe-area-inset-bottom/);
+  });
+
+  it('宽屏下与内容宽度对齐，和 .q-nav-bar 共用同一条规则', () => {
+    expect(css).toMatch(/@media\(min-width:900px\)\{ \.q-nav-bar,\.bk-nav\.fixed\{padding-left:calc\(\(100vw - 824px\)\/2\)/);
+  });
+
+  it('只在非沉浸模式钉底（沉浸阅读有自己的翻页交互）', () => {
+    expect(tpl).toMatch(/class="bk-nav" :class="\{fixed:!reader\.open\}"/);
+  });
+
+  it('hasBottomBar 纳入教材阅读，让 .wrap 让出底部空间、FAB 上移', () => {
+    const app = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+    const blk = app.slice(app.indexOf('hasBottomBar(){'), app.indexOf('hasBottomBar(){') + 420);
+    expect(blk).toMatch(/view==='books'/);
+    expect(blk).toMatch(/!this\.reader\.open/);
+    expect(blk).toMatch(/currentPageMat/);
+    // 让出空间与 FAB 偏移的两条既有规则必须还在，否则钉底条会遮住正文
+    expect(css).toMatch(/\.wrap\.has-bottombar\{padding-bottom:calc\(84px/);
+    expect(css).toMatch(/\.fab-top\.above-bar\{bottom:calc\(84px/);
+  });
+
+  it('沉浸阅读的 z-index 高于钉底条（双保险）', () => {
+    expect(css).toMatch(/\.reader\{position:fixed;inset:0;z-index:200/);
+    expect(rule).toMatch(/z-index:90/);
   });
 });

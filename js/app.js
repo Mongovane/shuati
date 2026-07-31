@@ -151,7 +151,12 @@ const App={
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? (this.aiX.chat||[]) : []; },
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
-    hasBottomBar(){ return !!this.cur && ['practice','wrong','favorite'].includes(this.view); },
+    // 底部固定条存在时，.wrap 要让出 84px（否则遮住正文末尾），fab-top 也要上移。
+    // 教材阅读的翻页条现在也是 fixed，所以一并纳入；沉浸阅读有自己的全屏交互，排除。
+    hasBottomBar(){
+      if(!!this.cur && ['practice','wrong','favorite'].includes(this.view))return true;
+      return this.view==='books' && !!this.currentBook && !!this.currentPageMat && !this.reader.open;
+    },
     // 任何全屏浮层/弹窗/沉浸阅读打开时，回顶按钮应隐藏，避免遮挡浮层内的操作按钮
     anyOverlayOpen(){ return !!(this.extractPreview&&this.extractPreview.open) || !!(this.bankEdit&&this.bankEdit.open) || !!(this.dup&&this.dup.open) || !!(this.reader&&this.reader.open) || !!(this.pdfv&&this.pdfv.open) || !!(this.rdAi&&this.rdAi.open) || !!(this.stealth&&this.stealth.hidden) || this.segActive; },
     // 从当前书的「目录页」解析出「章节标题 → 页码」列表，供内嵌目录导航（像 PDF 书签那样可点跳转）
@@ -388,6 +393,16 @@ stealthShow(){ this.stealth.hidden=false; },
 onKey(e){ const tag=(e.target&&e.target.tagName)||'';
       if(this.stealth.hidden){ e.preventDefault(); this.stealth.hidden=false; return; }
       if(this.reader.open){ if(e.key==='Escape'){ if(this.reader.tocOpen){this.reader.tocOpen=false;return;} if(this.reader.panel){this.reader.panel=false;return;} this.readerClose(); return; } if(tag==='INPUT'||tag==='TEXTAREA')return; if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); this.readerNext(); return; } if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.readerPrev(); return; } return; }
+      // —— 内联阅读器（Books 页但未进沉浸模式）的键盘翻页 ——
+      // 必须放在上面 reader.open 分支之后：沉浸模式已经由那一段处理，
+      // 若另起一个监听而不判断 reader.open，一次按键会同时 readerNext + bookNext，直接翻两页。
+      if(this.view==='books' && !this.reader.open && this.currentBook
+         && !e.metaKey && !e.ctrlKey && !e.altKey
+         && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT' && !(e.target&&e.target.isContentEditable)
+         && !this.bookTocOpen && !(this.rdAi&&this.rdAi.open)){
+        if(e.key==='ArrowRight'||e.key==='PageDown'){ e.preventDefault(); this.bookNext(); return; }
+        if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.bookPrev(); return; }
+      }
       // —— 刷题快捷键（练习/错题/收藏视图；输入框聚焦或按住修饰键时不拦截）——
       if(['practice','wrong','favorite'].includes(this.view) && this.cur && !this.mock.started
          && !e.metaKey && !e.ctrlKey && !e.altKey && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT'){
@@ -424,18 +439,6 @@ onBlur(){ if(this.stealth.autoHide) this.stealth.hidden=true; },
 onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
   },
   mounted(){ try{ window.__hideSplash&&window.__hideSplash(); }catch(_){}
-    // 阅读器键盘翻页：桌面端读一本 273 页的书，原来只能每翻一页都滚到页面最底部点按钮。
-    // 只在 Books 页、且焦点不在输入框里时生效，避免抢走正常打字。
-    try{ window.addEventListener('keydown',(e)=>{
-      if(this.view!=='books')return;
-      if(e.metaKey||e.ctrlKey||e.altKey)return;
-      const t=e.target, tag=t&&t.tagName;
-      if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
-      if(this.bookTocOpen||(this.rdAi&&this.rdAi.open))return;     // 目录/问 AI 打开时不抢键
-      if(!this.currentBook)return;
-      if(e.key==='ArrowRight'||e.key==='PageDown'){ e.preventDefault(); this.bookNext(); }
-      else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.bookPrev(); }
-    }); }catch(_){ }
     // 导航条：首屏就把激活项滚进可视区，并跟随滚动/尺寸变化更新渐变提示
     this.$nextTick(()=>{ this._syncTabStrip();
       try{ const t=document.querySelector('.tabs');
