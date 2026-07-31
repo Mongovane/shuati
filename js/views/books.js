@@ -133,9 +133,12 @@ _scrollReaderTop(){ try{
       window.scrollTo({ top:Math.max(0,y), behavior:'auto' });   // 用 auto：即时、可预期，也不依赖 rAF
     }catch(_){ } },
 // 触屏左右滑动翻页。阅读器原来完全没有 touch 监听，手机上只能滚到页面最底部去点按钮。
-_bookTouchStart(e){ try{ const t=e.touches&&e.touches[0]; if(!t)return;
+// 注意方法名不能以 _ 开头：Vue 的模板代码生成把 _ 前缀当成内部运行时帮助函数，
+// 会把它原样输出成裸标识符而不加 _ctx. 前缀，渲染时直接 ReferenceError、整个视图白屏。
+// （v181 就是这么把 Books 页搞白的；tpl-compile 只验编译、抓不到这种运行期错误。）
+onBookTouchStart(e){ try{ const t=e.touches&&e.touches[0]; if(!t)return;
       this._bkTouch={ x:t.clientX, y:t.clientY, t:Date.now() }; }catch(_){ } },
-_bookTouchEnd(e){ try{
+onBookTouchEnd(e){ try{
       const s0=this._bkTouch; this._bkTouch=null; if(!s0)return;
       const t=e.changedTouches&&e.changedTouches[0]; if(!t)return;
       const dx=t.clientX-s0.x, dy=t.clientY-s0.y;

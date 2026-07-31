@@ -47,7 +47,7 @@ describe('翻页后回到正文顶部', () => {
   });
 
   it('_scrollReaderTop 用 behavior:auto，不依赖 rAF、也不做平滑动画', () => {
-    const body = booksSrc.slice(booksSrc.indexOf('_scrollReaderTop(){'), booksSrc.indexOf('_bookTouchStart('));
+    const body = booksSrc.slice(booksSrc.indexOf('_scrollReaderTop(){'), booksSrc.indexOf('onBookTouchStart('));
     expect(body).toMatch(/behavior:'auto'/);
     expect(body).not.toMatch(/smooth/);
     expect(body).toMatch(/\.bk-body/);
@@ -59,9 +59,9 @@ describe('触屏滑动翻页', () => {
     return Object.assign(Object.create(M), { turned: [], bookNext() { this.turned.push('next'); }, bookPrev() { this.turned.push('prev'); } });
   }
   const swipe = (c, dx, dy, ms = 200) => {
-    M._bookTouchStart.call(c, { touches: [{ clientX: 100, clientY: 100 }] });
+    M.onBookTouchStart.call(c, { touches: [{ clientX: 100, clientY: 100 }] });
     c._bkTouch.t = Date.now() - ms;
-    M._bookTouchEnd.call(c, { changedTouches: [{ clientX: 100 + dx, clientY: 100 + dy }] });
+    M.onBookTouchEnd.call(c, { changedTouches: [{ clientX: 100 + dx, clientY: 100 + dy }] });
   };
 
   it('左滑下一页、右滑上一页', () => {
@@ -86,14 +86,14 @@ describe('触屏滑动翻页', () => {
 
   it('没有 touchstart 记录时 touchend 安全返回', () => {
     const c = ctx(); c._bkTouch = null;
-    expect(() => M._bookTouchEnd.call(c, { changedTouches: [{ clientX: 0, clientY: 0 }] })).not.toThrow();
+    expect(() => M.onBookTouchEnd.call(c, { changedTouches: [{ clientX: 0, clientY: 0 }] })).not.toThrow();
     expect(c.turned).toEqual([]);
   });
 
   it('模板把监听挂在正文容器上，且是 passive（不阻塞滚动）', () => {
     const tpl = fs.readFileSync(path.join(ROOT, 'js/tpl/view-books.js'), 'utf8');
-    expect(tpl).toMatch(/class="bk-body"[^>]*@touchstart\.passive="_bookTouchStart"/);
-    expect(tpl).toMatch(/@touchend\.passive="_bookTouchEnd"/);
+    expect(tpl).toMatch(/class="bk-body"[^>]*@touchstart\.passive="onBookTouchStart"/);
+    expect(tpl).toMatch(/@touchend\.passive="onBookTouchEnd"/);
   });
 });
 
