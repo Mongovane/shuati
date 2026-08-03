@@ -2,7 +2,7 @@
 // 直接编辑本文件即可；js/app-template.js 按固定顺序装配，勿在分片间搬动结构边界。
 const TPL_VIEW_PRACTICE = `
     <div v-if="['practice','wrong','favorite'].includes(view)">
-      <div class="toolbar" :class="{open:filterOpen}">
+      <div class="toolbar toolbar-filter" :class="{open:filterOpen}">
         <div class="filter-summary" @click="filterOpen=!filterOpen">
           <span style="font-weight:600">筛选</span>
           <span class="fs-text">{{ subjName(f.subject==='all'?'':f.subject)||'全部' }}{{ f.chapter?(' · '+f.chapter):'' }}{{ f.type?(' · '+typeName(f.type)):'' }}{{ f._mode&&f._mode!=='all'?' · '+{unseen:'未做',due:'待复习',wrong:'错题',favorite:'收藏',mastered:'已掌握'}[f._mode]:''}}</span>
@@ -113,6 +113,7 @@ const TPL_VIEW_PRACTICE = `
           </transition>
           <div class="q-nav-bar">
             <button class="btn subtle" :disabled="qi<=0" @click="prev"><icon name="arrow-left" :size="15" /> 上一题</button>
+            <div class="q-nav-prog" v-if="queue.length>1"><div class="q-nav-prog-fill" :style="{width:Math.round((qi+1)/queue.length*100)+'%'}"></div><span class="q-nav-prog-txt">{{ qi+1 }}/{{ queue.length }}</span></div>
             <button class="btn" @click="next">{{ qi>=queue.length-1 ? (reviewSession ? '完成回顾 ✓' : '换一批 ↻') : '下一题 →' }}</button>
           </div>
           <div class="kbd-hint muted">快捷键：A–D / 1–4 选选项（判断题 1=对 2=错）· Enter 提交/下一题 · ← → 切题 · 揭晓后 F 收藏 · M 掌握 · E 解析 · K 卡片 · 自评 1 重来 2 困难 3 良好 4 简单</div>

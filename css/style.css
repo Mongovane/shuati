@@ -980,13 +980,12 @@ a{color:var(--accent)}
 
 /* ===================== v49：排版与响应式体验优化 ===================== */
 
-/* ---- 手机端：筛选区折叠 ---- */
-/* 默认隐藏筛选行（由 JS toggleFilter 控制展开，下面有 .toolbar.open 放行） */
+/* ---- 手机端：筛选区折叠（仅刷题筛选栏，不影响 Settings 等其它 toolbar） ---- */
 @media(max-width:640px){
-  .toolbar{position:relative}
-  .toolbar .field,.toolbar .btn.subtle{display:none}
-  .toolbar.open .field,.toolbar.open .btn.subtle{display:flex}
-  .toolbar .filter-summary{display:flex}
+  .toolbar.toolbar-filter{position:relative}
+  .toolbar.toolbar-filter .field,.toolbar.toolbar-filter .btn.subtle{display:none}
+  .toolbar.toolbar-filter.open .field,.toolbar.toolbar-filter.open .btn.subtle{display:flex}
+  .toolbar.toolbar-filter .filter-summary{display:flex}
 }
 /* 摘要行（桌面不显示） */
 .filter-summary{display:none;align-items:center;gap:8px;width:100%;font-size:13.5px;color:var(--ink);cursor:pointer;padding:4px 0;-webkit-tap-highlight-color:transparent}
@@ -1037,11 +1036,9 @@ a{color:var(--accent)}
   .fab-top.above-bar{bottom:calc(22px + env(safe-area-inset-bottom,0px))}
 }
 
-/* ---- 桌面端：知识点卡片网格优化 ---- */
+/* ---- 桌面端：知识点卡片网格优化（仅 grid 列数，不改高度——翻转动画依赖固定 height） ---- */
 @media(min-width:700px){
   .kcard-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
-  .kcard{height:auto;min-height:220px}
-  .kcard-inner{min-height:220px}
 }
 
 /* ---- 全端：深色模式卡片边界增强 ---- */
@@ -1079,3 +1076,108 @@ a{color:var(--accent)}
 
 /* ---- 通用：页面标题统一间距 ---- */
 h2{margin:.2em 0 .6em}
+
+/* ===================== 手机端精细打磨（基于真机截图） ===================== */
+
+/* ---- Bank：「全选全部匹配」手机端默认隐藏 ---- */
+@media(max-width:640px){
+  .bank-sel-all-match{display:none!important}
+  /* 只在有勾选时展示（用户已在操作批量模式才需要跨页全选） */
+}
+
+/* ---- Bank：手机端工具栏紧凑 ---- */
+@media(max-width:640px){
+  .tb-right{gap:6px!important;flex-wrap:wrap}
+  .tb-right .btn{font-size:12px;padding:6px 10px}
+}
+
+/* ---- Saved 标签行溢出修复 ---- */
+@media(max-width:420px){
+  .q-tags{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;gap:6px}
+  .q-tags::-webkit-scrollbar{display:none}
+  .q-tags .tag{white-space:nowrap;flex:none}
+}
+
+/* ---- Settings toolbar 里的 field 手机端正常显示 ---- */
+@media(max-width:640px){
+  .fold-body .toolbar .field{display:flex!important;max-width:100%!important;flex:1 1 100%!important}
+  .fold-body .toolbar{gap:12px}
+}
+
+/* ---- 手机端导航栏 tab 间距微调 ---- */
+@media(max-width:420px){
+  .tabs{gap:2px}
+  .tab{font-size:13.5px;padding:8px 12px}
+}
+
+/* ---- Reports 手机端 stat 卡片间距 ---- */
+@media(max-width:560px){
+  .stat{padding:14px 16px}
+  .stat .n{font-size:28px}
+}
+
+/* ---- 桌面端 toast 位置：底栏已 inline，toast 不需要避让那么高 ---- */
+@media(min-width:900px){
+  .toast{bottom:calc(28px + env(safe-area-inset-bottom,0px))}
+}
+
+/* ===================== 用户体验打磨（学生日常刷题视角） ===================== */
+
+/* ---- 底栏进度条：prev [===进度===] next ---- */
+.q-nav-prog{flex:1;min-width:60px;max-width:180px;height:6px;background:var(--line);border-radius:3px;position:relative;overflow:hidden}
+.q-nav-prog-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+.q-nav-prog-txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--ink-soft);line-height:1;top:-14px;height:auto}
+
+/* ---- 自评按钮色彩：通过颜色直觉传达记忆程度 ---- */
+.sg-again{border-color:var(--bad-line)!important;color:var(--bad)!important}
+.sg-again.on,.sg-again:active{background:var(--bad-soft)!important}
+.sg-hard{border-color:#d4952a!important;color:#a67316!important}
+.sg-hard.on,.sg-hard:active{background:color-mix(in srgb,#d4952a 10%,var(--surface))!important}
+.sg-good{border-color:var(--ok-line)!important;color:var(--ok)!important}
+.sg-good.on,.sg-good:active{background:var(--ok-soft)!important}
+.sg-easy{border-color:var(--accent)!important;color:var(--accent)!important}
+.sg-easy.on,.sg-easy:active{background:var(--accent-soft)!important}
+[data-theme=dark] .sg-hard{border-color:#b8862a!important;color:#d4a24a!important}
+
+/* ---- 答对/答错震动反馈（轻微位移暗示） ---- */
+@keyframes ansCorrect{0%{transform:scale(1)}50%{transform:scale(1.01)}100%{transform:scale(1)}}
+@keyframes ansWrong{0%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}100%{transform:translateX(0)}}
+.card.ans-correct{animation:ansCorrect .3s ease}
+.card.ans-wrong{animation:ansWrong .35s ease}
+
+/* ---- 连对计数器：更有成就感 ---- */
+.streak{display:inline-flex;align-items:center;gap:3px;font-size:14px;font-weight:700;color:var(--accent);transition:transform .2s}
+.streak.hot{color:#d4632a;transform:scale(1.08)}
+
+/* ---- 切题过渡已有 qfade，此处留空 ---- */
+
+/* ---- 手机端：按钮触摸反馈 ---- */
+@media(pointer:coarse){
+  .btn:active,.tab:active,.opt:active{transform:scale(.97);transition:transform .05s}
+  .bk-card:active{transform:scale(.98)!important;transition:transform .08s}
+}
+
+/* ---- 已作答选项淡化——视觉引导到判分结果 ---- */
+.opt.disabled:not(.correct):not(.wrong):not(.sel){opacity:.55}
+
+/* ---- Reports：0 值统计卡弱化 ---- */
+.stat .n{transition:color .3s}
+.stat .n.zero{opacity:.35}
+
+/* ---- 收藏星高亮动画 ---- */
+@keyframes starPop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+.star.on{animation:starPop .3s ease}
+
+/* ---- 刷题卡片内题干区域：给公式更多呼吸空间 ---- */
+.rich .katex-display{margin:.6em 0;padding:4px 0}
+
+/* ---- 移动端信息行紧凑：归类下拉和删除不需要那么宽 ---- */
+@media(max-width:560px){
+  .q-meta select{max-width:120px;font-size:12px;height:32px;padding:0 8px}
+  .q-meta .bk-del-min{font-size:11px;padding:3px 8px}
+}
+
+/* ---- 桌面端刷题区域：题卡最大宽度限制，避免长行阅读 ---- */
+@media(min-width:960px){
+  .card-q{max-width:780px}
+}

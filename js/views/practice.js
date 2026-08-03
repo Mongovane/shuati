@@ -13,7 +13,7 @@ qs(extra={}){ const p=new URLSearchParams();
       Object.entries(extra).forEach(([k,v])=>p.set(k,v)); return p.toString();
     },
 onFilter(){ if(this.filterLock)return; this.startSession(); },
-async startSession(keep){ if(!this.token)return;
+async startSession(keep){ if(!this.token||this.loading)return;
       const forView=this.view;
       this.loading=true; this.batchDone=false; this.queue=[]; this.qi=0; this.sessionAns={}; this.qStates={}; this.aiStates={}; this.sessionView=this.view;
       this.reviewSession=null;  // 常规取题即离开「错题回顾」会话
@@ -31,7 +31,7 @@ async startSession(keep){ if(!this.token)return;
           if(this.view==='wrong'){ try{ this.stats=await this.api('/api/progress'); this.statsDirty=false; }catch(_){ } } }
       }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
-      if(this.view===forView) this.loading=false;
+      this.loading=false;
     },
 srcBook(s){ const t=String(s||'').split(' · ')[0].trim(); return t || '未知来源'; },
 cleanPageMd(md){

@@ -96,10 +96,17 @@ const QuestionCard={
     tfClass(v){ if(!this.revealed)return{sel:this.sel.includes(v)}; const a=this.answerKeys[0]===v,c=this.sel.includes(v); return{correct:a,wrong:c&&!a}; },
     elapsedMs(){ return Math.max(0, Math.min(600000, Date.now()-this.t0)); },
     submit(){ this.localRevealed=true; const ms=this.elapsedMs();
-      if(AUTO.includes(this.q.type)) this.$emit('answered',{id:this.q.id,correct:this.autoCorrect,partial:this.mcPartial,ms});
+      if(AUTO.includes(this.q.type)){
+        this.$emit('answered',{id:this.q.id,correct:this.autoCorrect,partial:this.mcPartial,ms});
+        // 答对/答错动画反馈
+        this._flashAns(this.autoCorrect);
+      }
       if(this.q.type==='fill_blank'&&this.autoCorrect){ this.self=true; this.selfGrade='good'; this.$emit('answered',{id:this.q.id,correct:true,grade:'good',ms}); } },
-    grade4(g){ if(!['again','hard','good','easy'].includes(g))return; this.selfGrade=g; this.self=(g!=='again'); this.$emit('answered',{id:this.q.id,correct:this.self,grade:g,ms:this.elapsedMs()}); },
+    grade4(g){ if(!['again','hard','good','easy'].includes(g))return; this.selfGrade=g; this.self=(g!=='again');
+      this.$emit('answered',{id:this.q.id,correct:this.self,grade:g,ms:this.elapsedMs()});
+      this._flashAns(this.self); },
     grade(ok){ this.grade4(ok?'good':'again'); }, /* 兼容旧调用（快捷键等）：映射到四档 */
+    _flashAns(ok){ const el=this.$el; if(!el)return; const cls=ok?'ans-correct':'ans-wrong'; el.classList.remove('ans-correct','ans-wrong'); void el.offsetWidth; el.classList.add(cls); setTimeout(()=>el.classList.remove(cls),400); },
     toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
     markMastered(){ this.$emit('master',{id:this.q.id,value:!this.q.mastered}); },
     saveNote(){ this.$emit('note',{id:this.q.id,note:this.noteDraft}); this.showNote=false; },
