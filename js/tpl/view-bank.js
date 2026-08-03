@@ -25,7 +25,7 @@ const TPL_VIEW_BANK = `
             <button :class="{on:bank.status==='draft'}" @click="bank.status='draft';loadBank(true)">待审核<span v-if="meta.drafts" class="seg-badge">{{ meta.drafts }}</span></button>
           </div>
           <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
-          <button class="btn subtle bank-sel-all-match" v-if="bank.sel.length && bank.total>bank.items.length" :disabled="busyOps.bankSelectAllMatching" @click="bankSelectAllMatching" title="跨页选中当前筛选条件下的全部题（只拉 id，不会把带插图的题干整批下载）"><span v-if="busyOps.bankSelectAllMatching" class="spin"></span>全选全部匹配 ({{ bank.total }})</button>
+          <label class="bank-check" v-if="bank.sel.length && bank.total>bank.items.length"><input type="checkbox" :checked="bank.sel.length>=bank.total" :disabled="busyOps.bankSelectAllMatching" @change="$event.target.checked ? bankSelectAllMatching() : bankClearSel()" /><span v-if="busyOps.bankSelectAllMatching" class="spin"></span> 全选全部匹配 ({{ bank.total }})</label>
           <button class="btn subtle" v-if="bank.sel.length" @click="bankClearSel">清空选择</button>
           <span v-if="bank.batchProg" class="muted" style="font-size:12px">{{ bank.batchProg }}</span>
           <span class="muted">已选 {{ bank.sel.length }} · 共 {{ bank.total }} 题(已加载 {{ bank.items.length }})</span>
