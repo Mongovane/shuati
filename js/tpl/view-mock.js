@@ -45,7 +45,7 @@ const TPL_VIEW_MOCK = `
             </div>
           </template>
         </div>
-        <button class="btn" :disabled="loading" @click="startMock"><span v-if="loading" class="spin"></span>开始测试</button>
+        <button v-if="mock.bp.on" class="btn" :disabled="loading" @click="startMock"><span v-if="loading" class="spin"></span>开始测试</button>
       </div>
 
       <template v-else>

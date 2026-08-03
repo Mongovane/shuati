@@ -52,7 +52,9 @@ input,select,textarea{font-family:inherit;font-size:15px}
 .tab .badge{margin-left:6px;font-size:11px;background:var(--bad);color:#fff;border-radius:999px;padding:1px 6px;font-weight:700}
 .wrap{max-width:960px;margin:0 auto;padding:18px 18px 32px}
 .toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px}
+.toolbar .field{flex:1 1 auto;min-width:120px;max-width:260px}
 .toolbar .field label{font-size:12px;color:var(--ink-soft);font-weight:500}
+.toolbar .field select,.toolbar .field .inp{width:100%}
 .field{display:flex;flex-direction:column;gap:4px}
 /* 筛选区：横向排布 + 自动换行 */
 .filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
@@ -1053,3 +1055,27 @@ a{color:var(--accent)}
 /* ---- 全端：题干有阅读材料时的视觉层次 ---- */
 .passage+.stem{margin-top:12px;border-top:none}
 
+
+/* ===================== 桌面端精细打磨 ===================== */
+
+/* ---- Bank 行：删除按钮 hover 才显示 ---- */
+@media(pointer:fine){
+  .bank-side .bk-del{opacity:0;transition:opacity .15s}
+  .bank-row:hover .bank-side .bk-del{opacity:1}
+}
+
+/* ---- Reports 热力图居中 ---- */
+.heat-grid{display:grid;justify-content:center}
+
+/* ---- 筛选区桌面端：两行紧凑排布，字段均分 ---- */
+@media(min-width:700px){
+  .toolbar{gap:10px 14px}
+  .toolbar .field{max-width:220px;flex:1 1 160px}
+  .toolbar .field:first-child{flex:0 0 auto;min-width:140px;max-width:180px}
+}
+
+/* ---- 空态页面主 CTA 更醒目 ---- */
+.empty .row .btn:first-child{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* ---- 通用：页面标题统一间距 ---- */
+h2{margin:.2em 0 .6em}
