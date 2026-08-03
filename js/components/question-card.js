@@ -8,7 +8,7 @@ const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state'],
-  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false }; },
+  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0 }; },
   computed:{
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
@@ -112,6 +112,8 @@ const QuestionCard={
       else if(g==='good'||g==='easy') this._flashAns(true); },
     grade(ok){ this.grade4(ok?'good':'again'); }, /* 兼容旧调用（快捷键等）：映射到四档 */
     _flashAns(ok){ const el=this.$el; if(!el)return; const cls=ok?'ans-correct':'ans-wrong'; el.classList.remove('ans-correct','ans-wrong'); void el.offsetWidth; el.classList.add(cls); setTimeout(()=>el.classList.remove(cls),400); },
+    kcardPrev(){ if(this.kcardIdx>0) this.kcardIdx--; },
+    kcardNext(){ if(this.kcardIdx<this.aiCards.length-1) this.kcardIdx++; },
     toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
     markMastered(){ this.$emit('master',{id:this.q.id,value:!this.q.mastered}); },
     saveNote(){ this.$emit('note',{id:this.q.id,note:this.noteDraft}); this.showNote=false; },
@@ -170,8 +172,12 @@ const QuestionCard={
         <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <textarea v-if="showRaw" readonly :value="aiText" style="width:100%;min-height:220px;font:12px/1.5 ui-monospace,monospace" @focus="$event.target.select()"></textarea>
         <template v-else-if="aiKind==='concept' && aiCards.length">
-        <div class="kcard-tools"><button class="kcard-flipall" @click="$emit('cards-flip-all')"><icon name="chevrons-up-down" :size="13" /> {{ allFlipped ? '全部收起（看题目）' : '全部翻开（看讲解）' }}</button></div>
-        <div class="kcard-grid">
+        <div class="kcard-tools">
+          <button class="kcard-flipall" @click="$emit('cards-flip-all')"><icon name="chevrons-up-down" :size="13" /> {{ allFlipped ? '全部收起' : '全部翻开' }}</button>
+          <button class="kcard-flipall" @click="kcardMode=kcardMode==='grid'?'single':'grid'"><icon :name="kcardMode==='grid'?'layers-subtract':'grid-dots'" :size="13" /> {{ kcardMode==='grid'?'逐张背诵':'网格总览' }}</button>
+          <span class="muted" style="font-size:12px;margin-left:auto">已翻 {{ Object.keys(aiFlip).filter(k=>aiFlip[k]).length }}/{{ aiCards.length }}</span>
+        </div>
+        <div v-if="kcardMode==='grid'" class="kcard-grid">
           <div v-for="(c,i) in aiCards" :key="'kc'+i" class="kcard" :class="{flipped:aiFlip[i]}" :style="{animationDelay:(i*90)+'ms'}" @click="$emit('card-flip',i)">
             <div class="kcard-inner">
               <div class="kcard-face kcard-front">
@@ -186,6 +192,28 @@ const QuestionCard={
                 <div class="kcard-hint">点击返回 <icon name="corner-down-left" :size="15" /></div>
               </div>
             </div>
+          </div>
+        </div>
+        <div v-else class="kcard-single">
+          <div class="kcard kcard-lg" :class="{flipped:aiFlip[kcardIdx]}" @click="$emit('card-flip',kcardIdx)">
+            <div class="kcard-inner">
+              <div class="kcard-face kcard-front">
+                <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
+                <div class="kcard-term" style="font-size:22px"><rich-text :content="aiCards[kcardIdx].term" /></div>
+                <div v-if="aiCards[kcardIdx].formula" class="kcard-formula" style="font-size:17px"><rich-text :content="aiCards[kcardIdx].formula" /></div>
+                <div class="kcard-hint">点击翻面看讲解</div>
+              </div>
+              <div class="kcard-face kcard-back">
+                <div class="kcard-plain" style="font-size:15px"><rich-text :content="aiCards[kcardIdx].plain" /></div>
+                <div v-if="aiCards[kcardIdx].example" class="kcard-eg"><span class="kcard-eg-tag">例</span><rich-text :content="aiCards[kcardIdx].example" /></div>
+                <div class="kcard-hint">点击翻回正面</div>
+              </div>
+            </div>
+          </div>
+          <div class="kcard-single-nav">
+            <button class="btn subtle" :disabled="kcardIdx<=0" @click="kcardPrev"><icon name="arrow-left" :size="15" /></button>
+            <span class="kcard-dots"><span v-for="(c,i) in aiCards" :key="'kd'+i" class="kcard-dot-s" :class="{on:i===kcardIdx,done:aiFlip[i]}" @click="kcardIdx=i"></span></span>
+            <button class="btn subtle" :disabled="kcardIdx>=aiCards.length-1" @click="kcardNext"><icon name="arrow-right" :size="15" /></button>
           </div>
         </div>
         </template>

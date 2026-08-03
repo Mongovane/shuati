@@ -1181,3 +1181,25 @@ h2{margin:.2em 0 .6em}
 @media(min-width:960px){
   .card-q{max-width:780px}
 }
+
+/* ===================== 知识点卡片：逐张背诵模式 ===================== */
+
+.kcard-tools{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+
+/* 逐张模式容器 */
+.kcard-single{display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0}
+
+/* 大号卡片 */
+.kcard-lg{width:100%;max-width:480px;height:320px}
+@media(max-width:500px){.kcard-lg{height:280px}}
+
+/* 导航栏：上一张 · 圆点 · 下一张 */
+.kcard-single-nav{display:flex;align-items:center;gap:12px;width:100%;max-width:480px;justify-content:space-between}
+.kcard-dots{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;flex:1;min-width:0}
+.kcard-dot-s{width:10px;height:10px;border-radius:50%;background:var(--line);cursor:pointer;transition:all .2s;flex:none}
+.kcard-dot-s.on{background:var(--accent);transform:scale(1.3)}
+.kcard-dot-s.done:not(.on){background:var(--ok);opacity:.6}
+
+/* 卡片公式溢出处理 */
+.kcard-formula .katex-display{margin:4px 0;overflow-x:auto;overflow-y:hidden}
+.kcard-formula .katex{font-size:inherit}
