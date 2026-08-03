@@ -138,9 +138,9 @@ countNewToday(id){ /* 每日新题软上限：只提醒不硬拦，帮着把节�
       try{ localStorage.setItem('zb_newday',day); localStorage.setItem('zb_newcount',String(n)); }catch(_){ }
       if(n===this.dailyNewLimit) this.flash('今日新题已达上限 '+this.dailyNewLimit+' 题，建议切到「今日待复习」巩固');
       else if(n>this.dailyNewLimit && (n-this.dailyNewLimit)%10===0) this.flash('已超今日新题上限（'+n+'/'+this.dailyNewLimit+'），注意复习消化'); },
-async onFav(p){ const q=this.findQ(p.id); if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); this.favDirty=true; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth')this.flash('收藏保存失败：'+e.message,true); } },
-async onMaster(p){ const q=this.findQ(p.id); if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); this.statsDirty=true; this.favDirty=true; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth')this.flash('掌握状态保存失败：'+e.message,true); } },
-async onNote(p){ const q=this.findQ(p.id); if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth')this.flash('笔记保存失败：'+e.message,true); } }
+async onFav(p){ const q=this.findQ(p.id); const prev=q&&q.favorited; if(q)q.favorited=p.value; this.flash(p.value?'已收藏':'已取消收藏'); this.favDirty=true; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth'){ if(q)q.favorited=prev; this.flash('收藏保存失败，已撤回：'+e.message,true); } } },
+async onMaster(p){ const q=this.findQ(p.id); const prev=q&&q.mastered; if(q)q.mastered=p.value; this.flash(p.value?'已标记为掌握':'已撤销'); this.statsDirty=true; this.favDirty=true; try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'master',question_id:p.id,value:p.value?1:0})}); }catch(e){ if(e.message!=='unauth'){ if(q)q.mastered=prev; this.flash('掌握状态保存失败，已撤回：'+e.message,true); } } },
+async onNote(p){ const q=this.findQ(p.id); const prev=q&&q.note; if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth'){ if(q)q.note=prev; this.flash('笔记保存失败，已撤回：'+e.message,true); } } }
 
 ,
 // 解析 concept 返回的 JSON 卡片（健壮：剥代码围栏、截取数组片段、校验字段）
@@ -207,9 +207,13 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
 },
 // 自动保存 AI 解析到题目「解析」字段（静默，供 autoSaveAi 用）
 async _autoSaveExplain(qid, text, chat){ const q=this.findQ(qid); if(!q||!text)return; if(q._aiSaved)return;
-  let merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+String(text).trim();
+  let aiBlock='**AI 解析**\n\n'+String(text).trim();
   const cs=(chat||[]).filter(c=>c.a&&!c.a.startsWith('_回答失败'));
-  if(cs.length){ merged+='\n\n**追问记录**\n\n'+cs.map(c=>'> '+c.q+'\n\n'+c.a.trim()).join('\n\n'); }
+  if(cs.length){ aiBlock+='\n\n**追问记录**\n\n'+cs.map(c=>'> '+c.q+'\n\n'+c.a.trim()).join('\n\n'); }
+  // 已有 AI 解析段时替换而非追加（防止刷新后重新生成导致无限膨胀）
+  const existing=String(q.analysis||'').trim();
+  const aiIdx=existing.search(/\*\*AI 解析\*\*/);
+  let merged; if(aiIdx>0){ merged=existing.slice(0,aiIdx).replace(/\n*---\s*$/, '').trim()+'\n\n---\n\n'+aiBlock; } else if(aiIdx===0){ merged=aiBlock; } else { merged=(existing?existing+'\n\n---\n\n':'')+aiBlock; }
   await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[qid],analysis:merged})}); q.analysis=merged; q._aiSaved=true; this.bankDirty=true;
 },
 // 自动保存知识点卡片（转 markdown 追加到题目「解析」）
@@ -227,7 +231,7 @@ async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this
 
 
 ,
-async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)return;
+async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.aiX.text && !(this.aiX.cards&&this.aiX.cards.length))return;
   if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
   if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
@@ -236,7 +240,10 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id||!this.aiX.text)r
   const history=[]; for(const c of this.aiX.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
   try{
-    const r=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject }, analysis:this.aiX.text.slice(0,6000), history, ask:text }, ctrl.signal,
+    // 构建上下文：explain 用 aiX.text，concept 用卡片序列化
+    let analysisCtx=this.aiX.text||'';
+    if(!analysisCtx && this.aiX.cards && this.aiX.cards.length){ analysisCtx=this.aiX.cards.map((c,i)=>'【'+(i+1)+'】'+c.term+(c.formula?' '+c.formula:'')+'：'+c.plain+(c.example?' 例：'+c.example:'')).join('\n'); }
+    const r=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject }, analysis:analysisCtx.slice(0,6000), history, ask:text }, ctrl.signal,
       (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }

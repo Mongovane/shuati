@@ -138,11 +138,12 @@ const ApiMixin = {
           for (const x of all) { subMap.set(x.subject, (subMap.get(x.subject) || 0) + 1); if (x.chapter) { const k = x.subject + '|' + x.chapter; if (!chSet.has(k)) { chSet.add(k); chaps.push({ subject: x.subject, chapter: x.chapter }); } } }
           return { subjects: [...subMap].map(([subject, n]) => ({ subject, n })), chapters: chaps, _offline: true };
         }
-        const subject = q.get('subject'), chapter = q.get('chapter'), type = q.get('type'), mode = q.get('mode') || 'all', order = q.get('order') || 'random', kw = (q.get('q') || '').trim();
+        const subject = q.get('subject'), chapter = q.get('chapter'), type = q.get('type'), mode = q.get('mode') || 'all', order = q.get('order') || 'random', kw = (q.get('q') || '').trim(), tag = (q.get('tag') || '').trim();
         let arr = all.filter((x) => {
           if (subject && subject !== 'all' && x.subject !== subject) return false;
           if (chapter && x.chapter !== chapter) return false;
           if (type && x.type !== type) return false;
+          if (tag && !(Array.isArray(x.tags) && x.tags.includes(tag))) return false;
           const w = x.wrong_count || 0, r = x.right_count || 0;
           if (mode === 'unseen' && (w > 0 || r > 0 || x.favorited || x.mastered)) return false;
           if (mode === 'wrong' && !(w > 0 && !x.mastered)) return false;
@@ -155,6 +156,7 @@ const ApiMixin = {
         const total = arr.length;
         if (order === 'random') { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } }
         else if (order === 'weak') { arr = arr.slice().sort((a, b) => ((b.wrong_count || 0) - (a.wrong_count || 0)) || ((a.right_count || 0) - (b.right_count || 0))); }
+        else if (order === 'due') { arr = arr.slice().sort((a, b) => ((a.due_at || Infinity) - (b.due_at || Infinity))); }
         const offset = parseInt(q.get('offset') || '0', 10) || 0, limit = parseInt(q.get('limit') || '30', 10) || 30;
         return { items: arr.slice(offset, offset + limit), total, _offline: true };
       }

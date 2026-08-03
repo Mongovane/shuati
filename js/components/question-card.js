@@ -194,7 +194,7 @@ const QuestionCard={
             <button class="ai-chip" v-if="aiText && aiKind!=='concept'" :class="{on:segMode}" @click="segToggle" title="进入选段模式：点选段落/公式/代码块，再合并复制或引用到追问"><icon :name="segMode?'x':'text-cursor-input'" :size="13" /><span>{{ segMode?'退出选段':'选段' }}</span></button>
           </div>
         </div>
-        <template v-if="aiText && !aiBusy">
+        <template v-if="(aiText || (aiKind==='concept' && aiCards.length)) && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" class="chat-round">
             <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="13" /> 你</div><rich-text :content="c.q" /></div>
             <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="c.a" />
@@ -209,7 +209,7 @@ const QuestionCard={
             <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
           </div>
           <div style="display:flex;gap:8px;margin-top:10px">
-            <input ref="askInp" v-model="askInput" :disabled="aiAsking" placeholder="对解析还有疑问？继续追问（可直接复制上方公式粘贴，会自动还原为 $ 公式源码；Enter 发送）…" style="flex:1;min-width:0" @keyup.enter="doAsk" />
+            <input ref="askInp" v-model="askInput" :disabled="aiAsking" :placeholder="aiKind==='concept' ? '对知识点卡片有疑问？追问（Enter 发送）…' : '对解析还有疑问？继续追问（可直接复制上方公式粘贴，会自动还原为 $ 公式源码；Enter 发送）…'" style="flex:1;min-width:0" @keyup.enter="doAsk" />
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
           </div>
         </template>

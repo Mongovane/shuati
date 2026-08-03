@@ -49,7 +49,7 @@ const App={
     stealth:{ hidden:false, autoHide: localStorage.getItem('zb_autohide')==='1' },
     tokenInput:'', view:'practice',
     subjects:SUBJECTS, types:TYPES, subjMap:SUBJ_MAP, typeMap:TYPE_MAP, currentBookId:'', bookIdx:0, bookTocOpen:false, bookSearch:'',
-    f:{ subject:'all', chapter:'', type:'', order:'random', tag:'', _mode:'all' }, filterLock:false,
+    f:{ subject:'all', chapter:'', type:'', order:'random', tag:'', _mode:'all' }, filterLock:false, filterOpen:false,
     reviewSession:null,  // 「回顾某次模考错题」独立会话：{title, count} —— 非空时 wrong 视图显示横幅、不被常规队列覆盖
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
@@ -353,10 +353,14 @@ go(v){
       // 记录当前视图滚动位置，切回来时恢复
       try{ scrollCache[prev]=window.pageYOffset||document.documentElement.scrollTop||0; }catch(_){}
       if(this.pdfv && this.pdfv.open && typeof this.pdfvClose==='function'){ this.pdfvClose(); }
+      // 模考进行中离开 Test 页：暂停计时器、保存快照，回来时恢复
+      if(prev==='mock' && this.mock.started && v!=='mock'){ clearInterval(this.mock.timer); this.mock.timer=null; this.mockSnapSave(); this.flash('模考已暂停，回到 Test 页继续'); }
       if(['practice','wrong','favorite'].includes(prev) && this.queue.length){
         qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
       }
       this.view=v;
+      this._syncHash(v);
+      try{ localStorage.setItem('zb_view',v); }catch(_){}
       if(v==='favorite' && this.fav.listMode){
         if(!this.meta.subjects.length)this.loadMeta();
         this.loading=false;
@@ -378,6 +382,8 @@ go(v){
       if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta();
         // 惰性加载：仅首次进入或数据改动过(bankDirty)才重拉；单纯来回切导航不再刷新（保住滚动/翻页/勾选）
         if(this.bankDirty){ this.bankDirty=false; this.loadBank(true); } }
+      // 回到 Test 页时恢复进行中的模考计时器
+      if(v==='mock' && this.mock.started && !this.mock.timer){ this._mockStartTimer(); this.flash('模考已恢复计时'); }
       // 恢复该视图上次滚动位置（切回来停在原处，而非顶部）
       const sy=scrollCache[v]||0;
       this.$nextTick(()=>{ requestAnimationFrame(()=>{ try{ window.scrollTo(0, sy); }catch(_){} }); });
@@ -388,6 +394,14 @@ stealthHide(){ this.stealth.hidden=true; },
 stealthShow(){ this.stealth.hidden=false; },
 onKey(e){ const tag=(e.target&&e.target.tagName)||'';
       if(this.stealth.hidden){ e.preventDefault(); this.stealth.hidden=false; return; }
+      // Escape 关闭弹窗（优先级高于其它快捷键）
+      if(e.key==='Escape'){
+        if(this.bankEdit&&this.bankEdit.open){ this.bankCloseEdit(); return; }
+        if(this.dup&&this.dup.open&&!this.dup.busy){ this.dup.open=false; return; }
+        if(this.extractPreview&&this.extractPreview.open){ this.extractClose(); return; }
+        if(this.pdfAi&&this.pdfAi.open){ this.pdfAi.open=false; return; }
+        if(this.pdfv&&this.pdfv.open){ this.pdfvClose(); return; }
+      }
       if(this.reader.open){ if(e.key==='Escape'){ if(this.reader.tocOpen){this.reader.tocOpen=false;return;} if(this.reader.panel){this.reader.panel=false;return;} this.readerClose(); return; } if(tag==='INPUT'||tag==='TEXTAREA')return; if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); this.readerNext(); return; } if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.readerPrev(); return; } return; }
       // —— 内联阅读器（Books 页但未进沉浸模式）的键盘翻页 ——
       // 必须放在上面 reader.open 分支之后：沉浸模式已经由那一段处理，
@@ -427,6 +441,8 @@ onKey(e){ const tag=(e.target&&e.target.tagName)||'';
             }
             if(kl==='f'){ e.preventDefault(); card.toggleFav(); return; }
             if(kl==='m'){ e.preventDefault(); card.markMastered(); return; }
+            if(kl==='e'){ e.preventDefault(); this.aiExplain(); return; }
+            if(kl==='k'){ e.preventDefault(); this.aiExplain('concept'); return; }
           }
         }
       }
