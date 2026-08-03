@@ -103,8 +103,8 @@ const QuestionCard={
       }
       if(this.q.type==='fill_blank'&&this.autoCorrect){ this.self=true; this.selfGrade='good'; this.$emit('answered',{id:this.q.id,correct:true,grade:'good',ms}); } },
     grade4(g){ if(!['again','hard','good','easy'].includes(g))return;
-      // 再次点击同一档 → 取消自评
-      if(this.selfGrade===g){ this.selfGrade=null; this.self=null; return; }
+      // 再次点击同一档 → 取消自评，通知父组件清除本题作答记录
+      if(this.selfGrade===g){ this.selfGrade=null; this.self=null; this.$emit('answered',{id:this.q.id,cancel:true}); return; }
       this.selfGrade=g; this.self=(g!=='again');
       this.$emit('answered',{id:this.q.id,correct:this.self,grade:g,ms:this.elapsedMs()});
       // 动画反馈：重来=抖动，困难=无动画（中性），良好/简单=弹跳

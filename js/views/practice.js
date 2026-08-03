@@ -124,7 +124,10 @@ async dropFromReview(){ const q=this.cur; if(!q)return; if(!this.token){ this.fl
 exitReviewSession(){ this.reviewSession=null; this.filterLock=false; this.startSession(); },
 async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(true); this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
 findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
-async onAnswered(p){ this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
+async onAnswered(p){
+      // 取消自评：清除本题作答记录（答题卡圆点恢复灰色）
+      if(p.cancel){ delete this.sessionAns[p.id]; return; }
+      this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
       if(p.partial) this.flash('多选少选：按半分计，已计入错题复习');
       this.countNewToday(p.id);
       try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct,grade:p.grade||undefined,duration_ms:p.ms||undefined})}); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('作答记录保存失败：'+e.message,true); } },

@@ -27,7 +27,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;overscroll-behavior-y:none}
-html{background:var(--bg)}
+html{background:var(--bg);touch-action:manipulation}
 body{background:var(--bg);min-height:100vh;color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.6}
 button{font-family:inherit;cursor:pointer}
 input,select,textarea{font-family:inherit;font-size:15px}
