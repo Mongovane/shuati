@@ -102,9 +102,14 @@ const QuestionCard={
         this._flashAns(this.autoCorrect);
       }
       if(this.q.type==='fill_blank'&&this.autoCorrect){ this.self=true; this.selfGrade='good'; this.$emit('answered',{id:this.q.id,correct:true,grade:'good',ms}); } },
-    grade4(g){ if(!['again','hard','good','easy'].includes(g))return; this.selfGrade=g; this.self=(g!=='again');
+    grade4(g){ if(!['again','hard','good','easy'].includes(g))return;
+      // 再次点击同一档 → 取消自评
+      if(this.selfGrade===g){ this.selfGrade=null; this.self=null; return; }
+      this.selfGrade=g; this.self=(g!=='again');
       this.$emit('answered',{id:this.q.id,correct:this.self,grade:g,ms:this.elapsedMs()});
-      this._flashAns(this.self); },
+      // 动画反馈：重来=抖动，困难=无动画（中性），良好/简单=弹跳
+      if(g==='again') this._flashAns(false);
+      else if(g==='good'||g==='easy') this._flashAns(true); },
     grade(ok){ this.grade4(ok?'good':'again'); }, /* 兼容旧调用（快捷键等）：映射到四档 */
     _flashAns(ok){ const el=this.$el; if(!el)return; const cls=ok?'ans-correct':'ans-wrong'; el.classList.remove('ans-correct','ans-wrong'); void el.offsetWidth; el.classList.add(cls); setTimeout(()=>el.classList.remove(cls),400); },
     toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
