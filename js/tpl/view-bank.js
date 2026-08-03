@@ -37,15 +37,16 @@ const TPL_VIEW_BANK = `
           <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
           <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似或完全相同的重复题，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 查重</button>
         </div>
-        <template v-if="bank.sel.length">
+        <div v-if="bank.sel.length" style="display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;width:100%;margin-top:4px">
           <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
           <button class="btn subtle" :disabled="busyOps.bankBatchSubject" @click="bankBatchSubject"><span v-if="busyOps.bankBatchSubject" class="spin"></span>应用</button>
           <button class="btn subtle" :disabled="busyOps.bankBatchChapter" @click="bankBatchChapter" title="批量修改选中题的章节">改章节</button>
           <button class="btn subtle" :disabled="busyOps.bankBatchTag" @click="bankBatchTag" title="给选中题批量添加标签（与原标签合并）">加标签</button>
           <button class="btn subtle" :disabled="busyOps.bankExportSel" @click="bankExportSel" title="把选中题导出为 JSON（可在导入页导回）"><icon name="download" :size="15" /> 导出</button>
           <button v-if="bank.status==='draft'" class="btn subtle" style="color:var(--ok);border-color:var(--ok)" @click="bankBatchApprove"><icon name="check" :size="15" /> 通过选中 ({{ bank.sel.length }})</button>
-          <button class="bk-del" :disabled="busyOps.bankBatchDelete" @click="bankBatchDelete"><span v-if="busyOps.bankBatchDelete" class="spin"></span>删除选中 ({{ bank.sel.length }})</button>
-        </template>
+          <span style="flex:1"></span>
+          <button class="bk-del" :disabled="busyOps.bankBatchDelete" @click="bankBatchDelete" style="margin-left:auto"><span v-if="busyOps.bankBatchDelete" class="spin"></span>删除选中 ({{ bank.sel.length }})</button>
+        </div>
       </div>
 
       <div v-if="bank.loading && !bank.items.length" class="skel-wrap"><div class="skel skel-row" v-for="n in 6" :key="'bsk'+n"></div></div>

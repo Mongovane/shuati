@@ -159,7 +159,8 @@ async onMockAnswer(p){ if(this.mock.started)return; /* 考试进行中不逐题�
       this.mock.answers[p.id]=p.correct;
       try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct,grade:p.grade||undefined,duration_ms:p.ms||undefined})}); }catch(e){ if(e.message!=='unauth')this.flash('自评记录保存失败：'+e.message,true); }
       /* 回写这次模考的逐题明细：之后「错题回顾」才能把这些主观题算进来 */
-      if(this.mock.lastId){ try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'mock_grade',mock_id:this.mock.lastId,question_id:p.id,is_correct:p.correct})}); }catch(_){ } } },
+      if(this.mock.lastId){ try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'mock_grade',mock_id:this.mock.lastId,question_id:p.id,is_correct:p.correct})}); }catch(_){ } }
+      this.statsDirty=true; /* 自评改变了进度数据，标脏以便切到 Reports 时重新拉取 */ },
 quitMock(){ clearInterval(this.mock.timer); this.mock.started=false; this.mock.finished=false; this.mock.questions=[]; this.mock.answers={}; this.mock.touched={}; this.mockSnapClear(); },
 // —— 打印错题卷：拉最近的错题渲染进隐藏打印区，触发系统打印（手机上也可存为 PDF）——
 async printWrong(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }

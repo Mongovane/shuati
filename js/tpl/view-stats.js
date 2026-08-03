@@ -51,11 +51,13 @@ const TPL_VIEW_STATS = `
             <p class="muted" style="margin:0 0 12px;font-size:12px">测试当时的成绩存档（不随后续复习变动）；点「错题回顾」可重做当时的错题。</p>
             <div v-for="(m,i) in stats.mocks" :key="i" class="subj-row">
               <div class="top"><span :title="'当次测试得分，历史存档'">{{ subjName(m.subject) }} · {{ m.score!=null?m.score:m.correct }}/{{ m.total }}<span v-if="m.score!=null&&m.score!==m.correct" class="muted" style="font-size:12px">（含半分）</span></span>
-                <span class="muted">{{ fmtTime(m.duration_seconds) }}
-                  <button class="btn subtle" style="margin-left:8px;padding:2px 10px;font-size:12px" @click="reviewMock(m)">错题回顾</button>
-                  <button class="bk-del-min" style="margin-left:4px" @click="deleteMock(m)" title="删除这条测试记录"><icon name="x" :size="16" /></button>
-                </span></div>
+                <span class="muted">{{ fmtTime(m.duration_seconds) }}</span></div>
               <div class="bar"><span :style="{width:(m.total?Math.round((m.score!=null?m.score:m.correct)/m.total*100):0)+'%', background:(m.total&&(m.score!=null?m.score:m.correct)/m.total>=0.6)?'var(--ok)':'var(--bad)'}"></span></div>
+              <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+                <button class="btn subtle" style="padding:3px 14px;font-size:13px" @click="reviewMock(m)"><icon name="rotate-cw" :size="14" /> 错题回顾</button>
+                <span class="muted" style="font-size:12px">{{ m.taken_at ? new Date(m.taken_at*1000).toLocaleDateString() : '' }}</span>
+                <button class="bk-del-min" style="margin-left:auto" @click="deleteMock(m)" title="删除这条测试记录"><icon name="x" :size="16" /></button>
+              </div>
             </div>
           </template>
         </template>

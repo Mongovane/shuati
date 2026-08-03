@@ -19,7 +19,7 @@ const TPL_VIEW_PRACTICE = `
             <option v-for="t in types" :key="t.v" :value="t.v">{{ t.t }}</option>
           </select></div>
         <div class="field" style="min-width:110px"><label>标签</label>
-          <input class="inp" v-model="f.tag" @keyup.enter="onFilter" @change="onFilter" placeholder="整词筛选" /></div>
+          <input class="inp" v-model="f.tag" @keyup.enter="onFilter" @change="onFilter" @blur="onFilter" placeholder="回车筛选" /></div>
         <div class="field" v-if="view==='practice'"><label>范围</label>
           <select v-model="f._mode" @change="onFilter">
             <option value="all">全部题目</option>
@@ -48,7 +48,7 @@ const TPL_VIEW_PRACTICE = `
           <div class="bank-toolbar">
             <label class="bank-check"><input type="checkbox" :checked="fav.items.length && fav.items.every(q=>fav.sel.includes(q.id))" @change="favAllOnPage" /> 全选本页</label>
             <span class="muted">已选 {{ fav.sel.length }} · 共 {{ fav.total }} 收藏(已加载 {{ fav.items.length }})</span>
-            <button class="btn subtle" @click="favPractice" title="把收藏的题作为一轮练习逐题刷">▶ 开始刷这些收藏</button>
+            <button class="btn subtle" @click="favPractice" :title="fav.sel.length ? '只刷勾选的 '+fav.sel.length+' 道收藏题' : '把全部收藏题作为一轮练习'">▶ {{ fav.sel.length ? '刷选中 '+fav.sel.length+' 题' : '刷全部收藏' }}</button>
             <button class="btn subtle" v-if="!fav.sel.length" :disabled="busyOps.favExportSel" @click="favExportSel" title="导出当前收藏为 JSON"><icon name="download" :size="15" /> 导出本页</button>
             <template v-if="fav.sel.length">
               <button class="btn subtle" :disabled="busyOps.favExportSel" @click="favExportSel" title="导出选中为 JSON"><icon name="download" :size="15" /> 导出 ({{ fav.sel.length }})</button>

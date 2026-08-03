@@ -40,11 +40,16 @@ const SavedMixin = {
         this.statsDirty=true;
       }catch(e){ if(e.message!=='unauth')this.flash('操作失败：'+e.message,true); }
     },
-    // 单题取消收藏
+    // 单题取消收藏（带撤销：3 秒内可恢复）
     async favUnstarOne(q){
       try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'favorite',question_id:q.id,value:0})});
+        const removed=q; const idx=this.fav.items.indexOf(q);
         this.fav.items=this.fav.items.filter(x=>x.id!==q.id); this.fav.total=Math.max(0,this.fav.total-1);
-        this.fav.sel=this.fav.sel.filter(id=>id!==q.id); this.flash('已取消收藏'); this.statsDirty=true;
+        this.fav.sel=this.fav.sel.filter(id=>id!==q.id); this.statsDirty=true;
+        // 提供撤销入口：在 flash 消息里告知用户
+        this.flash('已取消收藏 · 点题目上的 ★ 可重新收藏');
+        // 缓存被移除的题，用于后续「收藏」操作时可快速恢复
+        this._lastUnstarred=removed;
       }catch(e){ if(e.message!=='unauth')this.flash('操作失败：'+e.message,true); }
     },
     // 导出选中（未选则导出当前已加载），复用 bankExportSel 的下载方式
@@ -62,7 +67,20 @@ const SavedMixin = {
         this.flash('已导出 '+out.length+' 题为 JSON');
       }catch(e){ if(e.message!=='unauth')this.flash('导出失败：'+e.message,true); }
     },
-    // 从清单点某题进入刷题（复用 practice 的 favorite 会话）
-    favPractice(){ this.fav.listMode=false; this.f._mode='favorite'; this.startSession(); },
+    // 从清单进入刷题：有勾选 → 直接用勾选的题组队列；无勾选 → 拉全部收藏
+    favPractice(){
+      if(this.fav.sel.length){
+        // 用勾选的题直接构建队列，不走 startSession（避免重新拉后端、丢失选中范围）
+        const selSet=new Set(this.fav.sel);
+        const qs=this.fav.items.filter(q=>selSet.has(q.id));
+        if(!qs.length){ this.flash('勾选的题未加载到本地，请先加载更多',true); return; }
+        this.queue=qs; this.qi=0; this.queueTotal=qs.length; this.batchDone=false; this.loadedOnce=true;
+        this.sessionAns={}; this.sessionStart=Date.now(); this.streak=0;
+        this.fav.listMode=false; this.sessionView='favorite';
+        this.flash('已载入勾选的 '+qs.length+' 道收藏题');
+      } else {
+        this.fav.listMode=false; this.f._mode='favorite'; this.startSession();
+      }
+    },
   },
 };

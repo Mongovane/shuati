@@ -25,6 +25,7 @@ const TPL_VIEW_MOCK = `
             <select v-model.number="mock.minutes"><option :value="15">15</option><option :value="30">30</option><option :value="60">60</option><option :value="90">90</option><option :value="120">120</option></select></div>
         </div>
         <label class="row" style="margin:6px 0 14px;cursor:pointer"><input type="checkbox" v-model="mock.objectiveOnly" /> <span class="muted">仅自动判分题（单选 / 多选 / 判断）</span></label>
+        <button class="btn" :disabled="loading" @click="startMock" style="margin-bottom:16px"><span v-if="loading" class="spin"></span>开始测试{{ mock.bp.on ? '（'+bpTotal()+'题）' : '' }}</button>
         <div class="card" style="margin:0 0 16px;padding:14px 16px">
           <label class="row" style="cursor:pointer;justify-content:space-between;align-items:center">
             <span style="font-weight:600"><icon name="puzzle" :size="15" /> 高级组卷 <span class="muted" style="font-weight:400;font-size:12px">按章节 × 题型配比出卷</span></span>
