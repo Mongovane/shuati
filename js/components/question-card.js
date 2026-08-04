@@ -196,21 +196,17 @@ const QuestionCard={
           </div>
         </div>
         <div v-else class="kcard-single">
-          <div class="kcard kcard-lg" :class="{flipped:aiFlip[kcardIdx]}" @click="kcardTap">
-            <div class="kcard-inner">
-              <div class="kcard-face kcard-front">
-                <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
-                <div class="kcard-term" style="font-size:22px"><rich-text :content="aiCards[kcardIdx].term" /></div>
-                <div v-if="aiCards[kcardIdx].formula" class="kcard-formula" style="font-size:17px"><rich-text :content="aiCards[kcardIdx].formula" /></div>
-                <div class="kcard-hint">点击翻面看讲解</div>
-              </div>
-              <div class="kcard-face kcard-back">
-                <div class="kcard-back-scroll" @click.stop="kcardTap">
-                  <div class="kcard-plain" style="font-size:15px;line-height:1.8"><rich-text :content="aiCards[kcardIdx].plain" /></div>
-                  <div v-if="aiCards[kcardIdx].example" class="kcard-eg"><span class="kcard-eg-tag">例</span><rich-text :content="aiCards[kcardIdx].example" /></div>
-                  <div class="kcard-hint">{{ kcardIdx < aiCards.length-1 ? '点击 → 下一张' : '点击翻回正面' }}</div>
-                </div>
-              </div>
+          <div class="kcard-lg-wrap">
+            <div v-if="!aiFlip[kcardIdx]" class="kcard-lg-face kcard-lg-front" @click="kcardTap">
+              <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
+              <div class="kcard-term" style="font-size:22px"><rich-text :content="aiCards[kcardIdx].term" /></div>
+              <div v-if="aiCards[kcardIdx].formula" class="kcard-formula" style="font-size:17px"><rich-text :content="aiCards[kcardIdx].formula" /></div>
+              <div class="kcard-hint">点击翻面看讲解</div>
+            </div>
+            <div v-else class="kcard-lg-face kcard-lg-back" @click="kcardTap">
+              <div class="kcard-plain" style="font-size:15px;line-height:1.8"><rich-text :content="aiCards[kcardIdx].plain" /></div>
+              <div v-if="aiCards[kcardIdx].example" class="kcard-eg"><span class="kcard-eg-tag">例</span><rich-text :content="aiCards[kcardIdx].example" /></div>
+              <div class="kcard-hint">{{ kcardIdx < aiCards.length-1 ? '点击 → 下一张' : '点击翻回正面' }}</div>
             </div>
           </div>
           <div class="kcard-single-nav">
