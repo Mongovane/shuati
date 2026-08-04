@@ -158,7 +158,33 @@ _parseConceptCards(raw){ let s=String(raw||'').trim(); s=s.replace(/^```(?:json)
   const fixBackslash=(str)=> str.replace(/\\\\|\\u[0-9a-fA-F]{4}|\\([a-zA-Z])/g, (m,c)=> c ? '\\\\'+c : m);
   let arr=tryParse(fixBackslash(s)) || tryParse(s);
   if(!arr)return [];
-  return arr.filter(x=>x&&typeof x==='object'&&(x.term||x.plain)).slice(0,8).map(x=>({ term:String(x.term||'').trim()||'知识点', formula:String(x.formula||'').trim(), plain:String(x.plain||'').trim(), example:String(x.example||'').trim() })); },
+  // 后处理：给 plain / example 里裸露的数学符号自动补 $...$ 包裹
+  // 已在 $...$ 内的不动，只处理外部的裸数学表达式
+  const wrapMath=(text)=>{
+    if(!text)return text;
+    const parts=[]; let last=0, inside=false, i=0;
+    // 分割成 $内部 和 $外部 两种片段
+    while(i<text.length){
+      if(text[i]==='$' && (i===0||text[i-1]!=='\\')){
+        if(inside){ parts.push({t:text.slice(last,i+1),m:true}); last=i+1; inside=false; }
+        else { if(last<i)parts.push({t:text.slice(last,i),m:false}); last=i; inside=true; }
+      }
+      i++;
+    }
+    if(last<text.length)parts.push({t:text.slice(last),m:inside});
+    // 只对 $外部 的片段做自动包裹
+    return parts.map(p=>{
+      if(p.m)return p.t;
+      return p.t
+        // 函数调用: f(x), g'(x), P'(x), u(x), Φ(x) 等
+        .replace(/(?<!\$)(\b[a-zA-ZΦΨαβγδεζηθλμξρσφψω][a-zA-Z0-9_]*['′]?\s*\([^)]{1,30}\))(?!\$)/g, (m)=>'$'+m.trim()+'$')
+        // 独立变量/常数: x, x_1, x₁, Δx 等（前后是中文或空格或标点）
+        .replace(/(?<=[\u4e00-\u9fff\s，。；：、])([a-zA-ZΔΣΠαβγδεθλμξρσφψω][_0-9₀-₉]*)(?=[\u4e00-\u9fff\s，。；：、])/g, '$$$1$$')
+        // 比较/关系式: x > 0, a ≤ b 等
+        .replace(/(?<!\$)(\b[a-zA-Z][a-zA-Z0-9_]*\s*[><=≥≤≠]+\s*[0-9a-zA-Z]+)(?!\$)/g, '$$$1$$');
+    }).join('');
+  };
+  return arr.filter(x=>x&&typeof x==='object'&&(x.term||x.plain)).slice(0,8).map(x=>({ term:String(x.term||'').trim()||'知识点', formula:String(x.formula||'').trim(), plain:wrapMath(String(x.plain||'').trim()), example:wrapMath(String(x.example||'').trim()) })); },
 toggleCard(i){ const f={ ...(this.aiX.flip||{}) }; f[i]=!f[i]; this.aiX.flip=f; },
 toggleAllCards(){ const cards=this.aiX.cards||[]; if(!cards.length)return; const allNow=cards.every((_,i)=>this.aiX.flip&&this.aiX.flip[i]); const f={}; if(!allNow){ cards.forEach((_,i)=>{ f[i]=true; }); } this.aiX.flip=f; },
 async aiExplain(kind, force){ const q=this.cur; if(!q)return;

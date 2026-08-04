@@ -114,7 +114,7 @@ const QuestionCard={
     _flashAns(ok){ const el=this.$el; if(!el)return; const cls=ok?'ans-correct':'ans-wrong'; el.classList.remove('ans-correct','ans-wrong'); void el.offsetWidth; el.classList.add(cls); setTimeout(()=>el.classList.remove(cls),400); },
     kcardPrev(){ if(this.kcardIdx>0) this.kcardIdx--; },
     kcardNext(){ if(this.kcardIdx<this.aiCards.length-1) this.kcardIdx++; },
-    kcardTap(){ const i=this.kcardIdx; if(!this.aiFlip[i]){ this.$emit('card-flip',i); } else { this.$emit('card-flip',i); if(i<this.aiCards.length-1) this.$nextTick(()=>{ this.kcardIdx=i+1; }); } },
+    kcardTap(){ this.$emit('card-flip', this.kcardIdx); },
     toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
     markMastered(){ this.$emit('master',{id:this.q.id,value:!this.q.mastered}); },
     saveNote(){ this.$emit('note',{id:this.q.id,note:this.noteDraft}); this.showNote=false; },
