@@ -1189,10 +1189,15 @@ h2{margin:.2em 0 .6em}
 /* 逐张模式容器 */
 .kcard-single{display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0}
 
-/* 大号卡片 */
-.kcard-lg{width:100%;max-width:480px;height:380px}
-.kcard-lg .kcard-back{overflow-y:auto;-webkit-overflow-scrolling:touch}
-@media(max-width:500px){.kcard-lg{height:340px}}
+/* 大号卡片（逐张模式 — 3D 翻转，固定高度，背面内容可滚动） */
+.kcard-lg{width:100%;max-width:520px;height:360px}
+@media(max-width:500px){.kcard-lg{height:320px}}
+
+/* 背面内滚动容器：绝对定位撑满 kcard-face，内容超出时可滚 */
+.kcard-back-scroll{position:absolute;inset:12px 16px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:8px}
+/* 滚动时阻止点击穿透到卡片翻转 */
+.kcard-back-scroll::-webkit-scrollbar{width:3px}
+.kcard-back-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:3px}
 
 /* 导航栏：上一张 · 圆点 · 下一张 */
 .kcard-single-nav{display:flex;align-items:center;gap:12px;width:100%;max-width:480px;justify-content:space-between}
@@ -1207,7 +1212,8 @@ h2{margin:.2em 0 .6em}
 
 /* ---- Bank 手机端：选择行不被截断 ---- */
 @media(max-width:640px){
-  .bank-toolbar .bank-checks{flex-wrap:wrap;gap:8px 12px;padding:4px 0}
-  .bank-check{flex:none;white-space:nowrap;font-size:13px}
-  .bank-check input[type="checkbox"]{width:18px;height:18px;flex:none}
+  .bank-toolbar .tb-left{gap:6px 10px}
+  .bank-toolbar .tb-left .seg{flex:none}
+  .bank-check{flex:none;white-space:nowrap;font-size:13px;min-height:36px}
+  .bank-check input[type="checkbox"]{width:20px;height:20px;flex:none;margin:0}
 }

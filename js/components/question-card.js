@@ -205,9 +205,11 @@ const QuestionCard={
                 <div class="kcard-hint">点击翻面看讲解</div>
               </div>
               <div class="kcard-face kcard-back">
-                <div class="kcard-plain" style="font-size:15px"><rich-text :content="aiCards[kcardIdx].plain" /></div>
-                <div v-if="aiCards[kcardIdx].example" class="kcard-eg"><span class="kcard-eg-tag">例</span><rich-text :content="aiCards[kcardIdx].example" /></div>
-                <div class="kcard-hint">{{ kcardIdx < aiCards.length-1 ? '点击 → 下一张' : '点击翻回正面' }}</div>
+                <div class="kcard-back-scroll" @click.stop="kcardTap">
+                  <div class="kcard-plain" style="font-size:15px;line-height:1.8"><rich-text :content="aiCards[kcardIdx].plain" /></div>
+                  <div v-if="aiCards[kcardIdx].example" class="kcard-eg"><span class="kcard-eg-tag">例</span><rich-text :content="aiCards[kcardIdx].example" /></div>
+                  <div class="kcard-hint">{{ kcardIdx < aiCards.length-1 ? '点击 → 下一张' : '点击翻回正面' }}</div>
+                </div>
               </div>
             </div>
           </div>
