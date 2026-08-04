@@ -114,6 +114,7 @@ const QuestionCard={
     _flashAns(ok){ const el=this.$el; if(!el)return; const cls=ok?'ans-correct':'ans-wrong'; el.classList.remove('ans-correct','ans-wrong'); void el.offsetWidth; el.classList.add(cls); setTimeout(()=>el.classList.remove(cls),400); },
     kcardPrev(){ if(this.kcardIdx>0) this.kcardIdx--; },
     kcardNext(){ if(this.kcardIdx<this.aiCards.length-1) this.kcardIdx++; },
+    kcardTap(){ const i=this.kcardIdx; if(!this.aiFlip[i]){ this.$emit('card-flip',i); } else { this.$emit('card-flip',i); if(i<this.aiCards.length-1) this.$nextTick(()=>{ this.kcardIdx=i+1; }); } },
     toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
     markMastered(){ this.$emit('master',{id:this.q.id,value:!this.q.mastered}); },
     saveNote(){ this.$emit('note',{id:this.q.id,note:this.noteDraft}); this.showNote=false; },
@@ -195,7 +196,7 @@ const QuestionCard={
           </div>
         </div>
         <div v-else class="kcard-single">
-          <div class="kcard kcard-lg" :class="{flipped:aiFlip[kcardIdx]}" @click="$emit('card-flip',kcardIdx)">
+          <div class="kcard kcard-lg" :class="{flipped:aiFlip[kcardIdx]}" @click="kcardTap">
             <div class="kcard-inner">
               <div class="kcard-face kcard-front">
                 <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
@@ -206,7 +207,7 @@ const QuestionCard={
               <div class="kcard-face kcard-back">
                 <div class="kcard-plain" style="font-size:15px"><rich-text :content="aiCards[kcardIdx].plain" /></div>
                 <div v-if="aiCards[kcardIdx].example" class="kcard-eg"><span class="kcard-eg-tag">例</span><rich-text :content="aiCards[kcardIdx].example" /></div>
-                <div class="kcard-hint">点击翻回正面</div>
+                <div class="kcard-hint">{{ kcardIdx < aiCards.length-1 ? '点击 → 下一张' : '点击翻回正面' }}</div>
               </div>
             </div>
           </div>

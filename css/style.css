@@ -1190,8 +1190,9 @@ h2{margin:.2em 0 .6em}
 .kcard-single{display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0}
 
 /* 大号卡片 */
-.kcard-lg{width:100%;max-width:480px;height:320px}
-@media(max-width:500px){.kcard-lg{height:280px}}
+.kcard-lg{width:100%;max-width:480px;height:380px}
+.kcard-lg .kcard-back{overflow-y:auto;-webkit-overflow-scrolling:touch}
+@media(max-width:500px){.kcard-lg{height:340px}}
 
 /* 导航栏：上一张 · 圆点 · 下一张 */
 .kcard-single-nav{display:flex;align-items:center;gap:12px;width:100%;max-width:480px;justify-content:space-between}
@@ -1203,3 +1204,10 @@ h2{margin:.2em 0 .6em}
 /* 卡片公式溢出处理 */
 .kcard-formula .katex-display{margin:4px 0;overflow-x:auto;overflow-y:hidden}
 .kcard-formula .katex{font-size:inherit}
+
+/* ---- Bank 手机端：选择行不被截断 ---- */
+@media(max-width:640px){
+  .bank-toolbar .bank-checks{flex-wrap:wrap;gap:8px 12px;padding:4px 0}
+  .bank-check{flex:none;white-space:nowrap;font-size:13px}
+  .bank-check input[type="checkbox"]{width:18px;height:18px;flex:none}
+}
