@@ -316,7 +316,9 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                 if(j.error) throw new Error(j.error.message||String(j.error));
                 if(j.model && onDelta) onDelta({model:j.model});
                 const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
-                // 推理模型的思维链：DeepSeek-R1 用 reasoning_content，部分中转站用 reasoning
+                const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
+                if(fr && onDelta) onDelta({finish_reason:fr});
+                // 推理模型的思维链
                 const rt=dt&&(dt.reasoning_content||dt.reasoning);
                 if(rt && onDelta) onDelta({reasoning:rt});
                 const t=dt&&dt.content;

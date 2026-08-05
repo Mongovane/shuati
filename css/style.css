@@ -1228,3 +1228,9 @@ h2{margin:.2em 0 .6em}
 .reason-body::-webkit-scrollbar{width:4px}
 .reason-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink-soft) 30%,transparent);border-radius:4px}
 @media(max-width:560px){.reason-body{max-height:180px;font-size:12px}}
+
+/* ---- 追问气泡：用户消息右下角的重新生成/停止图标按钮 ---- */
+.chat-q{position:relative}
+.chat-q-acts{position:absolute;right:8px;bottom:6px;display:flex;gap:4px}
+.chat-icon-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);display:grid;place-items:center;cursor:pointer;transition:.15s;padding:0}
+.chat-icon-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft,color-mix(in srgb,var(--accent) 8%,var(--surface)))}

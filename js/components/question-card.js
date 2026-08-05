@@ -7,7 +7,7 @@ const normAns=(v)=>String(v==null?'':v)
 const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, reasonOpen:{type:Boolean,default:true}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','reason-toggle'],
+  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','reason-toggle','ai-stop'],
   watch:{ aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); } },
   data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0 }; },
   computed:{
@@ -245,14 +245,18 @@ const QuestionCard={
         </div>
         <template v-if="(aiText || (aiKind==='concept' && aiCards.length)) && !aiBusy">
           <div v-for="(c,i) in aiChat" :key="'aq'+i" class="chat-round">
-            <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="13" /> 你</div><rich-text :content="c.q" /></div>
+            <div class="chat-bub chat-q">
+              <div class="chat-tag"><icon name="user" :size="13" /> 你</div>
+              <rich-text :content="c.q" />
+              <div class="chat-q-acts">
+                <button v-if="aiAsking && i===aiChat.length-1" class="chat-icon-btn" @click="$emit('ai-stop')" title="停止生成"><icon name="square" :size="14" /></button>
+                <button v-if="!aiAsking && c.a" class="chat-icon-btn" @click="$emit('ai-retry',i)" title="重新生成这条回答"><icon name="rotate-cw" :size="14" /></button>
+              </div>
+            </div>
             <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="c.a" />
-              <div v-if="!aiAsking" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
-                <template v-if="!c.err && c.a!=='(模型没有返回内容）' && c.a!=='(模型没有返回内容)'">
-                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式：点选段落/公式，底部操作条合并复制或引用追问"><icon :name="segMode?'x':'text-cursor-input'" :size="12" />{{ segMode?'退出':'选段' }}</button>
-                  <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记"><icon name="notebook-pen" :size="12" />存为笔记</button>
-                </template>
-                <button v-else class="btn subtle" style="padding:2px 10px;font-size:11px;border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)" @click="$emit('ai-retry',i)"><icon name="rotate-cw" :size="12" /> 重试</button>
+              <div v-if="!aiAsking && !c.err" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+                <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式"><icon :name="segMode?'x':'text-cursor-input'" :size="12" />{{ segMode?'退出':'选段' }}</button>
+                <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记"><icon name="notebook-pen" :size="12" />存为笔记</button>
               </div>
             </div>
             <div v-else class="chat-bub chat-a"><span class="spin"></span></div>

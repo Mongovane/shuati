@@ -227,6 +227,8 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
         else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } }
         // 正文开始输出 → 自动收起思维链（用户想看再点开）
         if(d.text && showing() && this.aiX.reasonOpen && (this.aiX.reasoning||'').length) this.aiX.reasonOpen=false;
+        // 输出被截断提示
+        if(d.finish_reason==='length' && showing()) this.flash('⚠ 模型输出被截断（token 上限），可点重新生成或追问"请继续"');
       });
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
@@ -312,6 +314,7 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
 
 
 ,
+aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
 aiRetryAsk(i){ const list=this.aiX.chat||[]; const c=list[i];
   if(!c || !c.err || this.aiX.asking) return;
   const q=c.q; list.splice(i,1);   // 移除失败轮次，原问题重发（历史不包含失败文本）

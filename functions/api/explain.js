@@ -90,7 +90,7 @@ export async function onRequestPost({ request, env }) {
     model: pageImage ? (String(b.vision_model||'').trim() || ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (ovModel || env.AI_MODEL || 'gpt-4o'),
     messages,
     temperature: 0.3,
-    max_tokens: ask ? 2048 : (concept ? 4200 : 4096),
+    max_tokens: ask ? 4096 : (concept ? 6000 : 8192),
   };
   const call = (stream) => fetch(`${base}/chat/completions`, {
     method: 'POST',
