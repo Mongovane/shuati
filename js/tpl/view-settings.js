@@ -53,7 +53,8 @@ const TPL_VIEW_SETTINGS = `
         </div>
         <div class="row" style="gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn subtle xs" :disabled="modelPick.busy" @click="fetchModels" title="向中转站 /v1/models 拉取可用模型列表"><span v-if="modelPick.busy" class="spin"></span><icon name="download" :size="15" /> 从端点拉取</button>
-          <span class="muted" style="font-size:12px">填好上面的 Base URL 与 Key 后点这里，自动列出该站支持的模型（列好后可直接在「模型」框打字搜索补全）</span>
+          <button class="btn subtle xs" :disabled="aiTestBusy" @click="testAiConnection" title="发一条简单消息测试中转站是否通畅"><span v-if="aiTestBusy" class="spin"></span><icon name="wifi" :size="15" /> 测试连接</button>
+          <span class="muted" style="font-size:12px">填好 Base URL 与 Key 后点拉取列出模型，或点测试验证连通性</span>
         </div>
         <div v-if="modelPick.list.length" class="model-pick">
           <span v-for="m in modelPick.list" :key="m" class="model-chip" :class="{on:explainCfg.model===m}" @click="pickModel(m)" :title="m">{{ m }}</span>

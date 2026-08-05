@@ -63,6 +63,21 @@ async fetchModels(){ if(this.modelPick.busy)return;
   }catch(e){ if(e.message!=='unauth')this.flash('拉取失败：'+e.message,true); }
   this.modelPick.busy=false;
 },
+async testAiConnection(){ if(this.aiTestBusy)return;
+  const cfg=this.explainCfg;
+  if(!cfg.base && !cfg.key){ this.flash('请先填 Base URL 与 API Key',true); return; }
+  if(cfg.base && !cfg.key){ this.flash('填了 Base URL 就必须填对应的 API Key',true); return; }
+  if(!cfg.model){ this.flash('请先填写要测试的模型名',true); return; }
+  this.aiTestBusy=true;
+  const t0=Date.now();
+  try{
+    const r=await this.aiFetch({ base_url:cfg.base, api_key:cfg.key, model:cfg.model, question:{ stem:'请回复"连接成功"四个字。', type:'short_answer' }, stream:false }, null, null);
+    const ms=Date.now()-t0;
+    if(r.ok){ this.flash('✅ 连接成功！模型 '+cfg.model+' 响应正常（'+ms+'ms）'); }
+    else { this.flash('❌ 连接失败：'+(r.errText||'HTTP '+((r.res&&r.res.status)||'?')),true); }
+  }catch(e){ this.flash('❌ 连接失败：'+(e.message||'未知错误'),true); }
+  this.aiTestBusy=false;
+},
 pickModel(m){ this.explainCfg.model=m; this.saveExplainCfg(); this.flash('已选用模型：'+m); },
 saveExplainStable(){ try{ localStorage.setItem('zb_explain_stable', this.explainStable?'1':'0'); }catch(_){} },
 async loadConfig(){ if(!this.token)return; try{ const c=await this.api('/api/config'); this.ai.model=c.ai_model||''; this.ai.visionModel=c.ai_vision_model||''; this.ai.hasAI=!!c.has_ai; this.ai.hasCfAI=!!c.has_cf_ai; this.ai.hasMineru=!!c.has_mineru; }catch(e){} },

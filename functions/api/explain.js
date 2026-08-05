@@ -103,15 +103,17 @@ export async function onRequestPost({ request, env }) {
     if (wantStream) {
       const up = await call(true);
       if (up.ok && up.body) {
-        // SSE 原样透传：Cloudflare Pages Functions 支持流式 Response
+        // SSE 原样透传 + 附带 Gateway 降级信息供前端显示实际模型
+        const served = up.headers.get('X-Served-Model') || up.headers.get('x-served-model') || '';
+        const fallbackFrom = up.headers.get('X-Fallback-From') || up.headers.get('x-fallback-from') || '';
+        const actualModel = served || String((up.headers && (up.headers.get('x-upstream-model') || up.headers.get('x-upstream'))) || payload.model);
         return new Response(up.body, {
           headers: {
             'content-type': 'text/event-stream; charset=utf-8',
             'cache-control': 'no-store',
             'x-accel-buffering': 'no',
-            // 真实模型：优先取上游声明（one-api/new-api 常回 x-upstream-model / x-upstream），
-            // 兜底用请求的模型名；前端还会用 SSE chunk 里的 model 字段做最终校准
-            'x-ai-model': String((up.headers && (up.headers.get('x-upstream-model') || up.headers.get('x-upstream'))) || payload.model),
+            'x-ai-model': actualModel,
+            ...(fallbackFrom ? { 'x-ai-fallback': fallbackFrom } : {}),
           },
         });
       }
