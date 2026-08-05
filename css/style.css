@@ -1218,3 +1218,13 @@ h2{margin:.2em 0 .6em}
   .bank-check{flex:none;white-space:nowrap;font-size:13px;min-height:36px}
   .bank-check input[type="checkbox"]{width:20px;height:20px;flex:none;margin:0}
 }
+
+/* ===================== AI 推理过程（思维链，仅本次可见不保存） ===================== */
+.reason-box{margin:0 0 12px;border:1px dashed var(--line);border-radius:10px;background:color-mix(in srgb,var(--surface-2) 60%,transparent);overflow:hidden}
+.reason-head{width:100%;display:flex;align-items:center;gap:7px;padding:8px 12px;background:none;border:0;color:var(--ink-soft);font:600 12px/1 var(--font);cursor:pointer;text-align:left}
+.reason-head:hover{color:var(--accent)}
+.reason-head .reason-meta{margin-left:auto;font-weight:400;font-size:11px;opacity:.75}
+.reason-body{max-height:240px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 12px 10px;font:12.5px/1.7 var(--font);color:var(--ink-soft);white-space:pre-wrap;word-break:break-word;border-top:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
+.reason-body::-webkit-scrollbar{width:4px}
+.reason-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink-soft) 30%,transparent);border-radius:4px}
+@media(max-width:560px){.reason-body{max-height:180px;font-size:12px}}

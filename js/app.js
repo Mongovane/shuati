@@ -55,7 +55,7 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容
+    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
@@ -148,6 +148,7 @@ const App={
     mockResult(){ const v=Object.values(this.mock.answers); const correct=v.filter(x=>x===true).length; const half=v.filter(x=>x===0.5).length;
       return { graded:v.filter(x=>x!==null).length, correct, half, score:correct+half*0.5, total:this.mock.questions.length }; },
     curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? this.aiX.text : ''; },
+    curAiReasoning(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.reasoning||'') : ''; },
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? (this.aiX.chat||[]) : []; },
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
@@ -198,17 +199,17 @@ const App={
       if(s){
         const view=s.view|| (genC?'concept':'explain');
         const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
-        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) } };
+        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) }, reasoning:'', reasonOpen:true };
       } else {
         // 无会话缓存：从题目已存的 ai_cards 和 analysis 同时恢复（两者可共存）
         const savedCards = nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length ? nc.ai_cards.slice() : [];
         const savedText = this._extractSavedAi(nc) || '';
         if(savedCards.length || savedText){
           const view = savedCards.length ? 'concept' : 'explain';
-          this.aiX={ id:nid, view:view, text:savedText, busy:false, chat:[], asking:false, model:'', cards:savedCards, cardsModel:'', flip:{} };
+          this.aiX={ id:nid, view:view, text:savedText, busy:false, chat:[], asking:false, model:'', cards:savedCards, cardsModel:'', flip:{}, reasoning:'', reasonOpen:true };
           this.aiStates[nid]={ id:nid, view:view, text:savedText, chat:[], model:'', cards:savedCards, cardsModel:'', flip:{} };
         } else {
-          this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{} };
+          this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true };
         }
       }
     },
@@ -314,7 +315,11 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                 if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
                 if(j.error) throw new Error(j.error.message||String(j.error));
                 if(j.model && onDelta) onDelta({model:j.model});
-                const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+                const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
+                // 推理模型的思维链：DeepSeek-R1 用 reasoning_content，部分中转站用 reasoning
+                const rt=dt&&(dt.reasoning_content||dt.reasoning);
+                if(rt && onDelta) onDelta({reasoning:rt});
+                const t=dt&&dt.content;
                 if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); } } }
             return { res, text:acc, ok:true };
           }catch(e){

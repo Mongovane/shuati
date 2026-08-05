@@ -210,6 +210,7 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   const showing=()=> this.cur && this.cur.id===qid;
   if(showing()){
     this.aiX.id=qid; this.aiX.view=st.view; this.aiX.busy=true; this.aiX.asking=false;
+    this.aiX.reasoning=''; this.aiX.reasonOpen=true;   // 思维链：每次生成从零开始，只存内存
     if(isConcept){ this.aiX.cards=[]; this.aiX.cardsModel=''; this.aiX.flip={}; if(this.aiX.text&&!force)this.flash('解题解析已保留，随时可切回'); }
     else { this.aiX.text=''; this.aiX.chat=[]; this.aiX.model=''; if(this.aiX.cards&&this.aiX.cards.length&&!force)this.flash('知识点卡片已保留，随时可切回'); }
   }
@@ -218,7 +219,15 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   let acc='';
   try{
     const r=await this.aiFetch({ ...ov, ...(isConcept?{kind:'concept'}:{}), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }, ctrl.signal,
-      (d)=>{ if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=d.acc; } else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } } });
+      (d)=>{
+        // 思维链只写 aiX（内存），不写 st（aiStates 缓存），因此切题/刷新即消失，也不会被自动保存写库
+        if(d.reasoning && showing()){ this.aiX.reasoning=(this.aiX.reasoning||'')+d.reasoning; }
+        if(d.reset && showing()){ this.aiX.reasoning=''; }
+        if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=d.acc; }
+        else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } }
+        // 正文开始输出 → 自动收起思维链（用户想看再点开）
+        if(d.text && showing() && this.aiX.reasonOpen && (this.aiX.reasoning||'').length) this.aiX.reasonOpen=false;
+      });
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
     if(isConcept){ const cards=this._parseConceptCards(acc); if(!cards.length) throw new Error('知识点卡片生成失败，可点重试'); st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards; }
