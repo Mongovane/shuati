@@ -158,12 +158,12 @@ _parseConceptCards(raw){ let s=String(raw||'').trim(); s=s.replace(/^```(?:json)
   const fixBackslash=(str)=> str.replace(/\\\\|\\u[0-9a-fA-F]{4}|\\([a-zA-Z])/g, (m,c)=> c ? '\\\\'+c : m);
   let arr=tryParse(fixBackslash(s)) || tryParse(s);
   if(!arr)return [];
-  // 后处理：给 plain / example 里裸露的数学符号自动补 $...$ 包裹
-  // 已在 $...$ 内的不动，只处理外部的裸数学表达式
+  // 后处理：给 plain / example 里裸露的数学符号自动补 $...$ 包裹 + 编号换行
   const wrapMath=(text)=>{
     if(!text)return text;
+    // ①②③ 等编号前加换行，让条目分行显示
+    text=text.replace(/([^\n])([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮])/g, '$1\n\n$2');
     const parts=[]; let last=0, inside=false, i=0;
-    // 分割成 $内部 和 $外部 两种片段
     while(i<text.length){
       if(text[i]==='$' && (i===0||text[i-1]!=='\\')){
         if(inside){ parts.push({t:text.slice(last,i+1),m:true}); last=i+1; inside=false; }
@@ -172,15 +172,11 @@ _parseConceptCards(raw){ let s=String(raw||'').trim(); s=s.replace(/^```(?:json)
       i++;
     }
     if(last<text.length)parts.push({t:text.slice(last),m:inside});
-    // 只对 $外部 的片段做自动包裹
     return parts.map(p=>{
       if(p.m)return p.t;
       return p.t
-        // 函数调用: f(x), g'(x), P'(x), u(x), Φ(x) 等
         .replace(/(?<!\$)(\b[a-zA-ZΦΨαβγδεζηθλμξρσφψω][a-zA-Z0-9_]*['′]?\s*\([^)]{1,30}\))(?!\$)/g, (m)=>'$'+m.trim()+'$')
-        // 独立变量/常数: x, x_1, x₁, Δx 等（前后是中文或空格或标点）
         .replace(/(?<=[\u4e00-\u9fff\s，。；：、])([a-zA-ZΔΣΠαβγδεθλμξρσφψω][_0-9₀-₉]*)(?=[\u4e00-\u9fff\s，。；：、])/g, '$$$1$$')
-        // 比较/关系式: x > 0, a ≤ b 等
         .replace(/(?<!\$)(\b[a-zA-Z][a-zA-Z0-9_]*\s*[><=≥≤≠]+\s*[0-9a-zA-Z]+)(?!\$)/g, '$$$1$$');
     }).join('');
   };
@@ -266,18 +262,36 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
   if(!Array.isArray(this.aiX.chat))this.aiX.chat=[];
   const entry={ q:text, a:'' }; this.aiX.chat.push(entry); this.aiX.asking=true;
-  const history=[]; for(const c of this.aiX.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
+  // 方案 A：历史放宽到最近 10 条（5 轮），单条轻度截断防爆炸，不做总量一刀切
+  const history=[]; for(const c of this.aiX.chat.slice(0,-1).slice(-5)){
+    history.push({role:'user',content:String(c.q||'').slice(0,3000)});
+    if(c.a&&!c.err)history.push({role:'assistant',content:String(c.a).slice(0,4000)});
+  }
   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
-  try{
-    // 构建上下文：explain 用 aiX.text，concept 用卡片序列化
-    let analysisCtx=this.aiX.text||'';
-    if(!analysisCtx && this.aiX.cards && this.aiX.cards.length){ analysisCtx=this.aiX.cards.map((c,i)=>'【'+(i+1)+'】'+c.term+(c.formula?' '+c.formula:'')+'：'+c.plain+(c.example?' 例：'+c.example:'')).join('\n'); }
-    const r=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject }, analysis:analysisCtx.slice(0,6000), history, ask:text }, ctrl.signal,
-      (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
-    if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
-    if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
-    if(!entry.a){ entry.a='_（模型没有返回内容）_'; }
-  }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('追问失败：'+msg,true); } }
+  // 构建上下文：explain 用 aiX.text，concept 用卡片序列化
+  let analysisCtx=this.aiX.text||'';
+  if(!analysisCtx && this.aiX.cards && this.aiX.cards.length){ analysisCtx=this.aiX.cards.map((c,i)=>'【'+(i+1)+'】'+c.term+(c.formula?' '+c.formula:'')+'：'+c.plain+(c.example?' 例：'+c.example:'')).join('\n'); }
+  const isCtxErr=(m)=>/context[_\s-]*length|context window|maximum context|max(?:imum)?[_\s-]*tokens|too many tokens|reduce the length|too long|上下文|请求(?:体|内容)?过长|token\s*数(?:超|过)/i.test(m||'');
+  // 方案 B：上下文超限时递增 trim_level 自动缩减历史重试（最多 2 次）
+  let done=false;
+  for(let trimLevel=0; trimLevel<=2 && !done; trimLevel++){
+    try{
+      if(trimLevel>0){ entry.a=''; this.flash('上下文较长，正在精简后重试…'); }
+      const r=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject }, analysis:analysisCtx.slice(0,6000), history, ask:text, trim_level:trimLevel }, ctrl.signal,
+        (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
+      if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
+      if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } }
+        if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试
+        throw new Error(msg); }
+      if(!entry.a){ entry.a='_（模型没有返回内容）_'; }
+      done=true;
+    }catch(e){ if(e.name==='AbortError'){ done=true; break; }
+      let msg=e.message||'未知错误';
+      if(isCtxErr(msg) && trimLevel<2){ continue; }
+      if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试';
+      entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('追问失败：'+msg,true); done=true;
+    }
+  }
   if(this.aiX.id===q.id) this.aiX.asking=false;
   if(this._aiCtrl===ctrl) this._aiCtrl=null;
 },

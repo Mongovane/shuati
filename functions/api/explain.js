@@ -44,11 +44,15 @@ export async function onRequestPost({ request, env }) {
 
   // —— 追问模式：ask 存在时，在「题目 + 已生成解析」上下文里继续多轮问答 ——
   const ask = String(b.ask || '').trim().slice(0, 2000);
-  const priorAnalysis = String(b.analysis || '').slice(0, 6000);
-  const history = Array.isArray(b.history) ? b.history.slice(-8).map((m) => ({
+  const trimLevel = Math.max(0, parseInt(b.trim_level, 10) || 0); // 前端降级重试时递增
+  const priorAnalysis = String(b.analysis || '').slice(0, trimLevel >= 2 ? 2500 : (trimLevel >= 1 ? 4000 : 6000));
+  const keepN = Math.max(2, 10 - trimLevel * 2);                   // 每级降级少留 2 条
+  const perMsgCap = trimLevel >= 2 ? 2000 : 4000;                  // 降级到 2 级时单条也收紧
+  const rawHist = Array.isArray(b.history) ? b.history.slice(-keepN) : [];
+  const history = rawHist.map((m) => ({
     role: m.role === 'assistant' ? 'assistant' : 'user',
-    content: String(m.content || '').slice(0, 4000),
-  })) : [];
+    content: String(m.content || '').slice(0, perMsgCap),
+  }));
 
   const fmtRule = '数学公式一律用 $...$（行内）或 $$...$$（独立行）作为定界符，严禁使用 \\( \\) 与 \\[ \\]。';
   const reading = b.mode === 'reading';
@@ -86,7 +90,7 @@ export async function onRequestPost({ request, env }) {
     model: pageImage ? (String(b.vision_model||'').trim() || ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (ovModel || env.AI_MODEL || 'gpt-4o'),
     messages,
     temperature: 0.3,
-    max_tokens: ask ? 1400 : (concept ? 4200 : 3000),
+    max_tokens: ask ? 2048 : (concept ? 4200 : 4096),
   };
   const call = (stream) => fetch(`${base}/chat/completions`, {
     method: 'POST',
