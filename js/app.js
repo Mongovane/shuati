@@ -331,7 +331,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
             return { res, text:acc, ok:true };
           }catch(e){
             if(signal && signal.aborted) throw e;
-            if(onDelta) onDelta({reset:true});
+            if(onDelta) onDelta({reset:true, streamFallback:true});
             return attempt(false, tries);
           }
         }

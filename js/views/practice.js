@@ -223,6 +223,7 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
         // 思维链只写 aiX（内存），不写 st（aiStates 缓存），因此切题/刷新即消失，也不会被自动保存写库
         if(d.reasoning && showing()){ this.aiX.reasoning=(this.aiX.reasoning||'')+d.reasoning; }
         if(d.reset && showing()){ this.aiX.reasoning=''; }
+        if(d.streamFallback && showing()){ this.flash('流式连接中断，已切换为一次性返回（需等待生成完毕）'); }
         if(d.fallback && showing()){ this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型')); }
         if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=d.acc; }
         else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } }
