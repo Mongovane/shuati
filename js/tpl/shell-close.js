@@ -41,7 +41,7 @@ const TPL_SHELL_CLOSE = `
         <button class="ricon" v-if="rdAi.chat.length||rdAi.quote" @click="rdAi.chat=[]; rdAi.quote=''" title="清空对话与引用"><icon name="trash-2" :size="16" /></button>
         <button class="ricon" @click="rdAi.open=false"><icon name="x" :size="16" /></button></div>
       <div v-if="rdAi.quote" class="rai-quote">已引用选段：{{ rdAi.quote.slice(0,120) }}{{ rdAi.quote.length>120?'…':'' }}</div>
-      <div class="rai-list">
+      <div class="rai-list" ref="rdAiList">
         <div v-for="(c,i) in rdAi.chat" :key="'rai'+i" class="chat-round">
           <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="15" /> 你</div>{{ c.q }}</div>
           <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="15" /> AI</div><rich-text :content="c.a" />
@@ -55,7 +55,6 @@ const TPL_SHELL_CLOSE = `
         <input ref="rdAiInp" v-model="rdAi.input" :disabled="rdAi.asking" placeholder="就本页 / 选段提问（Enter 发送）…" @keyup.enter="rdAiSend" />
         <button v-if="rdAi.asking" class="rbtn" @click="rdAiStop" title="停止本次回答">■ 停止</button>
         <button v-else class="rbtn" :disabled="!rdAi.input.trim()" @click="rdAiSend">发送</button>
-        <button v-if="rdAi.chat.length && !rdAi.asking" class="rbtn" @click="rdAi.chat=[];flash('已清空')" title="清空对话" style="padding:4px 8px"><icon name="trash-2" :size="14" /></button>
       </div>
     </div>
     <div v-if="reader.panel" class="r-panel-backdrop" @click="reader.panel=false"></div>
@@ -124,7 +123,7 @@ const TPL_SHELL_CLOSE = `
         <button class="ricon" v-if="pdfAi.chat.length" @click="pdfAi.chat=[]" title="清空对话"><icon name="trash-2" :size="16" /></button>
         <button class="ricon" @click="pdfAi.open=false"><icon name="x" :size="16" /></button></div>
       <div class="rai-quote" v-if="pdfAi.pageAtOpen && pdfAi.pageAtOpen!==pdfv.cur">提示：你已翻到第 {{ pdfv.cur }} 页，提问将针对当前页</div>
-      <div class="rai-list">
+      <div class="rai-list" ref="pdfAiList">
         <div v-for="(c,i) in pdfAi.chat" :key="'pai'+i" class="chat-round">
           <div class="chat-bub chat-q"><div class="chat-tag"><icon name="user" :size="15" /> 你 · 第{{ c.page }}页</div>{{ c.q }}</div>
           <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="15" /> AI</div><rich-text :content="c.a" />
@@ -138,7 +137,6 @@ const TPL_SHELL_CLOSE = `
         <input ref="pdfAiInp" v-model="pdfAi.input" :disabled="pdfAi.asking" :placeholder="'就第 '+pdfv.cur+' 页提问（Enter 发送）…'" @keyup.enter="pdfAiSend" />
         <button v-if="pdfAi.asking" class="rbtn" @click="pdfAiStop" title="停止本次回答">■ 停止</button>
         <button v-else class="rbtn" :disabled="!pdfAi.input.trim()" @click="pdfAiSend">发送</button>
-        <button v-if="pdfAi.chat.length && !pdfAi.asking" class="rbtn" @click="pdfAi.chat=[];flash('已清空')" title="清空对话" style="padding:4px 8px"><icon name="trash-2" :size="14" /></button>
       </div>
     </div>
 

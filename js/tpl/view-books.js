@@ -257,7 +257,6 @@ const TPL_VIEW_BOOKS = `
             <input ref="rdAiInpInline" v-model="rdAi.input" :disabled="rdAi.asking" placeholder="就本页提问（Enter 发送）…" @keyup.enter="rdAiSend" />
             <button v-if="rdAi.asking" class="rbtn" @click="rdAiStop" title="停止本次回答">■ 停止</button>
             <button v-else class="rbtn" :disabled="!rdAi.input.trim()" @click="rdAiSend">发送</button>
-            <button v-if="rdAi.chat.length && !rdAi.asking" class="rbtn" @click="rdAi.chat=[];flash('已清空')" title="清空对话" style="padding:4px 8px"><icon name="trash-2" :size="14" /></button>
           </div>
         </div>
       </template>

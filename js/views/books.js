@@ -204,6 +204,7 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
     if(this._pdfAiCtrl){ try{ this._pdfAiCtrl.abort(); }catch(_){} }
     const ctrl=new AbortController(); this._pdfAiCtrl=ctrl;
     const entry={ q, a:'', page:pageNo }; this.pdfAi.chat.push(entry); this.pdfAi.asking=true; this.pdfAi.input='';
+    this._scrollRaiList('pdfAiList');
     const history=[]; for(const c of this.pdfAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
     try{
       let reqBody;
@@ -220,7 +221,7 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
           question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页的图片提问，请先识别图中文字再回答）', type:'short_answer', subject:'教材' },
           analysis:'', history, ask:q };
       }
-      const r=await this.aiFetch(reqBody, ctrl.signal, (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
+      const r=await this.aiFetch(reqBody, ctrl.signal, (d)=>{ if(d.reset)entry.a=''; if(d.text){ entry.a=d.acc; this._scrollRaiList('pdfAiList'); } });
       if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.pdfvClose(); this.go('settings'); throw new Error('访问码无效'); }
       if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
       if(!entry.a) entry.a='_（模型没有返回内容）_';

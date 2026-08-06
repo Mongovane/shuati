@@ -39,12 +39,13 @@ const ReaderMixin = {
       if(this._rdCtrl){ try{ this._rdCtrl.abort(); }catch(_){} }
       const ctrl=new AbortController(); this._rdCtrl=ctrl;
       const entry={ q, a:'' }; this.rdAi.chat.push(entry); this.rdAi.asking=true; this.rdAi.input='';
+      this._scrollRaiList('rdAiList');
       const history=[]; for(const c of this.rdAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
       try{
         const r=await this.aiFetch({ ...this.aiOv(false), mode:'reading',
           question:{ stem:this.rdAi.quote||'（未选段，就整页材料提问）', passage:String(this.cleanPageMd(mat.content_md)||'').slice(0,4000), type:'short_answer', subject:mat.subject },
           analysis:'', history, ask:q }, ctrl.signal,
-          (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
+          (d)=>{ if(d.reset)entry.a=''; if(d.text){ entry.a=d.acc; this._scrollRaiList('rdAiList'); } });
         if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.readerClose(); this.go('settings'); throw new Error('访问码无效'); }
         if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
         if(!entry.a) entry.a='_（模型没有返回内容）_';

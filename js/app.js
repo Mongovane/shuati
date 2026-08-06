@@ -370,6 +370,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
   return o; },
 flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
 scrollChatEnd(ref){ this.$nextTick(()=>{ const el=ref?this.$refs[ref]:null; if(!el)return; const list=el.closest?el.closest('.rai-list'):null; if(list)list.scrollTop=list.scrollHeight; }); },
+_scrollRaiList(ref){ this.$nextTick(()=>{ const el=this.$refs[ref]; if(el) el.scrollTop=el.scrollHeight; }); },
 subjName(v){ return SUBJ_MAP[v]||v; },
 _syncHash(v){ try{ const want='#/'+v; if(location.hash!==want)location.hash=want; }catch(_){ } },
 _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catch(_){ } h=(h.split('?')[0]||'').split('/')[0]; return ['practice','wrong','favorite','books','bank','ingest','mock','stats','settings'].includes(h)?h:''; },
