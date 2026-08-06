@@ -146,18 +146,32 @@ async onMaster(p){ const q=this.findQ(p.id); const prev=q&&q.mastered; if(q)q.ma
 async onNote(p){ const q=this.findQ(p.id); const prev=q&&q.note; if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth'){ if(q)q.note=prev; this.flash('笔记保存失败，已撤回：'+e.message,true); } } }
 
 ,
-// 解析 concept 返回的 JSON 卡片（健壮：剥代码围栏、截取数组片段、校验字段）
-_parseConceptCards(raw){ let s=String(raw||'').trim(); s=s.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim(); const a=s.indexOf('['), b=s.lastIndexOf(']'); if(a>=0&&b>a)s=s.slice(a,b+1);
-  const tryParse=(str)=>{ try{ const r=JSON.parse(str); return Array.isArray(r)?r:null; }catch(_){ return null; } };
-  // 关键修复：LaTeX 公式里的单反斜杠（\frac \int \xi 等）在 JSON 里必须转义成 \\，
-  // 但模型经常忘记，导致 JSON.parse 直接失败或把 \f \b 等当控制符吃掉、公式渲染不出。
-  // 先原样试，失败再把「非合法 JSON 转义符」的反斜杠补成 \\ 后重试。
-  // LaTeX 命令(\frac \int \xi ...)在 JSON 里必须转义成 \\，模型常忘记。
-  // 把「反斜杠+字母」一律补成 \\（公式里 \f \b 是 \frac \beta 而非 form-feed/退格），
-  // 但 \uXXXX 若是合法 Unicode 转义则保留。总是先修再解析。
+// 解析 concept 返回的 JSON 卡片（极健壮：兼容各种模型的 JSON 输出怪癖）
+_parseConceptCards(raw){ let s=String(raw||'').trim();
+  // 1. 剥离所有代码围栏（可能有多层或不成对）
+  s=s.replace(/```(?:json|javascript|js)?\s*/gi,'').replace(/```/g,'').trim();
+  // 2. 提取数组或对象片段
+  const a=s.indexOf('['), b=s.lastIndexOf(']');
+  const c=s.indexOf('{'), d=s.lastIndexOf('}');
+  if(a>=0 && b>a) s=s.slice(a,b+1);
+  else if(c>=0 && d>c) s='['+s.slice(c,d+1)+']'; // 单对象 → 包成数组
+  else return [];
+  const tryParse=(str)=>{ try{ const r=JSON.parse(str); return Array.isArray(r)?r:(r&&typeof r==='object'?[r]:null); }catch(_){ return null; } };
+  // 3. LaTeX 反斜杠修复
   const fixBackslash=(str)=> str.replace(/\\\\|\\u[0-9a-fA-F]{4}|\\([a-zA-Z])/g, (m,c)=> c ? '\\\\'+c : m);
-  let arr=tryParse(fixBackslash(s)) || tryParse(s);
-  if(!arr)return [];
+  // 4. 尝试多级解析：原始 → 修反斜杠 → 修 key 引号 → 修尾逗号
+  const fixKeys=(str)=> str.replace(/([{,]\s*)([a-zA-Z_]\w*)\s*:/g, '$1"$2":');
+  const fixTrailing=(str)=> str.replace(/,\s*([}\]])/g, '$1');
+  let arr = tryParse(fixBackslash(s)) || tryParse(s)
+         || tryParse(fixKeys(fixBackslash(s))) || tryParse(fixTrailing(fixBackslash(s)))
+         || tryParse(fixTrailing(fixKeys(fixBackslash(s))));
+  // 5. 最后手段：尝试逐行提取多个 JSON 对象
+  if(!arr){
+    const objs=[]; const re=/\{[^{}]{10,}\}/g; let m;
+    while((m=re.exec(s))!==null){ const o=tryParse(fixBackslash(m[0]))||tryParse(m[0]); if(o)objs.push(...o); }
+    if(objs.length)arr=objs;
+  }
+  if(!arr||!arr.length)return [];
   // 后处理：给 plain / example 里裸露的数学符号自动补 $...$ 包裹 + 编号换行
   const wrapMath=(text)=>{
     if(!text)return text;
@@ -234,7 +248,17 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
       });
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
-    if(isConcept){ const cards=this._parseConceptCards(acc); if(!cards.length) throw new Error('知识点卡片生成失败，可点重试'); st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards; }
+    if(isConcept){
+      let cards=this._parseConceptCards(acc);
+      // 首次解析失败 → 自动重试一次（某些模型第一轮输出不稳定但第二轮能成功）
+      if(!cards.length && !force && !this._conceptRetried){
+        this._conceptRetried=true; if(showing())this.flash('卡片解析失败，自动重试中…');
+        return this.aiExplain('concept', true);
+      }
+      this._conceptRetried=false;
+      if(!cards.length) throw new Error('知识点卡片生成失败，可点重试');
+      st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards;
+    }
     else if(!st.text) throw new Error('模型没有返回内容，可换个模型再试');
   }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
   if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
