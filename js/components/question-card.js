@@ -7,7 +7,7 @@ const normAns=(v)=>String(v==null?'':v)
 const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
-  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop'],
+  emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop','ai-clear-chat'],
   watch:{ aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
     aiText(v){ if(this.aiBusy) this._chatScroll(); if(v && this.localReasonOpen && this.aiReasoning && !this._reasonAutoCollapsed){ this.localReasonOpen=false; this._reasonAutoCollapsed=true; } },
     aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
@@ -83,12 +83,10 @@ const QuestionCard={
         this.copied=key; setTimeout(()=>{ if(this.copied===key)this.copied=''; },1500);
       }catch(_){} },
     doAsk(){ const t=this.askInput.trim(); if(!t||this.aiAsking)return; this.$emit('ai-ask',t); this.askInput=''; this.$nextTick(()=>this._chatScroll()); },
-    _chatScroll(){ this.$nextTick(()=>{
-      // 优先滚 chatEnd anchor 到视口底部；如果不在滚动容器里，滚整个页面
-      const el=this.$refs.chatEnd;
-      if(el){ try{ el.scrollIntoView({behavior:'smooth',block:'end'}); }catch(_){
-        try{ window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); }catch(_){} } }
-    }); },
+    _chatScroll(){ this.$nextTick(()=>{ this.$nextTick(()=>{
+      // 双 nextTick：第一层等 Vue 更新 DOM，第二层等浏览器布局完成
+      try{ window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'}); }catch(_){}
+    }); }); },
     reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; if(this.segMode){ this.segMode=false; this.segCount=0; } },
     // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
     snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
@@ -270,10 +268,11 @@ const QuestionCard={
             </div>
             <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
           </div>
-          <div ref="chatEnd"></div>
-          <div style="display:flex;gap:8px;margin-top:10px">
-            <input ref="askInp" v-model="askInput" :disabled="aiAsking" :placeholder="aiKind==='concept' ? '对知识点卡片有疑问？追问（Enter 发送）…' : '对解析还有疑问？继续追问（可直接复制上方公式粘贴，会自动还原为 $ 公式源码；Enter 发送）…'" style="flex:1;min-width:0" @keyup.enter="doAsk" />
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+            <input ref="askInp" v-model="askInput" :disabled="aiAsking" :placeholder="aiKind==='concept' ? '对知识点卡片有疑问？追问…' : '对解析有疑问？追问…'" style="flex:1;min-width:0" @keyup.enter="doAsk" />
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
+            <button v-if="aiChat.length && !aiAsking" class="chat-icon-btn" @click="$emit('ai-clear-chat')" title="清空追问记录" style="opacity:.6"><icon name="trash-2" :size="15" /></button>
+          </div>
           </div>
         </template>
         <div v-if="segMode" class="seg-bar">

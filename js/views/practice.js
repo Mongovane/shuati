@@ -341,6 +341,7 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
 
 ,
 aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
+aiClearChat(){ if(!this.aiX.chat.length)return; if(!confirm('清空全部追问记录？（不影响解析和卡片）'))return; this.aiX.chat=[]; const st=this.aiStates[this.aiX.id]; if(st)st.chat=[]; this.flash('追问记录已清空'); },
 aiRetryAsk(i){ const list=this.aiX.chat||[]; const c=list[i];
   if(!c || this.aiX.asking) return;
   const q=c.q; list.splice(i,1);

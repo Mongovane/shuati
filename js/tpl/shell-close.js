@@ -55,6 +55,7 @@ const TPL_SHELL_CLOSE = `
         <input ref="rdAiInp" v-model="rdAi.input" :disabled="rdAi.asking" placeholder="就本页 / 选段提问（Enter 发送）…" @keyup.enter="rdAiSend" />
         <button v-if="rdAi.asking" class="rbtn" @click="rdAiStop" title="停止本次回答">■ 停止</button>
         <button v-else class="rbtn" :disabled="!rdAi.input.trim()" @click="rdAiSend">发送</button>
+        <button v-if="rdAi.chat.length && !rdAi.asking" class="rbtn" @click="rdAi.chat=[];flash('已清空')" title="清空对话" style="padding:4px 8px"><icon name="trash-2" :size="14" /></button>
       </div>
     </div>
     <div v-if="reader.panel" class="r-panel-backdrop" @click="reader.panel=false"></div>
@@ -137,6 +138,7 @@ const TPL_SHELL_CLOSE = `
         <input ref="pdfAiInp" v-model="pdfAi.input" :disabled="pdfAi.asking" :placeholder="'就第 '+pdfv.cur+' 页提问（Enter 发送）…'" @keyup.enter="pdfAiSend" />
         <button v-if="pdfAi.asking" class="rbtn" @click="pdfAiStop" title="停止本次回答">■ 停止</button>
         <button v-else class="rbtn" :disabled="!pdfAi.input.trim()" @click="pdfAiSend">发送</button>
+        <button v-if="pdfAi.chat.length && !pdfAi.asking" class="rbtn" @click="pdfAi.chat=[];flash('已清空')" title="清空对话" style="padding:4px 8px"><icon name="trash-2" :size="14" /></button>
       </div>
     </div>
 
