@@ -1234,3 +1234,7 @@ h2{margin:.2em 0 .6em}
 .chat-q-acts{position:absolute;right:8px;bottom:6px;display:flex;gap:4px}
 .chat-icon-btn{width:28px;height:28px;border-radius:6px;border:none;background:transparent;color:var(--ink-soft);display:grid;place-items:center;cursor:pointer;transition:.15s;padding:0;opacity:.5}
 .chat-icon-btn:hover{opacity:1;color:var(--accent)}
+
+/* ---- 所有 AI 聊天列表自动滚底（用 scroll-snap 实现，无需 JS） ---- */
+.rai-list{scroll-snap-type:y proximity}
+.rai-list::after{content:'';display:block;height:1px;scroll-snap-align:end}

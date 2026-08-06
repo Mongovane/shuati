@@ -311,7 +311,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         if(headerFallback && onDelta) onDelta({fallback:headerFallback});
         const ct = res.headers.get('content-type')||'';
         if(useStream && ct.includes('text/event-stream') && res.body){
-          let acc=''; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+          let acc=''; this._thinkBuf=undefined; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
           try{
             while(true){ const {done,value}=await reader.read(); if(done)break;
               buf+=dec.decode(value,{stream:true});
@@ -323,11 +323,24 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                 const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
                 const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
                 if(fr && onDelta) onDelta({finish_reason:fr});
-                // 推理模型的思维链
-                const rt=dt&&(dt.reasoning_content||dt.reasoning);
+                // 推理模型思维链——兼容多种格式：
+                // DeepSeek-R1: delta.reasoning_content
+                // Grok/部分中转站: delta.reasoning
+                // QwQ/某些适配层: delta.thinking 或 delta.think
+                const rt=dt&&(dt.reasoning_content||dt.reasoning||dt.thinking||dt.think);
                 if(rt && onDelta) onDelta({reasoning:rt});
                 const t=dt&&dt.content;
-                if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); } } }
+                // 部分模型把思维链包在 <think>...</think> 标签内直接输出到 content
+                if(t && !rt){
+                  if(!this._thinkBuf && t.includes('<think>')){ this._thinkBuf=''; }
+                  if(typeof this._thinkBuf==='string'){
+                    const end=t.indexOf('</think>');
+                    if(end>=0){ this._thinkBuf+=t.slice(0,end); if(onDelta)onDelta({reasoning:this._thinkBuf}); this._thinkBuf=undefined;
+                      const after=t.slice(end+8); if(after){ acc+=after; if(onDelta)onDelta({text:after, acc}); } }
+                    else { this._thinkBuf+=t.replace('<think>',''); if(onDelta)onDelta({reasoning:t.replace('<think>','')}); }
+                  } else { acc+=t; if(onDelta)onDelta({text:t, acc}); }
+                } else if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); }
+                } }
             return { res, text:acc, ok:true };
           }catch(e){
             if(signal && signal.aborted) throw e;
@@ -356,6 +369,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
   if(vision && this.ocrCfg && (this.ocrCfg.model||'').trim()) o.vision_model=this.ocrCfg.model.trim();
   return o; },
 flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
+scrollChatEnd(ref){ this.$nextTick(()=>{ const el=ref?this.$refs[ref]:null; if(!el)return; const list=el.closest?el.closest('.rai-list'):null; if(list)list.scrollTop=list.scrollHeight; }); },
 subjName(v){ return SUBJ_MAP[v]||v; },
 _syncHash(v){ try{ const want='#/'+v; if(location.hash!==want)location.hash=want; }catch(_){ } },
 _viewFromHash(){ let h=''; try{ h=(location.hash||'').replace(/^#\/?/,''); }catch(_){ } h=(h.split('?')[0]||'').split('/')[0]; return ['practice','wrong','favorite','books','bank','ingest','mock','stats','settings'].includes(h)?h:''; },
