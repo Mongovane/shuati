@@ -224,7 +224,7 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   const showing=()=> this.cur && this.cur.id===qid;
   if(showing()){
     this.aiX.id=qid; this.aiX.view=st.view; this.aiX.busy=true; this.aiX.asking=false;
-    this.aiX.reasoning=''; this.aiX.reasonOpen=true;   // 思维链：每次生成从零开始，只存内存
+    this.aiX.reasoning='';   // 思维链：每次生成从零开始，只存内存
     if(isConcept){ this.aiX.cards=[]; this.aiX.cardsModel=''; this.aiX.flip={}; if(this.aiX.text&&!force)this.flash('解题解析已保留，随时可切回'); }
     else { this.aiX.text=''; this.aiX.chat=[]; this.aiX.model=''; if(this.aiX.cards&&this.aiX.cards.length&&!force)this.flash('知识点卡片已保留，随时可切回'); }
   }
@@ -237,8 +237,8 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
         // 思维链只写 aiX（内存），不写 st（aiStates 缓存），因此切题/刷新即消失，也不会被自动保存写库
         if(d.reasoning && showing()){ this.aiX.reasoning=(this.aiX.reasoning||'')+d.reasoning; }
         if(d.reset && showing()){ this.aiX.reasoning=''; }
-        if(d.streamFallback && showing()){ this.flash('流式连接中断，已切换为一次性返回（需等待生成完毕）'); }
         if(d.fallback && showing()){ this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型')); }
+        if(d.streamFallback && showing()){ this.flash('流式中断，已切换为一次性返回'); }
         if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=d.acc; }
         else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } }
         // 正文开始输出 → 自动收起思维链（用户想看再点开）
@@ -260,7 +260,7 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
       st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards;
     }
     else if(!st.text) throw new Error('模型没有返回内容，可换个模型再试');
-  }catch(e){ if(e.name!=='AbortError'){ let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
+  }catch(e){ if(e.name!=='AbortError'){ this._conceptRetried=false; let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
   if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
   // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
   if(showing() && this.aiX.id===qid){ if(!this._aiJobs[qid+':e'] && !this._aiJobs[qid+':c'])this.aiX.busy=false; else if((isConcept&&this.aiX.view==='concept')||(!isConcept&&this.aiX.view==='explain'))this.aiX.busy=false; }

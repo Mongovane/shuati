@@ -311,7 +311,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         if(headerFallback && onDelta) onDelta({fallback:headerFallback});
         const ct = res.headers.get('content-type')||'';
         if(useStream && ct.includes('text/event-stream') && res.body){
-          let acc=''; this._thinkBuf=undefined; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+          let acc=''; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
           try{
             while(true){ const {done,value}=await reader.read(); if(done)break;
               buf+=dec.decode(value,{stream:true});
@@ -328,11 +328,11 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                 // Grok/部分中转站: delta.reasoning
                 // QwQ/某些适配层: delta.thinking 或 delta.think
                 const rt=dt&&(dt.reasoning_content||dt.reasoning||dt.thinking||dt.think);
-                if(rt && onDelta) onDelta({reasoning:rt});
+                if(rt){ this._hasReasonField=true; if(onDelta) onDelta({reasoning:rt}); }
                 const t=dt&&dt.content;
-                // 部分模型把思维链包在 <think>...</think> 标签内直接输出到 content
-                if(t && !rt){
-                  if(!this._thinkBuf && t.includes('<think>')){ this._thinkBuf=''; }
+                // <think> tag parsing: only for models that don't use reasoning fields, only at stream start
+                if(t && !rt && !this._hasReasonField){
+                  if(!this._thinkBuf && !acc && t.trimStart().startsWith('<think>')){ this._thinkBuf=''; }
                   if(typeof this._thinkBuf==='string'){
                     const end=t.indexOf('</think>');
                     if(end>=0){ this._thinkBuf+=t.slice(0,end); if(onDelta)onDelta({reasoning:this._thinkBuf}); this._thinkBuf=undefined;
