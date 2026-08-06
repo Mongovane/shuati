@@ -318,8 +318,8 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
 ,
 aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
 aiRetryAsk(i){ const list=this.aiX.chat||[]; const c=list[i];
-  if(!c || !c.err || this.aiX.asking) return;
-  const q=c.q; list.splice(i,1);   // 移除失败轮次，原问题重发（历史不包含失败文本）
+  if(!c || this.aiX.asking) return;
+  const q=c.q; list.splice(i,1);
   return this.aiAsk(q);
 }
 
