@@ -168,6 +168,11 @@ describe('组件 $emit 必须在「每一个」使用点都有监听（不能只
     'ai-note': AI_PROP_GATED,
     'ai-retry': AI_PROP_GATED,
     'ai-save': AI_PROP_GATED,
+    // 这两个按钮在追问气泡里，外层 <template v-if="(aiText || …) && !aiBusy"> 就已经关掉了，
+    // 而且它们自己还各带 v-if="aiAsking …" / v-if="aiChat.length …"。模考页 aiText/aiChat 都不传，
+    // 三层条件没有一层成立，按钮渲染不出来 —— 绑上去只是永远不会触发的死代码。
+    'ai-stop': AI_PROP_GATED,
+    'ai-clear-chat': AI_PROP_GATED,
     'seg-mode': '选段悬浮条的 v-if 依赖 aiText，模考页拿不到 aiText 所以不渲染',
     'card-flip': '知识点卡片列表依赖 aiCards prop，模考页不传，卡片区不渲染',
     'cards-flip-all': '同上：整体翻转按钮和知识点卡片区一起不渲染',

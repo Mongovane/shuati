@@ -1238,3 +1238,11 @@ h2{margin:.2em 0 .6em}
 /* ---- 所有 AI 聊天列表自动滚底（用 scroll-snap 实现，无需 JS） ---- */
 .rai-list{scroll-snap-type:y proximity}
 .rai-list::after{content:'';display:block;height:1px;scroll-snap-align:end}
+
+/* 完形填空：短文里的空。当前题问的那个高亮，其余的留灰底占位，方便对照 */
+.passage .cloze{display:inline-block;min-width:2.2em;padding:0 6px;margin:0 2px;
+  border-bottom:2px solid var(--line);border-radius:3px 3px 0 0;
+  background:var(--surface-2);color:var(--ink-soft);font-size:.92em;
+  text-align:center;vertical-align:baseline}
+.passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
+  color:var(--accent);font-weight:600}

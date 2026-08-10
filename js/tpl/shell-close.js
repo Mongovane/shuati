@@ -96,6 +96,7 @@ const TPL_SHELL_CLOSE = `
             <label class="prev-ck"><input type="checkbox" v-model="q._use" /></label>
             <div class="prev-body">
               <div class="prev-meta"><span class="tag2">{{ typeName(q.type) }}</span><span v-if="q.chapter" class="muted" style="font-size:12px">{{ q.chapter }}</span><span v-if="!(q.answer&&q.answer.length)" class="tag" style="color:var(--bad);border-color:var(--bad)">无答案</span></div>
+              <div v-if="q.passage" class="prev-q"><span class="prev-lab">材料</span><span class="muted" style="font-size:12.5px">{{ q.passage.slice(0,140) }}{{ q.passage.length>140?'…':'' }}</span></div>
               <div class="prev-q"><span class="prev-lab">题干</span><rich-text :content="q.stem || '（空）'" /></div>
               <div v-if="q.options&&q.options.length" class="prev-opts"><span v-for="o in q.options" :key="o.key" class="prev-opt"><b>{{ o.key }}.</b> <rich-text :content="o.text" /></span></div>
               <div v-if="q.answer&&q.answer.length" class="prev-q"><span class="prev-lab ans">答案</span><rich-text :content="ansLines(q)" /></div>

@@ -64,7 +64,7 @@ async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fla
         this.bank.batchProg='';
         const gone=new Set(ids);
         this.bank.items=this.bank.items.filter(q=>!gone.has(q.id)); this.bank.total=Math.max(0,this.bank.total-deleted); this.bank.sel=[]; this.flash('已删除 '+deleted+' 题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
-async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const ch=prompt('把选中 '+ids.length+' 题的章节改为（留空清除章节）：'); if(ch===null)return; const chapter=ch.trim(); try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,chapter})}); this.flash('已把 '+(d.updated||ids.length)+' 题章节改为「'+(chapter||'（无）')+'」'); this.bank.sel=[]; this.loadMeta(true); await this.loadBank(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改章节失败：'+e.message,true); } },
+async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const ch=prompt('把选中 '+ids.length+' 题的章节改为（留空清除章节）：'); if(ch===null)return; const chapter=ch.trim(); try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,chapter})}); this.flash('已把 '+(d.updated||ids.length)+' 题章节改为「'+(chapter||'（无）')+'」'); const hit=new Set(ids); (this.bank.items||[]).forEach(q=>{ if(hit.has(q.id))q.chapter=chapter; }); this.bank.sel=[]; this.loadMeta(true); await this.loadBank(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改章节失败：'+e.message,true); } },
 // AI 补答案：给「抽出来但没答案」的题批量生成参考答案。
 // 落库时一律标 status='draft'，走仓库里已有的「待审」流程人工过一遍再发布 ——
 // AI 补的数学推导必须当草稿看，直接当正确答案用会把错的东西背进去。

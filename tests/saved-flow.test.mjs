@@ -69,6 +69,9 @@ describe('多选与批量取消收藏', () => {
 });
 
 describe('favUnstarOne 单题取消收藏', () => {
+  // 上一个 describe 的最后一条把 global.confirm 改成了 ()=>false 且没还原，
+  // 漏到这里会让 favUnstarOne 在 confirm 那一步直接 return，看起来像实现坏了。
+  beforeEach(() => { global.confirm = () => true; });
   it('移除该题并更新总数', async () => {
     const c = ctx({ fav: { items: [{ id: 'a' }, { id: 'b' }], total: 2, sel: [] } });
     await Saved.methods.favUnstarOne.call(c, { id: 'a' });

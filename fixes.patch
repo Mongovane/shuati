@@ -1,0 +1,367 @@
+diff --git a/css/style.css b/css/style.css
+index b437125..7ac1fe1 100644
+--- a/css/style.css
++++ b/css/style.css
+@@ -1238,3 +1238,11 @@ h2{margin:.2em 0 .6em}
+ /* ---- 所有 AI 聊天列表自动滚底（用 scroll-snap 实现，无需 JS） ---- */
+ .rai-list{scroll-snap-type:y proximity}
+ .rai-list::after{content:'';display:block;height:1px;scroll-snap-align:end}
++
++/* 完形填空：短文里的空。当前题问的那个高亮，其余的留灰底占位，方便对照 */
++.passage .cloze{display:inline-block;min-width:2.2em;padding:0 6px;margin:0 2px;
++  border-bottom:2px solid var(--line);border-radius:3px 3px 0 0;
++  background:var(--surface-2);color:var(--ink-soft);font-size:.92em;
++  text-align:center;vertical-align:baseline}
++.passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
++  color:var(--accent);font-weight:600}
+diff --git a/js/components/icon.js b/js/components/icon.js
+index 63ba274..1d8d5b8 100644
+--- a/js/components/icon.js
++++ b/js/components/icon.js
+@@ -1,6 +1,6 @@
+ // 统一图标组件：<icon name="sparkles" /> —— 内联 Lucide 图标数据（不依赖外部库加载，CDN 挂了也能显示，离线可用）。
+ // 每个图标是子元素数组 [ ["path",{d:...}], ["circle",{...}] ... ]，转成内联 SVG，颜色随 currentColor、大小由 size 控制。
+-const LUCIDE_ICONS = {"sparkles":[["path",{"d":"M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"}],["path",{"d":"M20 3v4"}],["path",{"d":"M22 5h-4"}],["path",{"d":"M4 17v2"}],["path",{"d":"M5 18H3"}]],"book-open":[["path",{"d":"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"}],["path",{"d":"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"}]],"rotate-cw":[["path",{"d":"M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"}],["path",{"d":"M21 3v5h-5"}]],"save":[["path",{"d":"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"}],["path",{"d":"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"}],["path",{"d":"M7 3v4a1 1 0 0 0 1 1h7"}]],"text-cursor-input":[["path",{"d":"M5 4h1a3 3 0 0 1 3 3 3 3 0 0 1 3-3h1"}],["path",{"d":"M13 20h-1a3 3 0 0 1-3-3 3 3 0 0 1-3 3H5"}],["path",{"d":"M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"}],["path",{"d":"M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"}],["path",{"d":"M9 7v10"}]],"x":[["path",{"d":"M18 6 6 18"}],["path",{"d":"m6 6 12 12"}]],"check":[["path",{"d":"M20 6 9 17l-5-5"}]],"arrow-right":[["path",{"d":"M5 12h14"}],["path",{"d":"m12 5 7 7-7 7"}]],"triangle-alert":[["path",{"d":"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"}],["path",{"d":"M12 9v4"}],["path",{"d":"M12 17h.01"}]],"layers":[["path",{"d":"M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"}],["path",{"d":"M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"}],["path",{"d":"M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"}]],"arrow-down":[["path",{"d":"M12 5v14"}],["path",{"d":"m19 12-7 7-7-7"}]],"arrow-left":[["path",{"d":"m12 19-7-7 7-7"}],["path",{"d":"M19 12H5"}]],"arrow-up":[["path",{"d":"m5 12 7-7 7 7"}],["path",{"d":"M12 19V5"}]],"user":[["path",{"d":"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"}],["circle",{"cx":"12","cy":"7","r":"4"}]],"notebook-pen":[["path",{"d":"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"}],["path",{"d":"M2 6h4"}],["path",{"d":"M2 10h4"}],["path",{"d":"M2 14h4"}],["path",{"d":"M2 18h4"}],["path",{"d":"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"}]],"star":[["polygon",{"points":"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"}]],"pen-line":[["path",{"d":"M12 20h9"}],["path",{"d":"M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"}]],"trash-2":[["path",{"d":"M3 6h18"}],["path",{"d":"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"}],["path",{"d":"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"}],["line",{"x1":"10","x2":"10","y1":"11","y2":"17"}],["line",{"x1":"14","x2":"14","y1":"11","y2":"17"}]],"search":[["circle",{"cx":"11","cy":"11","r":"8"}],["path",{"d":"m21 21-4.3-4.3"}]],"menu":[["line",{"x1":"4","x2":"20","y1":"12","y2":"12"}],["line",{"x1":"4","x2":"20","y1":"6","y2":"6"}],["line",{"x1":"4","x2":"20","y1":"18","y2":"18"}]],"moon":[["path",{"d":"M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"}]],"sun":[["circle",{"cx":"12","cy":"12","r":"4"}],["path",{"d":"M12 2v2"}],["path",{"d":"M12 20v2"}],["path",{"d":"m4.93 4.93 1.41 1.41"}],["path",{"d":"m17.66 17.66 1.41 1.41"}],["path",{"d":"M2 12h2"}],["path",{"d":"M20 12h2"}],["path",{"d":"m6.34 17.66-1.41 1.41"}],["path",{"d":"m19.07 4.93-1.41 1.41"}]],"sun-moon":[["path",{"d":"M12 8a2.83 2.83 0 0 0 4 4 4 4 0 1 1-4-4"}],["path",{"d":"M12 2v2"}],["path",{"d":"M12 20v2"}],["path",{"d":"m4.9 4.9 1.4 1.4"}],["path",{"d":"m17.7 17.7 1.4 1.4"}],["path",{"d":"M2 12h2"}],["path",{"d":"M20 12h2"}],["path",{"d":"m6.3 17.7-1.4 1.4"}],["path",{"d":"m19.1 4.9-1.4 1.4"}]],"flame":[["path",{"d":"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"}]],"download":[["path",{"d":"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}],["polyline",{"points":"7 10 12 15 17 10"}],["line",{"x1":"12","x2":"12","y1":"15","y2":"3"}]],"flask-conical":[["path",{"d":"M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"}],["path",{"d":"M8.5 2h7"}],["path",{"d":"M7 16h10"}]],"image":[["rect",{"width":"18","height":"18","x":"3","y":"3","rx":"2","ry":"2"}],["circle",{"cx":"9","cy":"9","r":"2"}],["path",{"d":"m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"}]],"printer":[["path",{"d":"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"}],["path",{"d":"M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"}],["rect",{"x":"6","y":"14","width":"12","height":"8","rx":"1"}]],"file-text":[["path",{"d":"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"}],["path",{"d":"M14 2v4a2 2 0 0 0 2 2h4"}],["path",{"d":"M10 9H8"}],["path",{"d":"M16 13H8"}],["path",{"d":"M16 17H8"}]],"refresh-cw":[["path",{"d":"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"}],["path",{"d":"M21 3v5h-5"}],["path",{"d":"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"}],["path",{"d":"M8 16H3v5"}]],"wand-sparkles":[["path",{"d":"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"}],["path",{"d":"m14 7 3 3"}],["path",{"d":"M5 6v4"}],["path",{"d":"M19 14v4"}],["path",{"d":"M10 2v2"}],["path",{"d":"M7 8H3"}],["path",{"d":"M21 16h-4"}],["path",{"d":"M11 3H9"}]],"eraser":[["path",{"d":"m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"}],["path",{"d":"M22 21H7"}],["path",{"d":"m5 11 9 9"}]],"party-popper":[["path",{"d":"M5.8 11.3 2 22l10.7-3.79"}],["path",{"d":"M4 3h.01"}],["path",{"d":"M22 8h.01"}],["path",{"d":"M15 2h.01"}],["path",{"d":"M22 20h.01"}],["path",{"d":"m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"}],["path",{"d":"m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"}],["path",{"d":"m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"}],["path",{"d":"M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"}]],"sprout":[["path",{"d":"M7 20h10"}],["path",{"d":"M10 20c5.5-2.5.8-6.4 3-10"}],["path",{"d":"M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"}],["path",{"d":"M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"}]],"thumbs-up":[["path",{"d":"M7 10v12"}],["path",{"d":"M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"}]],"circle-check":[["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"m9 12 2 2 4-4"}]],"circle-x":[["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"m15 9-6 6"}],["path",{"d":"m9 9 6 6"}]],"check-check":[["path",{"d":"M18 6 7 17l-5-5"}],["path",{"d":"m22 10-7.5 7.5L13 16"}]],"chevrons-up-down":[["path",{"d":"m7 15 5 5 5-5"}],["path",{"d":"m7 9 5-5 5 5"}]],"corner-down-left":[["polyline",{"points":"9 10 4 15 9 20"}],["path",{"d":"M20 4v7a4 4 0 0 1-4 4H4"}]],"arrow-left-right":[["path",{"d":"M8 3 4 7l4 4"}],["path",{"d":"M4 7h16"}],["path",{"d":"m16 21 4-4-4-4"}],["path",{"d":"M20 17H4"}]],"clock":[["circle",{"cx":"12","cy":"12","r":"10"}],["polyline",{"points":"12 6 12 12 16 14"}]],"puzzle":[["path",{"d":"M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"}]],"camera":[["path",{"d":"M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"}],["circle",{"cx":"12","cy":"13","r":"3"}]],"pencil":[["path",{"d":"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"}],["path",{"d":"m15 5 4 4"}]],"book":[["path",{"d":"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"}]],"eye":[["path",{"d":"M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"}],["circle",{"cx":"12","cy":"12","r":"3"}]],"eye-off":[["path",{"d":"M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"}],["path",{"d":"M14.084 14.158a3 3 0 0 1-4.242-4.242"}],["path",{"d":"M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"}],["path",{"d":"m2 2 20 20"}]],"plus":[["path",{"d":"M5 12h14"}],["path",{"d":"M12 5v14"}]],"trending-up":[["polyline",{"points":"22 7 13.5 15.5 8.5 10.5 2 17"}],["polyline",{"points":"16 7 22 7 22 13"}]],"inbox":[["polyline",{"points":"22 12 16 12 14 15 10 15 8 12 2 12"}],["path",{"d":"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"}]],"search-x":[["path",{"d":"m13.5 8.5-5 5"}],["path",{"d":"m8.5 8.5 5 5"}],["circle",{"cx":"11","cy":"11","r":"8"}],["path",{"d":"m21 21-4.3-4.3"}]]};
++const LUCIDE_ICONS = {"sparkles":[["path",{"d":"M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"}],["path",{"d":"M20 3v4"}],["path",{"d":"M22 5h-4"}],["path",{"d":"M4 17v2"}],["path",{"d":"M5 18H3"}]],"book-open":[["path",{"d":"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"}],["path",{"d":"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"}]],"rotate-cw":[["path",{"d":"M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"}],["path",{"d":"M21 3v5h-5"}]],"save":[["path",{"d":"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"}],["path",{"d":"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"}],["path",{"d":"M7 3v4a1 1 0 0 0 1 1h7"}]],"text-cursor-input":[["path",{"d":"M5 4h1a3 3 0 0 1 3 3 3 3 0 0 1 3-3h1"}],["path",{"d":"M13 20h-1a3 3 0 0 1-3-3 3 3 0 0 1-3 3H5"}],["path",{"d":"M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"}],["path",{"d":"M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"}],["path",{"d":"M9 7v10"}]],"x":[["path",{"d":"M18 6 6 18"}],["path",{"d":"m6 6 12 12"}]],"check":[["path",{"d":"M20 6 9 17l-5-5"}]],"arrow-right":[["path",{"d":"M5 12h14"}],["path",{"d":"m12 5 7 7-7 7"}]],"triangle-alert":[["path",{"d":"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"}],["path",{"d":"M12 9v4"}],["path",{"d":"M12 17h.01"}]],"layers":[["path",{"d":"M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"}],["path",{"d":"M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"}],["path",{"d":"M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"}]],"arrow-down":[["path",{"d":"M12 5v14"}],["path",{"d":"m19 12-7 7-7-7"}]],"arrow-left":[["path",{"d":"m12 19-7-7 7-7"}],["path",{"d":"M19 12H5"}]],"arrow-up":[["path",{"d":"m5 12 7-7 7 7"}],["path",{"d":"M12 19V5"}]],"user":[["path",{"d":"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"}],["circle",{"cx":"12","cy":"7","r":"4"}]],"notebook-pen":[["path",{"d":"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"}],["path",{"d":"M2 6h4"}],["path",{"d":"M2 10h4"}],["path",{"d":"M2 14h4"}],["path",{"d":"M2 18h4"}],["path",{"d":"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"}]],"star":[["polygon",{"points":"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"}]],"pen-line":[["path",{"d":"M12 20h9"}],["path",{"d":"M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"}]],"trash-2":[["path",{"d":"M3 6h18"}],["path",{"d":"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"}],["path",{"d":"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"}],["line",{"x1":"10","x2":"10","y1":"11","y2":"17"}],["line",{"x1":"14","x2":"14","y1":"11","y2":"17"}]],"search":[["circle",{"cx":"11","cy":"11","r":"8"}],["path",{"d":"m21 21-4.3-4.3"}]],"menu":[["line",{"x1":"4","x2":"20","y1":"12","y2":"12"}],["line",{"x1":"4","x2":"20","y1":"6","y2":"6"}],["line",{"x1":"4","x2":"20","y1":"18","y2":"18"}]],"moon":[["path",{"d":"M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"}]],"sun":[["circle",{"cx":"12","cy":"12","r":"4"}],["path",{"d":"M12 2v2"}],["path",{"d":"M12 20v2"}],["path",{"d":"m4.93 4.93 1.41 1.41"}],["path",{"d":"m17.66 17.66 1.41 1.41"}],["path",{"d":"M2 12h2"}],["path",{"d":"M20 12h2"}],["path",{"d":"m6.34 17.66-1.41 1.41"}],["path",{"d":"m19.07 4.93-1.41 1.41"}]],"sun-moon":[["path",{"d":"M12 8a2.83 2.83 0 0 0 4 4 4 4 0 1 1-4-4"}],["path",{"d":"M12 2v2"}],["path",{"d":"M12 20v2"}],["path",{"d":"m4.9 4.9 1.4 1.4"}],["path",{"d":"m17.7 17.7 1.4 1.4"}],["path",{"d":"M2 12h2"}],["path",{"d":"M20 12h2"}],["path",{"d":"m6.3 17.7-1.4 1.4"}],["path",{"d":"m19.1 4.9-1.4 1.4"}]],"flame":[["path",{"d":"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"}]],"download":[["path",{"d":"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}],["polyline",{"points":"7 10 12 15 17 10"}],["line",{"x1":"12","x2":"12","y1":"15","y2":"3"}]],"flask-conical":[["path",{"d":"M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"}],["path",{"d":"M8.5 2h7"}],["path",{"d":"M7 16h10"}]],"image":[["rect",{"width":"18","height":"18","x":"3","y":"3","rx":"2","ry":"2"}],["circle",{"cx":"9","cy":"9","r":"2"}],["path",{"d":"m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"}]],"printer":[["path",{"d":"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"}],["path",{"d":"M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"}],["rect",{"x":"6","y":"14","width":"12","height":"8","rx":"1"}]],"file-text":[["path",{"d":"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"}],["path",{"d":"M14 2v4a2 2 0 0 0 2 2h4"}],["path",{"d":"M10 9H8"}],["path",{"d":"M16 13H8"}],["path",{"d":"M16 17H8"}]],"refresh-cw":[["path",{"d":"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"}],["path",{"d":"M21 3v5h-5"}],["path",{"d":"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"}],["path",{"d":"M8 16H3v5"}]],"wand-sparkles":[["path",{"d":"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"}],["path",{"d":"m14 7 3 3"}],["path",{"d":"M5 6v4"}],["path",{"d":"M19 14v4"}],["path",{"d":"M10 2v2"}],["path",{"d":"M7 8H3"}],["path",{"d":"M21 16h-4"}],["path",{"d":"M11 3H9"}]],"eraser":[["path",{"d":"m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"}],["path",{"d":"M22 21H7"}],["path",{"d":"m5 11 9 9"}]],"party-popper":[["path",{"d":"M5.8 11.3 2 22l10.7-3.79"}],["path",{"d":"M4 3h.01"}],["path",{"d":"M22 8h.01"}],["path",{"d":"M15 2h.01"}],["path",{"d":"M22 20h.01"}],["path",{"d":"m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"}],["path",{"d":"m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"}],["path",{"d":"m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"}],["path",{"d":"M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"}]],"sprout":[["path",{"d":"M7 20h10"}],["path",{"d":"M10 20c5.5-2.5.8-6.4 3-10"}],["path",{"d":"M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"}],["path",{"d":"M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"}]],"thumbs-up":[["path",{"d":"M7 10v12"}],["path",{"d":"M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"}]],"circle-check":[["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"m9 12 2 2 4-4"}]],"circle-x":[["circle",{"cx":"12","cy":"12","r":"10"}],["path",{"d":"m15 9-6 6"}],["path",{"d":"m9 9 6 6"}]],"check-check":[["path",{"d":"M18 6 7 17l-5-5"}],["path",{"d":"m22 10-7.5 7.5L13 16"}]],"chevrons-up-down":[["path",{"d":"m7 15 5 5 5-5"}],["path",{"d":"m7 9 5-5 5 5"}]],"corner-down-left":[["polyline",{"points":"9 10 4 15 9 20"}],["path",{"d":"M20 4v7a4 4 0 0 1-4 4H4"}]],"arrow-left-right":[["path",{"d":"M8 3 4 7l4 4"}],["path",{"d":"M4 7h16"}],["path",{"d":"m16 21 4-4-4-4"}],["path",{"d":"M20 17H4"}]],"clock":[["circle",{"cx":"12","cy":"12","r":"10"}],["polyline",{"points":"12 6 12 12 16 14"}]],"puzzle":[["path",{"d":"M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"}]],"camera":[["path",{"d":"M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"}],["circle",{"cx":"12","cy":"13","r":"3"}]],"pencil":[["path",{"d":"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"}],["path",{"d":"m15 5 4 4"}]],"book":[["path",{"d":"M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"}]],"eye":[["path",{"d":"M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"}],["circle",{"cx":"12","cy":"12","r":"3"}]],"eye-off":[["path",{"d":"M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"}],["path",{"d":"M14.084 14.158a3 3 0 0 1-4.242-4.242"}],["path",{"d":"M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"}],["path",{"d":"m2 2 20 20"}]],"plus":[["path",{"d":"M5 12h14"}],["path",{"d":"M12 5v14"}]],"trending-up":[["polyline",{"points":"22 7 13.5 15.5 8.5 10.5 2 17"}],["polyline",{"points":"16 7 22 7 22 13"}]],"inbox":[["polyline",{"points":"22 12 16 12 14 15 10 15 8 12 2 12"}],["path",{"d":"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"}]],"wifi":[["path",{"d":"M12 20h.01"}],["path",{"d":"M2 8.82a15 15 0 0 1 20 0"}],["path",{"d":"M5 12.859a10 10 0 0 1 14 0"}],["path",{"d":"M8.5 16.429a5 5 0 0 1 7 0"}]],"brain":[["path",{"d":"M12 18V5"}],["path",{"d":"M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"}],["path",{"d":"M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"}],["path",{"d":"M17.997 5.125a4 4 0 0 1 2.526 5.77"}],["path",{"d":"M18 18a4 4 0 0 0 2-7.464"}],["path",{"d":"M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"}],["path",{"d":"M6 18a4 4 0 0 1-2-7.464"}],["path",{"d":"M6.003 5.125a4 4 0 0 0-2.526 5.77"}]],"square":[["rect",{"width":"18","height":"18","x":"3","y":"3","rx":"2"}]],"chevron-up":[["path",{"d":"m18 15-6-6-6 6"}]],"chevron-down":[["path",{"d":"m6 9 6 6 6-6"}]],"grid-2x2":[["path",{"d":"M12 3v18"}],["path",{"d":"M3 12h18"}],["rect",{"x":"3","y":"3","width":"18","height":"18","rx":"2"}]],"search-x":[["path",{"d":"m13.5 8.5-5 5"}],["path",{"d":"m8.5 8.5 5 5"}],["circle",{"cx":"11","cy":"11","r":"8"}],["path",{"d":"m21 21-4.3-4.3"}]]};
+ const Icon = {
+   name: 'Icon',
+   props: { name: { type: String, required: true }, size: { type: [Number, String], default: 18 }, stroke: { type: [Number, String], default: 2 } },
+diff --git a/js/components/question-card.js b/js/components/question-card.js
+index 2b96bbf..87b62bc 100644
+--- a/js/components/question-card.js
++++ b/js/components/question-card.js
+@@ -8,12 +8,28 @@ const QuestionCard={
+   components:{ RichText },
+   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
+   emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop','ai-clear-chat'],
+-  watch:{ aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
++  // 这里原来有两个 watch:{}（一个在 computed 前、一个在 mounted 前），
++  // 后者把前者整个覆盖掉，aiReasoning / aiText / aiChat / aiBusy 四个监听全部不生效：
++  // 推理过程不自动滚到底、正文出来后推理区不自动折叠、追问不跟随滚动、请求开始时推理区不展开。
++  // 合并成一个。
++  watch:{
++    q(){ this.reset(); },
++    segMode(v){ this.$emit('seg-mode', v); },
++    aiKind(nv, ov){ if(nv&&ov&&nv!==ov){ this.$nextTick(()=>{ try{ const el=this.$refs.aiBox; if(el&&el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){} }); } },
++    aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
+     aiText(v){ if(this.aiBusy) this._chatScroll(); if(v && this.localReasonOpen && this.aiReasoning && !this._reasonAutoCollapsed){ this.localReasonOpen=false; this._reasonAutoCollapsed=true; } },
+     aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
+-    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } } },
++    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } },
++  },
+   data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false }; },
+   computed:{
++    // 完形填空：当前这道题问的是第几个空（题干形如「（完形填空 第 21 空）」）
++    clozeNo(){ const m=String((this.q&&this.q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/); return m?parseInt(m[1],10):0; },
++    // 短文里的空由抽题阶段标成「＿＿21＿＿」。这里再套一层 span：
++    // 当前这道题的空高亮，其余的灰着，做题时一眼能看出在填哪个。
++    passageText(){ const p=String((this.q&&this.q.passage)||''); if(!p||!this.clozeNo)return p;
++      return p.replace(/\uFF3F\uFF3F([0-9]{1,3})\uFF3F\uFF3F/g,
++        (m,n)=>'<span class="cloze'+(parseInt(n,10)===this.clozeNo?' cur':'')+'">'+n+'</span>'); },
+     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
+     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
+     isObjective(){ return OBJECTIVE.includes(this.q.type); },
+@@ -47,7 +63,6 @@ const QuestionCard={
+     finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
+     graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
+   },
+-  watch:{ q(){ this.reset(); }, segMode(v){ this.$emit('seg-mode', v); }, aiKind(nv, ov){ if(nv&&ov&&nv!==ov){ this.$nextTick(()=>{ try{ const el=this.$refs.aiBox; if(el&&el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){} }); } } },
+   mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); } },
+   beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){} },
+   methods:{
+@@ -137,7 +152,7 @@ const QuestionCard={
+       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
+       <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
+     </div>
+-    <div v-if="q.passage" class="passage"><rich-text :content="q.passage" /></div>
++    <div v-if="q.passage" class="passage"><rich-text :content="passageText" /></div>
+     <div class="stem"><rich-text :content="q.stem" /></div>
+     <template v-if="isChoice">
+       <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
+@@ -192,7 +207,7 @@ const QuestionCard={
+         <template v-else-if="aiKind==='concept' && aiCards.length">
+         <div class="kcard-tools">
+           <button class="kcard-flipall" @click="$emit('cards-flip-all')"><icon name="chevrons-up-down" :size="13" /> {{ allFlipped ? '全部收起' : '全部翻开' }}</button>
+-          <button class="kcard-flipall" @click="kcardMode=kcardMode==='grid'?'single':'grid'"><icon :name="kcardMode==='grid'?'layers-subtract':'grid-dots'" :size="13" /> {{ kcardMode==='grid'?'逐张背诵':'网格总览' }}</button>
++          <button class="kcard-flipall" @click="kcardMode=kcardMode==='grid'?'single':'grid'"><icon :name="kcardMode==='grid'?'layers':'grid-2x2'" :size="13" /> {{ kcardMode==='grid'?'逐张背诵':'网格总览' }}</button>
+           <span class="muted" style="font-size:12px;margin-left:auto">已翻 {{ Object.keys(aiFlip).filter(k=>aiFlip[k]).length }}/{{ aiCards.length }}</span>
+         </div>
+         <div v-if="kcardMode==='grid'" class="kcard-grid">
+@@ -273,7 +288,6 @@ const QuestionCard={
+             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
+             <button v-if="aiChat.length && !aiAsking" class="chat-icon-btn" @click="$emit('ai-clear-chat')" title="清空追问记录" style="opacity:.6"><icon name="trash-2" :size="15" /></button>
+           </div>
+-          </div>
+         </template>
+         <div v-if="segMode" class="seg-bar">
+           <span class="muted" style="font-size:12px">{{ segCount? '已选 '+segCount+' 块' : '点选下方虚线块（段落 / 公式 / 代码 / 列表项）' }}</span>
+diff --git a/js/tpl/shell-close.js b/js/tpl/shell-close.js
+index bffd8f5..b4c47ff 100644
+--- a/js/tpl/shell-close.js
++++ b/js/tpl/shell-close.js
+@@ -96,6 +96,7 @@ const TPL_SHELL_CLOSE = `
+             <label class="prev-ck"><input type="checkbox" v-model="q._use" /></label>
+             <div class="prev-body">
+               <div class="prev-meta"><span class="tag2">{{ typeName(q.type) }}</span><span v-if="q.chapter" class="muted" style="font-size:12px">{{ q.chapter }}</span><span v-if="!(q.answer&&q.answer.length)" class="tag" style="color:var(--bad);border-color:var(--bad)">无答案</span></div>
++              <div v-if="q.passage" class="prev-q"><span class="prev-lab">材料</span><span class="muted" style="font-size:12.5px">{{ q.passage.slice(0,140) }}{{ q.passage.length>140?'…':'' }}</span></div>
+               <div class="prev-q"><span class="prev-lab">题干</span><rich-text :content="q.stem || '（空）'" /></div>
+               <div v-if="q.options&&q.options.length" class="prev-opts"><span v-for="o in q.options" :key="o.key" class="prev-opt"><b>{{ o.key }}.</b> <rich-text :content="o.text" /></span></div>
+               <div v-if="q.answer&&q.answer.length" class="prev-q"><span class="prev-lab ans">答案</span><rich-text :content="ansLines(q)" /></div>
+diff --git a/js/views/bank.js b/js/views/bank.js
+index 3eea203..a007d78 100644
+--- a/js/views/bank.js
++++ b/js/views/bank.js
+@@ -64,7 +64,7 @@ async bankBatchDelete(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fla
+         this.bank.batchProg='';
+         const gone=new Set(ids);
+         this.bank.items=this.bank.items.filter(q=>!gone.has(q.id)); this.bank.total=Math.max(0,this.bank.total-deleted); this.bank.sel=[]; this.flash('已删除 '+deleted+' 题'); this.loadMeta(true); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('批量删除失败：'+e.message,true); } },
+-async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const ch=prompt('把选中 '+ids.length+' 题的章节改为（留空清除章节）：'); if(ch===null)return; const chapter=ch.trim(); try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,chapter})}); this.flash('已把 '+(d.updated||ids.length)+' 题章节改为「'+(chapter||'（无）')+'」'); this.bank.sel=[]; this.loadMeta(true); await this.loadBank(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改章节失败：'+e.message,true); } },
++async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const ch=prompt('把选中 '+ids.length+' 题的章节改为（留空清除章节）：'); if(ch===null)return; const chapter=ch.trim(); try{ const d=await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids,chapter})}); this.flash('已把 '+(d.updated||ids.length)+' 题章节改为「'+(chapter||'（无）')+'」'); const hit=new Set(ids); (this.bank.items||[]).forEach(q=>{ if(hit.has(q.id))q.chapter=chapter; }); this.bank.sel=[]; this.loadMeta(true); await this.loadBank(true); }catch(e){ if(e.message!=='unauth')this.flash('批量改章节失败：'+e.message,true); } },
+ // AI 补答案：给「抽出来但没答案」的题批量生成参考答案。
+ // 落库时一律标 status='draft'，走仓库里已有的「待审」流程人工过一遍再发布 ——
+ // AI 补的数学推导必须当草稿看，直接当正确答案用会把错的东西背进去。
+diff --git a/js/views/ingest.js b/js/views/ingest.js
+index 38a60e8..209d29a 100644
+--- a/js/views/ingest.js
++++ b/js/views/ingest.js
+@@ -203,6 +203,7 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+       const answerBody=/(?:^|[\s.．、।])(?:【\s*精\s*析\s*】|\[\s*精\s*析\s*\]|【\s*考\s*点\s*】|\[\s*考\s*点\s*\]|【\s*解\s*析\s*】)/;
+       let inAnswer=false; const answerMap={};   // 题号 → {answer, analysis}
+       let curAns=null; let answerMarkerStreak=0;   // 连续答案标记计数(无标题切区用)
++      let answerMissStreak=0;                      // 中间夹了几行"不像答案"的噪声(水印/页码)
+       let inEx=false, exLabel='';
+       // —— 阅读材料关联 ——
+       // 英语/语文真题结构:一段短文(A/B/C 标记 或 "阅读下面短文")后跟若干题,这些题共享短文。
+@@ -218,11 +219,17 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+       const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n'))){ if(curPassage&&!cur.passage)cur.passage=curPassage; items.push(cur); } cur=null; };
+       const flushAns=()=>{ if(curAns&&curAns.num){ const body=curAns.lines.join('\n').trim(); if(body){ const km=body.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/); answerMap[curAns.num]={ keys: km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[], analysis: body }; } } curAns=null; };
+       for(const raw of lines){ let head=null; const h=raw.match(headRe); if(h)head=h[1]; else { const b=raw.match(boldRe); if(b)head=b[1]; }
+-        // 进入答案区检测(标题行)—— 标题命中最可靠,立刻切
+-        if(head){ const ht=head.replace(/[\s*#]/g,'').trim(); if(answerHead.test(ht)||/^(参考答案|答案与名家精析|答案及解析|参考答案与名家精析)/.test(ht)){ flush(); inAnswer=true; continue; } }
++        // 进入答案区检测 —— 标题命中最可靠,立刻切。
++        // MinerU 经常把「参考答案与名家精析」输出成普通正文行(没有 # 也没有 **),
++        // 原来只认 head 就会漏掉,导致整个答案区被当成题目抽进来(广东专升本英语真题实测)。
++        // 所以普通行也认,但收紧成「整行就是这几个字」(≤24 字),避免正文里提一句「参考答案见后」被误切。
++        { const cand = (head!=null) ? head : raw;
++          const ht = String(cand).replace(/[\s*#>]/g,'').trim();
++          if(ht && (answerHead.test(ht)||/^(参考答案|答案与名家精析|答案及解析|参考答案与名家精析)/.test(ht))
++             && (head!=null || ht.length<=24)){ flush(); inAnswer=true; continue; } }
+         // 无标题兜底:必须连续 2 条以上「N.【精析】」才切,防止教材里偶发一条【精析】把后面真题全吞掉
+         if(!inAnswer){
+-          if(answerBody.test(raw) && raw.match(numRe)){ answerMarkerStreak++;
++          if(answerBody.test(raw) && raw.match(numRe)){ answerMarkerStreak++; answerMissStreak=0;
+             if(answerMarkerStreak>=2){ inAnswer=true; flush();
+               // 回补:把之前几条误当题目的答案标记行移出 items,转成答案条目
+               while(items.length){ const last=items[items.length-1]; const lastBody=last.lines.join('\n');
+@@ -233,7 +240,11 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+               continue;
+             }
+           }
+-          else if(raw.trim() && !/【|\[|考点|精析|解析|答案/.test(raw))answerMarkerStreak=0;
++          // 原来只要来一行"不像答案"的就把 streak 清零。页眉页脚水印
++          //(「广东专插本考试信息网… 电话: 153…」)恰好每页都夹在两条解析之间,
++          // streak 永远攒不到 2,兜底彻底失灵。改成容忍 2 行噪声再清零。
++          else if(raw.trim() && !/【|\[|考点|精析|解析|答案/.test(raw)){
++            if(++answerMissStreak>=3){ answerMarkerStreak=0; answerMissStreak=0; } }
+         }
+         if(inAnswer){
+           const anm=raw.match(numRe);
+@@ -247,9 +258,17 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+           // 阅读段落标记(单个 A/B/C/D 或 Spain/Denmark 这类小标题)后面跟的是新短文 → 清空旧材料重新累积。
+           // 关键顺序:必须先 flush(关闭并 push 当前挂起的题,让它保住当前 passage),再清空 passage,
+           // 否则新标记会先把 passage 清掉,导致上一段最后一道题丢失阅读材料。
+-          const isReadingMarker=/^[A-EＡ-Ｅ]$/.test(t) || (t.length<=20 && !numRe.test(t) && !/题|习题|第.*[章节]|部分/.test(t));
++          // 原判定是「≤20 字且不含 题/章节/部分」——太宽:短文内部的 Spain / Denmark /
++          // Germany / Greece 这类国家小标题全部命中,每个都把 passage 清空一次,
++          // 结果问希腊的题挂上了最后一段 Germany 的材料。改成只认真正的分篇标记。
++          const isReadingMarker=/^[A-EＡ-Ｅ]$/.test(t)
++            || /^(Passage|Text|Part)\s*[A-E0-9]/i.test(t)
++            || /阅读下(列|面)/.test(t)
++            || /^第\s*[一二三四五六七八九十0-9０-９]+\s*[节部]/.test(t);
+           if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; continue; }
+           if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; }
++          // 短文中间的小标题是材料的一部分,不能丢——丢了就看不出哪段讲哪个国家
++          else if(!cur && !this._isSectionLabel(t) && t.length<=40 && !/^\$/.test(t))passageBuf.push(t);
+           if(h){ flush(); continue; } }
+         const nm=raw.match(numRe); if(nm){ flushPassage(); flush();
+           if(this._isChoiceLabel(nm[2]))exLabel='choice'; else if(this._isSectionLabel(nm[2]))exLabel='other';
+@@ -272,7 +291,25 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+         // 回填答案区解析：按题号匹配。题目自己带的编号优先，否则用顺序号
+         const byNum = it.num && answerMap[it.num];
+         if(byNum){ if(byNum.keys&&byNum.keys.length){ q.answer=byNum.keys; if(byNum.keys.length>1 && q.type==='single_choice')q.type='multiple_choice'; } if(byNum.analysis){ q.analysis=byNum.analysis; if(!(q.answer&&q.answer.length) && q.type==='short_answer')q.answer=[byNum.analysis]; } }
+-        out.push(q); } return out; },
++        out.push(q); } this._markClozeBlanks(out); return out; },
++// 完形填空重建成「（完形填空 第 21 空）」之后，短文里的空还是一个裸数字 21，
++// 做题时得自己在正文里数到第几个数字才是当前这个空 —— 基本没法用。
++// 这里把同一段短文下所有空的编号一次性标成「＿＿21＿＿」。
++// 关键点：
++//  · 编号取自各题题干（我们确切知道哪些数字是空），不靠"看起来像空"去猜，
++//    所以正文里的 1927、25 这类真实数字不会被误标
++//  · 用全角下划线 U+FF3F 而不是 ASCII 的 _，因为 marked 会把 __21__ 当粗体吃掉
++//  · 前后各要求一个非字母数字边界，避免 n=2 时匹配进已经标好的 ＿＿21＿＿
++_markClozeBlanks(qs){ const groups=new Map();
++      for(const q of (qs||[])){ const m=String((q&&q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/);
++        if(!m || !q.passage)continue;
++        const k=q.passage; if(!groups.has(k))groups.set(k,[]); groups.get(k).push({ q, no:m[1] }); }
++      for(const list of groups.values()){
++        let text=list[0].q.passage;
++        for(const n of [...new Set(list.map(x=>x.no))])
++          text=text.replace(new RegExp('(^|[^0-9A-Za-z\uFF3F])'+n+'(?![0-9])','g'), '$1\uFF3F\uFF3F'+n+'\uFF3F\uFF3F');
++        for(const x of list)x.q.passage=text; }
++      return qs; },
+ // 「阅读文献 / 参考书目」条目会被 numRe 当成编号题吃进来。
+ // 政治理论那本实测 64 道里 35 道（55%）是这种条目，例如
+ // 「邓小平：《对起草〈…〉的意见》，《三中全会以来重要文献选编》上，中央文献出版社 2011 年版。」
+@@ -302,11 +339,14 @@ _splitInlineOptions(text){ const t=String(text||''); const re=/([A-DＡ-Ｄ])\s*
+       const want=['A','B','C','D']; const seq=[];
+       for(const f of found){ if(f.key===want[seq.length])seq.push(f); }
+       if(seq.length<3)return null;
+-      const stem=t.slice(0,seq[0].at).trim(); if(!stem)return null;
++      const stem=t.slice(0,seq[0].at).trim();
+       const options=[];
+       for(let i=0;i<seq.length;i++){ const e=(i+1<seq.length)?seq[i+1].at:t.length;
+         const txt=t.slice(seq[i].end,e).trim(); if(!txt)return null; options.push({ key:seq[i].key, text:txt }); }
+-      return { stem, options }; },
++      // 题干为空 = 完形填空那种「21. A. cooking B. cleaning C. jobs D. exercise」,
++      // 空格在上面的短文里。原来这里直接 return null,整行原样退化成简答题干,
++      // 抽出来是一道没题干、没选项、没答案的废题。现在标记出来交给上层处理。
++      return { stem, options, orphan:!stem }; },
+ // 目录页识别：这种页整页都是「章节号 标题 页码」，抽题时必须整页跳过。
+ // 数据结构那本的目录（第 6/7/8 页）就被当成习题吃进了 149 道垃圾。
+ // 注意它的目录用空格而非点线做 leader，所以不能只认点线。
+@@ -332,7 +372,13 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
+       let type='short_answer', options=[], answer=[], analysis='';
+       // 独占一行的选项没找到时，再试同一行内的 A./B./C./D.
+       if(opts.length<2){ const inl=this._splitInlineOptions(keep.join('\n').trim()||stemPart);
+-        if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0; keep.push(inl.stem); } }
++        if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0;
++          if(inl.orphan){
++            // 只有挂到了短文才留:题干写成「(完形填空 第 N 空)」,配合短文和选项就能做。
++            // 没短文可挂的话这题永远做不了,直接丢,别拿废题污染题库。
++            if(!(it.passage&&it.passage.length>=40))return null;
++            keep.push('（完形填空 第 '+(it.num||'?')+' 空）'); }
++          else keep.push(inl.stem); } }
+       if(opts.length>=2){ type='single_choice'; options=opts; stemPart=keep.join('\n').trim();
+         const am=solPart.match(/(?:答案|正确答案|答|选|应选)\s*[是为：:]?\s*([A-DＡ-Ｄ](?:\s*[,，、和]\s*[A-DＡ-Ｄ])*)/);
+         if(am){ const keys=this._fullToHalf(am[1]).split(/[,，、和\s]+/).filter(Boolean); answer=keys; if(keys.length>1)type='multiple_choice'; }
+@@ -356,13 +402,40 @@ ansLines(q){ return ((q&&q.answer)||[]).join('\n'); },
+ // 逐页会把跨页的题从中间切断：线上实测 101 道题的题干断在页边界上，
+ // 例如「证明任一最高次幂的指数为奇数的代数方程 a₀x^{2n+1}+…」，「至少有一个实根」掉在下一页；
+ // (1)(2)(3) 子项也会被切走。拼接后题数不变（665），无答案率 34%→25%，全书解析仅 7ms。
++// 每页重复出现的页眉/页脚/水印 —— 广东专升本那套真题每页顶部和底部都有
++// 「广东专插本考试信息网(广东普通专升本考试信息网): www.gzzkgk.cn 电话: 15374053589」。
++// 不洗掉的话:① 它会被当成正文拼进题干;② 它夹在两条【精析】之间,把答案区
++// 的连续性判定打断,导致整个答案区被当成题目抽出来。
++// 判定靠"跨页重复"而不是写死关键词,换一本书照样管用:
++//   · 只看每页首尾各 3 行(水印就长在这儿),避免误伤正文里的高频短句
++//   · 出现在 ≥60% 的页上、且长度 ≤120 字,才认定是页面装饰
++//   · 认定后在全页范围内删干净(MinerU 有时会把它插到正文中间)
++_stripPageFurniture(texts){ const arr=(texts||[]).map(t=>String(t||''));
++      const norm=(s)=>s.replace(/[#*>`\s]/g,'').trim();
++      if(arr.filter(t=>t.trim()).length<4)return arr;
++      const freq=new Map(); let pageCount=0;
++      for(const t of arr){ const ls=t.split('\n').map(x=>x.trim()).filter(Boolean); if(!ls.length)continue; pageCount++;
++        const edge=new Set([...ls.slice(0,3), ...ls.slice(-3)]);
++        for(const ln of edge){ const k=norm(ln); if(!k||k.length>120)continue; freq.set(k,(freq.get(k)||0)+1); } }
++      if(!pageCount)return arr;
++      const junk=new Set(); for(const [k,n] of freq)if(n/pageCount>=0.6)junk.add(k);
++      return arr.map(t=>{ if(!t.trim())return t;
++        const ls=t.split('\n'); const out=[];
++        for(let i=0;i<ls.length;i++){ const s=ls[i].trim(); const k=norm(s);
++          if(k && junk.has(k))continue;
++          // 孤零零一行纯数字的页码,只在页首/页尾时删
++          if(/^[0-9０-９]{1,4}$/.test(s) && (i<2||i>=ls.length-2))continue;
++          out.push(ls[i]); }
++        return out.join('\n').replace(/\n{3,}/g,'\n\n').trim(); }); },
+ _extractWholeBook(book){
+       const pages=book.pages||[]; const SEP='\n\n';
+       // 目录页整页跳过（置空而不是删掉，这样偏移→页码的映射仍然对齐）
+       let skipped=0;
+-      const texts=pages.map(m=>{ const t=String((m&&m.content_md)||'');
++      let texts=pages.map(m=>{ const t=String((m&&m.content_md)||'');
+         if(this._looksLikeTocPage(t)){ skipped++; return ''; } return t; });
+       this.extractSkippedToc=skipped;
++      // 页眉页脚水印必须在切题之前洗掉:它会被拼进题干,还会打断答案区的连续性判定
++      texts=this._stripPageFurniture(texts);
+       const starts=[]; let acc=0;
+       for(let i=0;i<texts.length;i++){ starts.push(acc); acc+=texts[i].length+SEP.length; }
+       const joined=texts.join(SEP);
+@@ -373,8 +446,12 @@ _extractWholeBook(book){
+         const m=pages[ans]; return m&&m.page?m.page:0; };
+       let cur=0;
+       for(const q of qs){
+-        const key=String(q.stem||'').slice(0,40);
+-        const at=key? joined.indexOf(key,cur) : -1;
++        // 完形填空这类题干是合成的（「（完形填空 第 21 空）」），原文里找不到，
++        // 退回用第一个选项的原文去定位，否则整段完形填空的页码全是 0
++        const keys=[String(q.stem||'').slice(0,40)];
++        if(q.options&&q.options.length)keys.push(String(q.options[0].text||'').slice(0,40));
++        let at=-1;
++        for(const key of keys){ if(!key)continue; const i=joined.indexOf(key,cur); if(i>=0){ at=i; break; } }
+         if(at>=0){ cur=at; q.page=pageAt(at); }
+       }
+       return qs; },
+diff --git a/tests/book-nav.test.mjs b/tests/book-nav.test.mjs
+index 6dd4e5b..5d0eef8 100644
+--- a/tests/book-nav.test.mjs
++++ b/tests/book-nav.test.mjs
+@@ -3,7 +3,7 @@
+ //  · 翻页后浏览器按新页高裁剪滚动位置：实测 1831 → 706，正好落在新页最底部，得往上滚才看到正文
+ //  · 键盘 ←/→/PageDown/空格 全部无响应；没有任何 touch 监听，手机上只能滚到底点按钮
+ //  · 空格式目录（「1.2.3 标题  22」）解析出 0 条，273 页只能靠「输入第几篇跳转」
+-import { describe, it, expect, vi } from 'vitest';
++import { describe, it, expect } from 'vitest';
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import { ROOT } from './helpers.mjs';
+diff --git a/tests/click-handlers.test.mjs b/tests/click-handlers.test.mjs
+index b94c95c..36b1137 100644
+--- a/tests/click-handlers.test.mjs
++++ b/tests/click-handlers.test.mjs
+@@ -168,6 +168,11 @@ describe('组件 $emit 必须在「每一个」使用点都有监听（不能只
+     'ai-note': AI_PROP_GATED,
+     'ai-retry': AI_PROP_GATED,
+     'ai-save': AI_PROP_GATED,
++    // 这两个按钮在追问气泡里，外层 <template v-if="(aiText || …) && !aiBusy"> 就已经关掉了，
++    // 而且它们自己还各带 v-if="aiAsking …" / v-if="aiChat.length …"。模考页 aiText/aiChat 都不传，
++    // 三层条件没有一层成立，按钮渲染不出来 —— 绑上去只是永远不会触发的死代码。
++    'ai-stop': AI_PROP_GATED,
++    'ai-clear-chat': AI_PROP_GATED,
+     'seg-mode': '选段悬浮条的 v-if 依赖 aiText，模考页拿不到 aiText 所以不渲染',
+     'card-flip': '知识点卡片列表依赖 aiCards prop，模考页不传，卡片区不渲染',
+     'cards-flip-all': '同上：整体翻转按钮和知识点卡片区一起不渲染',
+diff --git a/tests/extract-numbering.test.mjs b/tests/extract-numbering.test.mjs
+index ba91f04..9b56518 100644
+--- a/tests/extract-numbering.test.mjs
++++ b/tests/extract-numbering.test.mjs
+@@ -56,8 +56,14 @@ describe('行内选项拆分（MinerU 把整道选择题压成一行）', () =>
+   it('乱序或跳号不认', () => {
+     expect(M._splitInlineOptions.call(c, '甲 C. 丙 A. 甲 B. 乙')).toBe(null);
+   });
+-  it('A 前面没有题干不认', () => {
+-    expect(M._splitInlineOptions.call(c, 'A. 甲 B. 乙 C. 丙')).toBe(null);
++  // 改契约：A 前面没题干的，以前直接 return null（整行原样退化成简答题干，抽出来是废题）。
++  // 现在照常拆出选项但打 orphan 标记 —— 完形填空就是这个形状，空格在上面的短文里，
++  // 由 _buildQuestionFromItem 决定是挂到短文重建成单选，还是丢弃。详见 extract-mineru-junk.test.mjs。
++  it('A 前面没有题干 → 拆出选项但标记为 orphan', () => {
++    const r = M._splitInlineOptions.call(c, 'A. 甲 B. 乙 C. 丙');
++    expect(r.orphan).toBe(true);
++    expect(r.stem).toBe('');
++    expect(r.options.map((o) => o.key)).toEqual(['A', 'B', 'C']);
+   });
+   it('数学式子里的字母不会被误当选项', () => {
+     expect(M._splitInlineOptions.call(c, '求 $\\lim_{x\\to0}\\frac{\\sin x}{x}$ 的值.')).toBe(null);
+diff --git a/tests/saved-flow.test.mjs b/tests/saved-flow.test.mjs
+index e77842b..d1d19cf 100644
+--- a/tests/saved-flow.test.mjs
++++ b/tests/saved-flow.test.mjs
+@@ -69,6 +69,9 @@ describe('多选与批量取消收藏', () => {
+ });
+ 
+ describe('favUnstarOne 单题取消收藏', () => {
++  // 上一个 describe 的最后一条把 global.confirm 改成了 ()=>false 且没还原，
++  // 漏到这里会让 favUnstarOne 在 confirm 那一步直接 return，看起来像实现坏了。
++  beforeEach(() => { global.confirm = () => true; });
+   it('移除该题并更新总数', async () => {
+     const c = ctx({ fav: { items: [{ id: 'a' }, { id: 'b' }], total: 2, sel: [] } });
+     await Saved.methods.favUnstarOne.call(c, { id: 'a' });

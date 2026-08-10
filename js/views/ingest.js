@@ -203,6 +203,7 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
       const answerBody=/(?:^|[\s.．、।])(?:【\s*精\s*析\s*】|\[\s*精\s*析\s*\]|【\s*考\s*点\s*】|\[\s*考\s*点\s*\]|【\s*解\s*析\s*】)/;
       let inAnswer=false; const answerMap={};   // 题号 → {answer, analysis}
       let curAns=null; let answerMarkerStreak=0;   // 连续答案标记计数(无标题切区用)
+      let answerMissStreak=0;                      // 中间夹了几行"不像答案"的噪声(水印/页码)
       let inEx=false, exLabel='';
       // —— 阅读材料关联 ——
       // 英语/语文真题结构:一段短文(A/B/C 标记 或 "阅读下面短文")后跟若干题,这些题共享短文。
@@ -218,11 +219,17 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
       const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n'))){ if(curPassage&&!cur.passage)cur.passage=curPassage; items.push(cur); } cur=null; };
       const flushAns=()=>{ if(curAns&&curAns.num){ const body=curAns.lines.join('\n').trim(); if(body){ const km=body.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/); answerMap[curAns.num]={ keys: km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[], analysis: body }; } } curAns=null; };
       for(const raw of lines){ let head=null; const h=raw.match(headRe); if(h)head=h[1]; else { const b=raw.match(boldRe); if(b)head=b[1]; }
-        // 进入答案区检测(标题行)—— 标题命中最可靠,立刻切
-        if(head){ const ht=head.replace(/[\s*#]/g,'').trim(); if(answerHead.test(ht)||/^(参考答案|答案与名家精析|答案及解析|参考答案与名家精析)/.test(ht)){ flush(); inAnswer=true; continue; } }
+        // 进入答案区检测 —— 标题命中最可靠,立刻切。
+        // MinerU 经常把「参考答案与名家精析」输出成普通正文行(没有 # 也没有 **),
+        // 原来只认 head 就会漏掉,导致整个答案区被当成题目抽进来(广东专升本英语真题实测)。
+        // 所以普通行也认,但收紧成「整行就是这几个字」(≤24 字),避免正文里提一句「参考答案见后」被误切。
+        { const cand = (head!=null) ? head : raw;
+          const ht = String(cand).replace(/[\s*#>]/g,'').trim();
+          if(ht && (answerHead.test(ht)||/^(参考答案|答案与名家精析|答案及解析|参考答案与名家精析)/.test(ht))
+             && (head!=null || ht.length<=24)){ flush(); inAnswer=true; continue; } }
         // 无标题兜底:必须连续 2 条以上「N.【精析】」才切,防止教材里偶发一条【精析】把后面真题全吞掉
         if(!inAnswer){
-          if(answerBody.test(raw) && raw.match(numRe)){ answerMarkerStreak++;
+          if(answerBody.test(raw) && raw.match(numRe)){ answerMarkerStreak++; answerMissStreak=0;
             if(answerMarkerStreak>=2){ inAnswer=true; flush();
               // 回补:把之前几条误当题目的答案标记行移出 items,转成答案条目
               while(items.length){ const last=items[items.length-1]; const lastBody=last.lines.join('\n');
@@ -233,7 +240,11 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
               continue;
             }
           }
-          else if(raw.trim() && !/【|\[|考点|精析|解析|答案/.test(raw))answerMarkerStreak=0;
+          // 原来只要来一行"不像答案"的就把 streak 清零。页眉页脚水印
+          //(「广东专插本考试信息网… 电话: 153…」)恰好每页都夹在两条解析之间,
+          // streak 永远攒不到 2,兜底彻底失灵。改成容忍 2 行噪声再清零。
+          else if(raw.trim() && !/【|\[|考点|精析|解析|答案/.test(raw)){
+            if(++answerMissStreak>=3){ answerMarkerStreak=0; answerMissStreak=0; } }
         }
         if(inAnswer){
           const anm=raw.match(numRe);
@@ -247,9 +258,17 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
           // 阅读段落标记(单个 A/B/C/D 或 Spain/Denmark 这类小标题)后面跟的是新短文 → 清空旧材料重新累积。
           // 关键顺序:必须先 flush(关闭并 push 当前挂起的题,让它保住当前 passage),再清空 passage,
           // 否则新标记会先把 passage 清掉,导致上一段最后一道题丢失阅读材料。
-          const isReadingMarker=/^[A-EＡ-Ｅ]$/.test(t) || (t.length<=20 && !numRe.test(t) && !/题|习题|第.*[章节]|部分/.test(t));
+          // 原判定是「≤20 字且不含 题/章节/部分」——太宽:短文内部的 Spain / Denmark /
+          // Germany / Greece 这类国家小标题全部命中,每个都把 passage 清空一次,
+          // 结果问希腊的题挂上了最后一段 Germany 的材料。改成只认真正的分篇标记。
+          const isReadingMarker=/^[A-EＡ-Ｅ]$/.test(t)
+            || /^(Passage|Text|Part)\s*[A-E0-9]/i.test(t)
+            || /阅读下(列|面)/.test(t)
+            || /^第\s*[一二三四五六七八九十0-9０-９]+\s*[节部]/.test(t);
           if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; continue; }
           if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; }
+          // 短文中间的小标题是材料的一部分,不能丢——丢了就看不出哪段讲哪个国家
+          else if(!cur && !this._isSectionLabel(t) && t.length<=40 && !/^\$/.test(t))passageBuf.push(t);
           if(h){ flush(); continue; } }
         const nm=raw.match(numRe); if(nm){ flushPassage(); flush();
           if(this._isChoiceLabel(nm[2]))exLabel='choice'; else if(this._isSectionLabel(nm[2]))exLabel='other';
@@ -272,7 +291,25 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
         // 回填答案区解析：按题号匹配。题目自己带的编号优先，否则用顺序号
         const byNum = it.num && answerMap[it.num];
         if(byNum){ if(byNum.keys&&byNum.keys.length){ q.answer=byNum.keys; if(byNum.keys.length>1 && q.type==='single_choice')q.type='multiple_choice'; } if(byNum.analysis){ q.analysis=byNum.analysis; if(!(q.answer&&q.answer.length) && q.type==='short_answer')q.answer=[byNum.analysis]; } }
-        out.push(q); } return out; },
+        out.push(q); } this._markClozeBlanks(out); return out; },
+// 完形填空重建成「（完形填空 第 21 空）」之后，短文里的空还是一个裸数字 21，
+// 做题时得自己在正文里数到第几个数字才是当前这个空 —— 基本没法用。
+// 这里把同一段短文下所有空的编号一次性标成「＿＿21＿＿」。
+// 关键点：
+//  · 编号取自各题题干（我们确切知道哪些数字是空），不靠"看起来像空"去猜，
+//    所以正文里的 1927、25 这类真实数字不会被误标
+//  · 用全角下划线 U+FF3F 而不是 ASCII 的 _，因为 marked 会把 __21__ 当粗体吃掉
+//  · 前后各要求一个非字母数字边界，避免 n=2 时匹配进已经标好的 ＿＿21＿＿
+_markClozeBlanks(qs){ const groups=new Map();
+      for(const q of (qs||[])){ const m=String((q&&q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/);
+        if(!m || !q.passage)continue;
+        const k=q.passage; if(!groups.has(k))groups.set(k,[]); groups.get(k).push({ q, no:m[1] }); }
+      for(const list of groups.values()){
+        let text=list[0].q.passage;
+        for(const n of [...new Set(list.map(x=>x.no))])
+          text=text.replace(new RegExp('(^|[^0-9A-Za-z\uFF3F])'+n+'(?![0-9])','g'), '$1\uFF3F\uFF3F'+n+'\uFF3F\uFF3F');
+        for(const x of list)x.q.passage=text; }
+      return qs; },
 // 「阅读文献 / 参考书目」条目会被 numRe 当成编号题吃进来。
 // 政治理论那本实测 64 道里 35 道（55%）是这种条目，例如
 // 「邓小平：《对起草〈…〉的意见》，《三中全会以来重要文献选编》上，中央文献出版社 2011 年版。」
@@ -302,11 +339,14 @@ _splitInlineOptions(text){ const t=String(text||''); const re=/([A-DＡ-Ｄ])\s*
       const want=['A','B','C','D']; const seq=[];
       for(const f of found){ if(f.key===want[seq.length])seq.push(f); }
       if(seq.length<3)return null;
-      const stem=t.slice(0,seq[0].at).trim(); if(!stem)return null;
+      const stem=t.slice(0,seq[0].at).trim();
       const options=[];
       for(let i=0;i<seq.length;i++){ const e=(i+1<seq.length)?seq[i+1].at:t.length;
         const txt=t.slice(seq[i].end,e).trim(); if(!txt)return null; options.push({ key:seq[i].key, text:txt }); }
-      return { stem, options }; },
+      // 题干为空 = 完形填空那种「21. A. cooking B. cleaning C. jobs D. exercise」,
+      // 空格在上面的短文里。原来这里直接 return null,整行原样退化成简答题干,
+      // 抽出来是一道没题干、没选项、没答案的废题。现在标记出来交给上层处理。
+      return { stem, options, orphan:!stem }; },
 // 目录页识别：这种页整页都是「章节号 标题 页码」，抽题时必须整页跳过。
 // 数据结构那本的目录（第 6/7/8 页）就被当成习题吃进了 149 道垃圾。
 // 注意它的目录用空格而非点线做 leader，所以不能只认点线。
@@ -332,7 +372,13 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
       let type='short_answer', options=[], answer=[], analysis='';
       // 独占一行的选项没找到时，再试同一行内的 A./B./C./D.
       if(opts.length<2){ const inl=this._splitInlineOptions(keep.join('\n').trim()||stemPart);
-        if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0; keep.push(inl.stem); } }
+        if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0;
+          if(inl.orphan){
+            // 只有挂到了短文才留:题干写成「(完形填空 第 N 空)」,配合短文和选项就能做。
+            // 没短文可挂的话这题永远做不了,直接丢,别拿废题污染题库。
+            if(!(it.passage&&it.passage.length>=40))return null;
+            keep.push('（完形填空 第 '+(it.num||'?')+' 空）'); }
+          else keep.push(inl.stem); } }
       if(opts.length>=2){ type='single_choice'; options=opts; stemPart=keep.join('\n').trim();
         const am=solPart.match(/(?:答案|正确答案|答|选|应选)\s*[是为：:]?\s*([A-DＡ-Ｄ](?:\s*[,，、和]\s*[A-DＡ-Ｄ])*)/);
         if(am){ const keys=this._fullToHalf(am[1]).split(/[,，、和\s]+/).filter(Boolean); answer=keys; if(keys.length>1)type='multiple_choice'; }
@@ -356,13 +402,40 @@ ansLines(q){ return ((q&&q.answer)||[]).join('\n'); },
 // 逐页会把跨页的题从中间切断：线上实测 101 道题的题干断在页边界上，
 // 例如「证明任一最高次幂的指数为奇数的代数方程 a₀x^{2n+1}+…」，「至少有一个实根」掉在下一页；
 // (1)(2)(3) 子项也会被切走。拼接后题数不变（665），无答案率 34%→25%，全书解析仅 7ms。
+// 每页重复出现的页眉/页脚/水印 —— 广东专升本那套真题每页顶部和底部都有
+// 「广东专插本考试信息网(广东普通专升本考试信息网): www.gzzkgk.cn 电话: 15374053589」。
+// 不洗掉的话:① 它会被当成正文拼进题干;② 它夹在两条【精析】之间,把答案区
+// 的连续性判定打断,导致整个答案区被当成题目抽出来。
+// 判定靠"跨页重复"而不是写死关键词,换一本书照样管用:
+//   · 只看每页首尾各 3 行(水印就长在这儿),避免误伤正文里的高频短句
+//   · 出现在 ≥60% 的页上、且长度 ≤120 字,才认定是页面装饰
+//   · 认定后在全页范围内删干净(MinerU 有时会把它插到正文中间)
+_stripPageFurniture(texts){ const arr=(texts||[]).map(t=>String(t||''));
+      const norm=(s)=>s.replace(/[#*>`\s]/g,'').trim();
+      if(arr.filter(t=>t.trim()).length<4)return arr;
+      const freq=new Map(); let pageCount=0;
+      for(const t of arr){ const ls=t.split('\n').map(x=>x.trim()).filter(Boolean); if(!ls.length)continue; pageCount++;
+        const edge=new Set([...ls.slice(0,3), ...ls.slice(-3)]);
+        for(const ln of edge){ const k=norm(ln); if(!k||k.length>120)continue; freq.set(k,(freq.get(k)||0)+1); } }
+      if(!pageCount)return arr;
+      const junk=new Set(); for(const [k,n] of freq)if(n/pageCount>=0.6)junk.add(k);
+      return arr.map(t=>{ if(!t.trim())return t;
+        const ls=t.split('\n'); const out=[];
+        for(let i=0;i<ls.length;i++){ const s=ls[i].trim(); const k=norm(s);
+          if(k && junk.has(k))continue;
+          // 孤零零一行纯数字的页码,只在页首/页尾时删
+          if(/^[0-9０-９]{1,4}$/.test(s) && (i<2||i>=ls.length-2))continue;
+          out.push(ls[i]); }
+        return out.join('\n').replace(/\n{3,}/g,'\n\n').trim(); }); },
 _extractWholeBook(book){
       const pages=book.pages||[]; const SEP='\n\n';
       // 目录页整页跳过（置空而不是删掉，这样偏移→页码的映射仍然对齐）
       let skipped=0;
-      const texts=pages.map(m=>{ const t=String((m&&m.content_md)||'');
+      let texts=pages.map(m=>{ const t=String((m&&m.content_md)||'');
         if(this._looksLikeTocPage(t)){ skipped++; return ''; } return t; });
       this.extractSkippedToc=skipped;
+      // 页眉页脚水印必须在切题之前洗掉:它会被拼进题干,还会打断答案区的连续性判定
+      texts=this._stripPageFurniture(texts);
       const starts=[]; let acc=0;
       for(let i=0;i<texts.length;i++){ starts.push(acc); acc+=texts[i].length+SEP.length; }
       const joined=texts.join(SEP);
@@ -373,8 +446,12 @@ _extractWholeBook(book){
         const m=pages[ans]; return m&&m.page?m.page:0; };
       let cur=0;
       for(const q of qs){
-        const key=String(q.stem||'').slice(0,40);
-        const at=key? joined.indexOf(key,cur) : -1;
+        // 完形填空这类题干是合成的（「（完形填空 第 21 空）」），原文里找不到，
+        // 退回用第一个选项的原文去定位，否则整段完形填空的页码全是 0
+        const keys=[String(q.stem||'').slice(0,40)];
+        if(q.options&&q.options.length)keys.push(String(q.options[0].text||'').slice(0,40));
+        let at=-1;
+        for(const key of keys){ if(!key)continue; const i=joined.indexOf(key,cur); if(i>=0){ at=i; break; } }
         if(at>=0){ cur=at; q.page=pageAt(at); }
       }
       return qs; },

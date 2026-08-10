@@ -8,12 +8,28 @@ const QuestionCard={
   components:{ RichText },
   props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop','ai-clear-chat'],
-  watch:{ aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
+  // 这里原来有两个 watch:{}（一个在 computed 前、一个在 mounted 前），
+  // 后者把前者整个覆盖掉，aiReasoning / aiText / aiChat / aiBusy 四个监听全部不生效：
+  // 推理过程不自动滚到底、正文出来后推理区不自动折叠、追问不跟随滚动、请求开始时推理区不展开。
+  // 合并成一个。
+  watch:{
+    q(){ this.reset(); },
+    segMode(v){ this.$emit('seg-mode', v); },
+    aiKind(nv, ov){ if(nv&&ov&&nv!==ov){ this.$nextTick(()=>{ try{ const el=this.$refs.aiBox; if(el&&el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){} }); } },
+    aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
     aiText(v){ if(this.aiBusy) this._chatScroll(); if(v && this.localReasonOpen && this.aiReasoning && !this._reasonAutoCollapsed){ this.localReasonOpen=false; this._reasonAutoCollapsed=true; } },
     aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
-    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } } },
+    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } },
+  },
   data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false }; },
   computed:{
+    // 完形填空：当前这道题问的是第几个空（题干形如「（完形填空 第 21 空）」）
+    clozeNo(){ const m=String((this.q&&this.q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/); return m?parseInt(m[1],10):0; },
+    // 短文里的空由抽题阶段标成「＿＿21＿＿」。这里再套一层 span：
+    // 当前这道题的空高亮，其余的灰着，做题时一眼能看出在填哪个。
+    passageText(){ const p=String((this.q&&this.q.passage)||''); if(!p||!this.clozeNo)return p;
+      return p.replace(/\uFF3F\uFF3F([0-9]{1,3})\uFF3F\uFF3F/g,
+        (m,n)=>'<span class="cloze'+(parseInt(n,10)===this.clozeNo?' cur':'')+'">'+n+'</span>'); },
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
     isObjective(){ return OBJECTIVE.includes(this.q.type); },
@@ -47,7 +63,6 @@ const QuestionCard={
     finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
     graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
   },
-  watch:{ q(){ this.reset(); }, segMode(v){ this.$emit('seg-mode', v); }, aiKind(nv, ov){ if(nv&&ov&&nv!==ov){ this.$nextTick(()=>{ try{ const el=this.$refs.aiBox; if(el&&el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){} }); } } },
   mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); } },
   beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){} },
   methods:{
@@ -137,7 +152,7 @@ const QuestionCard={
       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
       <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
     </div>
-    <div v-if="q.passage" class="passage"><rich-text :content="q.passage" /></div>
+    <div v-if="q.passage" class="passage"><rich-text :content="passageText" /></div>
     <div class="stem"><rich-text :content="q.stem" /></div>
     <template v-if="isChoice">
       <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
@@ -192,7 +207,7 @@ const QuestionCard={
         <template v-else-if="aiKind==='concept' && aiCards.length">
         <div class="kcard-tools">
           <button class="kcard-flipall" @click="$emit('cards-flip-all')"><icon name="chevrons-up-down" :size="13" /> {{ allFlipped ? '全部收起' : '全部翻开' }}</button>
-          <button class="kcard-flipall" @click="kcardMode=kcardMode==='grid'?'single':'grid'"><icon :name="kcardMode==='grid'?'layers-subtract':'grid-dots'" :size="13" /> {{ kcardMode==='grid'?'逐张背诵':'网格总览' }}</button>
+          <button class="kcard-flipall" @click="kcardMode=kcardMode==='grid'?'single':'grid'"><icon :name="kcardMode==='grid'?'layers':'grid-2x2'" :size="13" /> {{ kcardMode==='grid'?'逐张背诵':'网格总览' }}</button>
           <span class="muted" style="font-size:12px;margin-left:auto">已翻 {{ Object.keys(aiFlip).filter(k=>aiFlip[k]).length }}/{{ aiCards.length }}</span>
         </div>
         <div v-if="kcardMode==='grid'" class="kcard-grid">
@@ -272,7 +287,6 @@ const QuestionCard={
             <input ref="askInp" v-model="askInput" :disabled="aiAsking" :placeholder="aiKind==='concept' ? '对知识点卡片有疑问？追问…' : '对解析有疑问？追问…'" style="flex:1;min-width:0" @keyup.enter="doAsk" />
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
             <button v-if="aiChat.length && !aiAsking" class="chat-icon-btn" @click="$emit('ai-clear-chat')" title="清空追问记录" style="opacity:.6"><icon name="trash-2" :size="15" /></button>
-          </div>
           </div>
         </template>
         <div v-if="segMode" class="seg-bar">

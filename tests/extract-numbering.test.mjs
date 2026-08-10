@@ -56,8 +56,14 @@ describe('行内选项拆分（MinerU 把整道选择题压成一行）', () => 
   it('乱序或跳号不认', () => {
     expect(M._splitInlineOptions.call(c, '甲 C. 丙 A. 甲 B. 乙')).toBe(null);
   });
-  it('A 前面没有题干不认', () => {
-    expect(M._splitInlineOptions.call(c, 'A. 甲 B. 乙 C. 丙')).toBe(null);
+  // 改契约：A 前面没题干的，以前直接 return null（整行原样退化成简答题干，抽出来是废题）。
+  // 现在照常拆出选项但打 orphan 标记 —— 完形填空就是这个形状，空格在上面的短文里，
+  // 由 _buildQuestionFromItem 决定是挂到短文重建成单选，还是丢弃。详见 extract-mineru-junk.test.mjs。
+  it('A 前面没有题干 → 拆出选项但标记为 orphan', () => {
+    const r = M._splitInlineOptions.call(c, 'A. 甲 B. 乙 C. 丙');
+    expect(r.orphan).toBe(true);
+    expect(r.stem).toBe('');
+    expect(r.options.map((o) => o.key)).toEqual(['A', 'B', 'C']);
   });
   it('数学式子里的字母不会被误当选项', () => {
     expect(M._splitInlineOptions.call(c, '求 $\\lim_{x\\to0}\\frac{\\sin x}{x}$ 的值.')).toBe(null);

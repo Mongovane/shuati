@@ -3,7 +3,7 @@
 //  · 翻页后浏览器按新页高裁剪滚动位置：实测 1831 → 706，正好落在新页最底部，得往上滚才看到正文
 //  · 键盘 ←/→/PageDown/空格 全部无响应；没有任何 touch 监听，手机上只能滚到底点按钮
 //  · 空格式目录（「1.2.3 标题  22」）解析出 0 条，273 页只能靠「输入第几篇跳转」
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './helpers.mjs';
