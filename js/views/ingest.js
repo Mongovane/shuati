@@ -195,20 +195,63 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
       let chapter=ctx.chapter||''; const items=[]; let cur=null;
       const xiti=/(习题|练习|复习题|总习题|自测题|思考题|例题)\s*[0-9０-９]/; const zhang=/第\s*[0-9０-９一二三四五六七八九十百]+\s*[章节]/;
       const headRe=/^#{1,6}\s+(.+?)\s*#*$/; const boldRe=/^\s*\*\*(.+?)\*\*\s*$/; const numRe=/^\s*\*{0,2}\s*([0-9０-９]{1,3})\s*[.．、)）]\s*(.+)$/;
-      // 括号题号：中文教材的选择/填空题普遍写成「（1）…」「(1)…」，数字被括号包住，numRe 匹配不到。
-      // 必须左右括号都在才认，否则会把正文里任何以数字开头的行都吃掉。
       const braRe=/^\s*\*{0,2}\s*[（(]\s*([0-9０-９]{1,3})\s*[）)]\s*(.+)$/;
-      // 「习题」小节标题（不带数字的也算，如 `## 习题`）；括号题号只在习题区里才允许独立成题，
-      // 否则正文里大量的「（1）初始化…（2）比较…」算法步骤会被当成题目。
       const xitiHead=/^(习\s*题|练\s*习|复习题|总习题|自测题|思考题)/;
-      let inEx=false, exLabel='';     // exLabel：当前小节是不是「选择/判断题」
-      const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n')))items.push(cur); cur=null; };
+      // 答案区标题：真题/试卷普遍在末尾有「参考答案」「答案与解析」「名家精析」段，
+      // 里面每条 "N.【精析】...【考点】..." 是对前面第 N 题的解析，绝不能当成新题抽取。
+      const answerHead=/^(参考答案|答案(?:与|及)?(?:解析|精析|详解)?|名家精析|试题解析|解析与答案|答案解析|参考答案(?:与|及)名家精析)\s*$/;
+      const answerBody=/(?:^|[\s.．、।])(?:【\s*精\s*析\s*】|\[\s*精\s*析\s*\]|【\s*考\s*点\s*】|\[\s*考\s*点\s*\]|【\s*解\s*析\s*】)/;
+      let inAnswer=false; const answerMap={};   // 题号 → {answer, analysis}
+      let curAns=null; let answerMarkerStreak=0;   // 连续答案标记计数(无标题切区用)
+      let inEx=false, exLabel='';
+      // —— 阅读材料关联 ——
+      // 英语/语文真题结构:一段短文(A/B/C 标记 或 "阅读下面短文")后跟若干题,这些题共享短文。
+      // 累积「非题目、非选项、非标记」的连续文本行作为 passage;遇到新题号就把它关联进去。
+      let curPassage='', passageBuf=[];
+      const isProseLine=(s)=>{ const t=s.trim(); if(t.length<25)return false;
+        if(numRe.test(t)||braRe.test(t))return false;
+        if(/^\s*[（(]?[A-EＡ-Ｅ][）).．、]/.test(t))return false;
+        if(answerBody.test(t))return false;
+        const enWords=(t.match(/[A-Za-z]{2,}/g)||[]).length;
+        return enWords>=6 || t.length>=40; };
+      const flushPassage=()=>{ const p=passageBuf.join(' ').replace(/\s+/g,' ').trim(); if(p.length>=40)curPassage=p; passageBuf=[]; };
+      const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n'))){ if(curPassage&&!cur.passage)cur.passage=curPassage; items.push(cur); } cur=null; };
+      const flushAns=()=>{ if(curAns&&curAns.num){ const body=curAns.lines.join('\n').trim(); if(body){ const km=body.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/); answerMap[curAns.num]={ keys: km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[], analysis: body }; } } curAns=null; };
       for(const raw of lines){ let head=null; const h=raw.match(headRe); if(h)head=h[1]; else { const b=raw.match(boldRe); if(b)head=b[1]; }
+        // 进入答案区检测(标题行)—— 标题命中最可靠,立刻切
+        if(head){ const ht=head.replace(/[\s*#]/g,'').trim(); if(answerHead.test(ht)||/^(参考答案|答案与名家精析|答案及解析|参考答案与名家精析)/.test(ht)){ flush(); inAnswer=true; continue; } }
+        // 无标题兜底:必须连续 2 条以上「N.【精析】」才切,防止教材里偶发一条【精析】把后面真题全吞掉
+        if(!inAnswer){
+          if(answerBody.test(raw) && raw.match(numRe)){ answerMarkerStreak++;
+            if(answerMarkerStreak>=2){ inAnswer=true; flush();
+              // 回补:把之前几条误当题目的答案标记行移出 items,转成答案条目
+              while(items.length){ const last=items[items.length-1]; const lastBody=last.lines.join('\n');
+                if(answerBody.test(lastBody) && last.num){ items.pop(); const km=lastBody.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/); answerMap[last.num]={ keys: km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[], analysis: lastBody.trim() }; }
+                else break;
+              }
+              const cm=raw.match(numRe); if(cm){ curAns={ num:cm[1], lines:[cm[2]] }; }
+              continue;
+            }
+          }
+          else if(raw.trim() && !/【|\[|考点|精析|解析|答案/.test(raw))answerMarkerStreak=0;
+        }
+        if(inAnswer){
+          const anm=raw.match(numRe);
+          if(anm){ flushAns(); curAns={ num:anm[1], lines:[anm[2]] }; }
+          else if(curAns){ curAns.lines.push(raw); }
+          continue;
+        }
         if(head){ const t=head.replace(/\*\*/g,'').trim();
           if(xitiHead.test(t)){ inEx=true; exLabel=''; } else if(zhang.test(t)){ inEx=false; exLabel=''; }
           if(this._isChoiceLabel(t))exLabel='choice'; else if(this._isSectionLabel(t))exLabel='other';
-          if(xiti.test(t)||zhang.test(t)){ chapter=t; flush(); continue; } if(h){ flush(); continue; } }
-        const nm=raw.match(numRe); if(nm){ flush();
+          // 阅读段落标记(单个 A/B/C/D 或 Spain/Denmark 这类小标题)后面跟的是新短文 → 清空旧材料重新累积。
+          // 关键顺序:必须先 flush(关闭并 push 当前挂起的题,让它保住当前 passage),再清空 passage,
+          // 否则新标记会先把 passage 清掉,导致上一段最后一道题丢失阅读材料。
+          const isReadingMarker=/^[A-EＡ-Ｅ]$/.test(t) || (t.length<=20 && !numRe.test(t) && !/题|习题|第.*[章节]|部分/.test(t));
+          if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; continue; }
+          if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; }
+          if(h){ flush(); continue; } }
+        const nm=raw.match(numRe); if(nm){ flushPassage(); flush();
           if(this._isChoiceLabel(nm[2]))exLabel='choice'; else if(this._isSectionLabel(nm[2]))exLabel='other';
           cur={ num:nm[1], chapter, lines:[nm[2]], bra:false }; continue; }
         const bm=raw.match(braRe);
@@ -221,10 +264,14 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
         const sibling = !!(cur && cur.bra);
         if(bm && (standalone || sibling)){
           flush(); cur={ num:bm[1], chapter, lines:[bm[2]], bra:true }; continue; }
-        if(cur)cur.lines.push(raw); }
-      flush();
-      const out=[]; for(const it of items){ const q=this._buildQuestionFromItem(it, ctx); if(!q)continue;
+        if(cur)cur.lines.push(raw);
+        else if(isProseLine(raw))passageBuf.push(raw.trim()); }   // 题目之外的散文行 → 累积为阅读材料
+      flushPassage(); flush(); flushAns();
+      const out=[]; let qnum=0; for(const it of items){ const q=this._buildQuestionFromItem(it, ctx); if(!q)continue;
         if(this._isRefEntry(q.stem))continue;      // 参考书目条目，不是题
+        // 回填答案区解析：按题号匹配。题目自己带的编号优先，否则用顺序号
+        const byNum = it.num && answerMap[it.num];
+        if(byNum){ if(byNum.keys&&byNum.keys.length){ q.answer=byNum.keys; if(byNum.keys.length>1 && q.type==='single_choice')q.type='multiple_choice'; } if(byNum.analysis){ q.analysis=byNum.analysis; if(!(q.answer&&q.answer.length) && q.type==='short_answer')q.answer=[byNum.analysis]; } }
         out.push(q); } return out; },
 // 「阅读文献 / 参考书目」条目会被 numRe 当成编号题吃进来。
 // 政治理论那本实测 64 道里 35 道（55%）是这种条目，例如
@@ -292,7 +339,7 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
         analysis=solPart; }
       else { type='short_answer'; if(solPart){ answer=[solPart]; analysis=solPart; } }
       const stem=(stemPart||'').trim(); if(!stem)return null;
-      return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:'', stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[], page:(ctx.page!=null?ctx.page:null) }; },
+      return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:(it.passage||''), stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[], page:(ctx.page!=null?ctx.page:null) }; },
 async _postQuestions(arr, subject, source){ let inserted=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } if(inserted>0)this.bankDirty=true; return inserted; },
 _openPreview(arr, title, subject, source){ const seen=new Set(); const uniq=[]; let dup=0; for(const q of arr){ const k=String(q.stem||'').replace(/\s+/g,' ').trim(); if(!k)continue; if(seen.has(k)){ dup++; continue; } seen.add(k); uniq.push(q); }
       // 分页渲染：题量大时全量渲染 rich-text(marked+KaTeX) 会卡死浏览器，只渲染当前页
