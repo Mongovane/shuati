@@ -217,7 +217,13 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
         return enWords>=6 || t.length>=40; };
       const flushPassage=()=>{ const p=passageBuf.join(' ').replace(/\s+/g,' ').trim(); if(p.length>=40)curPassage=p; passageBuf=[]; };
       const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n'))){ if(curPassage&&!cur.passage)cur.passage=curPassage; items.push(cur); } cur=null; };
-      const flushAns=()=>{ if(curAns&&curAns.num){ const body=curAns.lines.join('\n').trim(); if(body){ const km=body.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/); answerMap[curAns.num]={ keys: km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[], analysis: body }; } } curAns=null; };
+      // 答案字母优先从「故选 X / 答案为 X」里取；有些条目没有这句收尾，
+      // 就退回取【精析】紧跟的那个大写字母。后面的 (?![A-Za-z]) 是为了不把
+      //「【精析】DNA 检测…」的 D 或「【精析】doing…」误当成答案。
+      const pickKeys=(body)=>{ const km=body.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/)
+          || body.match(/(?:【\s*精\s*析\s*】|\[\s*精\s*析\s*\])\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)(?![A-Za-z])/);
+        return km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[]; };
+      const flushAns=()=>{ if(curAns&&curAns.num){ const body=curAns.lines.join('\n').trim(); if(body){ answerMap[curAns.num]={ keys: pickKeys(body), analysis: body }; } } curAns=null; };
       for(const raw of lines){ let head=null; const h=raw.match(headRe); if(h)head=h[1]; else { const b=raw.match(boldRe); if(b)head=b[1]; }
         // 进入答案区检测 —— 标题命中最可靠,立刻切。
         // MinerU 经常把「参考答案与名家精析」输出成普通正文行(没有 # 也没有 **),
@@ -229,14 +235,14 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
              && (head!=null || ht.length<=24)){ flush(); inAnswer=true; continue; } }
         // 无标题兜底:必须连续 2 条以上「N.【精析】」才切,防止教材里偶发一条【精析】把后面真题全吞掉
         if(!inAnswer){
-          if(answerBody.test(raw) && raw.match(numRe)){ answerMarkerStreak++; answerMissStreak=0;
+          if(answerBody.test(raw) && (head!=null?head:raw).match(numRe)){ answerMarkerStreak++; answerMissStreak=0;
             if(answerMarkerStreak>=2){ inAnswer=true; flush();
               // 回补:把之前几条误当题目的答案标记行移出 items,转成答案条目
               while(items.length){ const last=items[items.length-1]; const lastBody=last.lines.join('\n');
-                if(answerBody.test(lastBody) && last.num){ items.pop(); const km=lastBody.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/); answerMap[last.num]={ keys: km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[], analysis: lastBody.trim() }; }
+                if(answerBody.test(lastBody) && last.num){ items.pop(); answerMap[last.num]={ keys: pickKeys(lastBody), analysis: lastBody.trim() }; }
                 else break;
               }
-              const cm=raw.match(numRe); if(cm){ curAns={ num:cm[1], lines:[cm[2]] }; }
+              const cm=(head!=null?head:raw).match(numRe); if(cm){ curAns={ num:cm[1], lines:[cm[2]] }; }
               continue;
             }
           }
@@ -247,7 +253,11 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
             if(++answerMissStreak>=3){ answerMarkerStreak=0; answerMissStreak=0; } }
         }
         if(inAnswer){
-          const anm=raw.match(numRe);
+          // 答案条目的题号常常长在 markdown 标题行上（MinerU 会把「6.[考点] 事实细节题」
+          // 输出成 `# 6.[考点] 事实细节题`，【精析】和答案字母在下一行）。
+          // numRe 锚在行首，`#` 前缀会让它整个匹配失败 —— 题号永远抓不到，
+          // 于是 answerMap 是空的，前面的题全部显示「无答案」。所以要拿剥掉 #/** 之后的文本去匹配。
+          const anm=(head!=null?head:raw).match(numRe);
           if(anm){ flushAns(); curAns={ num:anm[1], lines:[anm[2]] }; }
           else if(curAns){ curAns.lines.push(raw); }
           continue;

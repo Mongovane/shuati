@@ -176,6 +176,59 @@ describe('完形填空（行首即 A. 的孤儿选项行）', () => {
   });
 });
 
+// MinerU 对这份卷子的真实答案区形态：题号长在 markdown 标题行上，
+// 【精析】和答案字母在下一行。这和「1. 【精析】C …」压成一行是两回事。
+const ANSWER_PAGE_HEADINGS = `参考答案与名家精析
+
+# 1.[考点] 事实细节题
+
+【精析】C 根据 Greece 段 "a coin hidden inside it" 可知。故选 C。
+
+# 2.[考点] 推理判断题
+
+【精析】C 根据 Germany 段可知猪形代表食物充足。故选 C。
+
+# 6.[考点] 观点态度题
+
+【精析】A 根据第二段第一句可知。
+`;
+
+describe('答案条目的题号长在 markdown 标题行上', () => {
+  const build = (ansPage) => M._extractWholeBook.call(ctx(), {
+    subject: 'english', title: 't',
+    pages: [PAGE1, PAGE2, ansPage].map((content_md, i) => ({ page: i + 1, content_md })),
+  });
+  it('`# 6.[考点] …` 的题号要能抓到，否则整本都是「无答案」', () => {
+    const qs = build(ANSWER_PAGE_HEADINGS);
+    const q1 = qs.find((q) => /St. Basil's Cake/.test(q.stem));
+    expect(q1.answer).toEqual(['C']);
+    expect(q1.analysis).toContain('coin hidden inside');
+  });
+  it('【精析】和答案字母在题号的下一行也要对上', () => {
+    const qs = build(ANSWER_PAGE_HEADINGS);
+    expect(qs.find((q) => /pig shape/.test(q.stem)).answer).toEqual(['C']);
+  });
+  it('没有「故选 X」收尾时，退回取【精析】紧跟的字母', () => {
+    const c = ctx();
+    const qs = M.mdToQuestions.call(c, '9. Q?\nA. a\nB. b\nC. c\nD. d\n\n参考答案\n\n# 9.[考点] X\n\n【精析】A 由第三段可知。', { subject: 'english', source: 'x', page: 1 });
+    expect(qs[0].answer).toEqual(['A']);
+  });
+  it('【精析】DNA…的 D 不能被当成答案', () => {
+    const c = ctx();
+    const qs = M.mdToQuestions.call(c, '9. Q?\nA. a\nB. b\nC. c\nD. d\n\n参考答案\n\n# 9.[考点] X\n\n【精析】DNA 检测不是新想法。故选 D。', { subject: 'english', source: 'x', page: 1 });
+    expect(qs[0].answer).toEqual(['D']);
+  });
+  it('填空题解析（【精析】doing …）不硬凑出字母答案', () => {
+    const c = ctx();
+    const qs = M.mdToQuestions.call(c, '9. Q?\nA. a\nB. b\nC. c\nD. d\n\n参考答案\n\n# 9.[考点] X\n\n【精析】doing 句意：空处应填 doing。', { subject: 'english', source: 'x', page: 1 });
+    expect(qs[0].answer).toEqual([]);
+  });
+  it('标题行没有 # 时（普通正文行）仍然照常工作', () => {
+    const qs = build(ANSWER_PAGE_HEADINGS.replace(/^# /gm, ''));
+    expect(qs.find((q) => /St. Basil's Cake/.test(q.stem)).answer).toEqual(['C']);
+  });
+});
+
 describe('完形填空空位标记', () => {
   const U = '\uFF3F';
   it('短文里属于空的数字被标出来，正文里的真实数字不动', () => {

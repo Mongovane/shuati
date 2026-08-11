@@ -21,8 +21,21 @@ const QuestionCard={
     aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
     aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } },
   },
-  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false }; },
+  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false, passageOpen:false }; },
   computed:{
+    // 阅读材料很长时（截图里那篇 side jobs 有 1600+ 字符）整屏都被材料占满，
+    // 题干和选项被顶到折叠线以下，必须先滚很久才能看到在问什么。
+    // 超过阈值就默认折叠，留一个「展开全文」。阈值按字符数而不是行数——
+    // 英文一行能塞很多字，按行数判断在窄屏上会误判。
+    passageLong(){
+      // 完形填空绝不能折叠：材料里的那个空就是题目本身，折起来就没法做了
+      if(this.clozeNo)return false;
+      return String((this.q&&this.q.passage)||'').length > 460; },
+    // 英文材料用西文字体和更松的行距排；中文材料保持原样，避免中文被西文字体接管
+    passageEnglish(){ const p=String((this.q&&this.q.passage)||''); if(!p)return false;
+      const cjk=(p.match(/[\u4e00-\u9fa5]/g)||[]).length; return cjk / p.length < 0.15; },
+    passageWords(){ const p=String((this.q&&this.q.passage)||'');
+      return this.passageEnglish ? ((p.match(/[A-Za-z][A-Za-z'-]*/g)||[]).length + ' words') : (p.length + ' 字'); },
     // 完形填空：当前这道题问的是第几个空（题干形如「（完形填空 第 21 空）」）
     clozeNo(){ const m=String((this.q&&this.q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/); return m?parseInt(m[1],10):0; },
     // 短文里的空由抽题阶段标成「＿＿21＿＿」。这里再套一层 span：
@@ -102,7 +115,10 @@ const QuestionCard={
       // 双 nextTick：第一层等 Vue 更新 DOM，第二层等浏览器布局完成
       try{ window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'}); }catch(_){}
     }); }); },
-    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; if(this.segMode){ this.segMode=false; this.segCount=0; } },
+    // 英语卡片的 formula 放的是句型结构（not only ... but also ...），不是 LaTeX，
+    // 拿不到 .kcard-formula .katex 那个高亮胶囊，单独标一下好上样式
+    isTextFormula(f){ return !!String(f||'').trim() && !/\$/.test(f); },
+    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; if(this.segMode){ this.segMode=false; this.segCount=0; } },
     // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
     snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
     restoreState(s){ if(!s||typeof s!=='object')return;
@@ -152,7 +168,13 @@ const QuestionCard={
       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
       <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
     </div>
-    <div v-if="q.passage" class="passage"><rich-text :content="passageText" /></div>
+    <div v-if="q.passage" class="passage" :class="{folded: passageLong && !passageOpen, en: passageEnglish}">
+      <div class="passage-head"><span class="passage-tag">材料</span><span v-if="passageLong" class="passage-len">{{ passageWords }}</span></div>
+      <div class="passage-body"><rich-text :content="passageText" /></div>
+      <button v-if="passageLong" class="passage-more" @click="passageOpen=!passageOpen">
+        <icon :name="passageOpen?'chevron-up':'chevron-down'" :size="14" /> {{ passageOpen ? '收起材料' : '展开全文' }}
+      </button>
+    </div>
     <div class="stem"><rich-text :content="q.stem" /></div>
     <template v-if="isChoice">
       <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
@@ -216,7 +238,7 @@ const QuestionCard={
               <div class="kcard-face kcard-front">
                 <div class="kcard-idx">{{ i+1 }}/{{ aiCards.length }}</div>
                 <div class="kcard-term"><rich-text :content="c.term" /></div>
-                <div v-if="c.formula" class="kcard-formula"><rich-text :content="c.formula" /></div>
+                <div v-if="c.formula" class="kcard-formula" :class="{'is-text':isTextFormula(c.formula)}"><rich-text :content="c.formula" /></div>
                 <div class="kcard-hint">点击查看讲解 <icon name="rotate-cw" :size="15" /></div>
               </div>
               <div class="kcard-face kcard-back">
@@ -232,7 +254,7 @@ const QuestionCard={
             <div v-if="!aiFlip[kcardIdx]" class="kcard-lg-face kcard-lg-front" @click="kcardTap">
               <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
               <div class="kcard-term" style="font-size:22px"><rich-text :content="aiCards[kcardIdx].term" /></div>
-              <div v-if="aiCards[kcardIdx].formula" class="kcard-formula" style="font-size:17px"><rich-text :content="aiCards[kcardIdx].formula" /></div>
+              <div v-if="aiCards[kcardIdx].formula" class="kcard-formula" :class="{'is-text':isTextFormula(aiCards[kcardIdx].formula)}" style="font-size:17px"><rich-text :content="aiCards[kcardIdx].formula" /></div>
               <div class="kcard-hint">点击翻面看讲解</div>
             </div>
             <div v-else class="kcard-lg-face kcard-lg-back" @click="kcardTap">

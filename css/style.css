@@ -1246,3 +1246,49 @@ h2{margin:.2em 0 .6em}
   text-align:center;vertical-align:baseline}
 .passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
   color:var(--accent);font-weight:600}
+
+/* ===================== 阅读材料：可折叠 + 阅读排版 ===================== */
+/* 长阅读（截图那篇 side jobs 1600+ 字符）整屏都是材料，题干被顶到折叠线以下，
+   得先滚很久才知道在问什么。所以超长默认收起，给一个「展开全文」。 */
+.passage{position:relative;padding:14px 18px 16px}
+.passage-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.passage-tag{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--accent);
+  background:var(--accent-soft);padding:2px 8px;border-radius:5px}
+.passage-len{font-size:11px;color:var(--ink-soft);opacity:.75;font-variant-numeric:tabular-nums}
+.passage-body{line-height:1.85}
+.passage-body p{margin:0 0 .7em}
+.passage-body p:last-child{margin-bottom:0}
+/* 英文材料：西文字体在前，行距更松，限制每行字数（过长的行会让眼睛丢行） */
+.passage.en .passage-body{font-family:"Charter","Bitstream Charter","Iowan Old Style",Georgia,"Times New Roman",serif;
+  font-size:15.5px;line-height:1.95;letter-spacing:.005em;max-width:68ch;color:var(--ink)}
+.passage.folded .passage-body{max-height:11.5em;overflow:hidden}
+.passage.folded::after{content:'';position:absolute;left:1px;right:1px;bottom:38px;height:64px;
+  pointer-events:none;border-radius:0 0 10px 0;
+  background:linear-gradient(to bottom,transparent,var(--surface-2))}
+.passage-more{display:inline-flex;align-items:center;gap:5px;margin-top:10px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);
+  font:inherit;font-size:12.5px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;
+  transition:border-color .15s,color .15s}
+.passage-more:hover{border-color:var(--accent);color:var(--accent)}
+.passage-more:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 题干：紧跟材料时收紧上间距，题干本身略放大，和材料拉开层次 */
+.passage+.stem{position:relative;margin-top:16px;padding-top:2px;border-top:none}
+.stem{font-size:17.5px;line-height:1.65}
+/* 断点对齐仓库既有的 560px（原来 @media(max-width:560px) 把 .stem 压到 16px，
+   我这条在文件更后面，不跟着收就会把移动端的收缩规则整个盖掉） */
+@media(max-width:560px){
+  .passage.en .passage-body{font-size:15px;line-height:1.85}
+  .passage{padding:12px 14px 14px}
+  .stem{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){.opt,.passage-more{transition:none}}
+
+/* 英语知识卡片：formula 字段是句型结构而非 LaTeX，给它等宽 + 胶囊底，
+   和数学卡片的 KaTeX 胶囊保持同一种视觉分量 */
+.kcard-formula.is-text{font-family:var(--mono);font-size:13.5px;line-height:1.6;
+  background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--ink);
+  border-radius:8px;padding:6px 12px;display:inline-block;max-width:100%;
+  overflow-wrap:anywhere;opacity:1}
+.kcard-lg-front .kcard-formula.is-text{background:rgba(255,255,255,.25);font-size:15px}
+[data-theme=dark] .kcard-lg-front .kcard-formula.is-text{background:rgba(0,0,0,.25)}
