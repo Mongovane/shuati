@@ -298,7 +298,14 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
   if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
   const ctrl=new AbortController(); this._aiCtrl=ctrl;
   if(!Array.isArray(this.aiX.chat))this.aiX.chat=[];
-  const entry={ q:text, a:'' }; this.aiX.chat.push(entry); this.aiX.asking=true;
+  // Vue 3 的坑：push 进响应式数组的是「原始对象」，数组下标读出来的才是代理。
+  // 原来这里一直在改 push 之前的那个原始引用（entry.a=d.acc），改的是代理背后的
+  // target，绕开了 setter，依赖收集完全不触发 —— 所以追问看不到流式，
+  // 只有最后 asking=false 触发整体重渲染时文字才「啪」地一次性出现。
+  // 必须拿 push 之后的代理来改。
+  this.aiX.chat.push({ q:text, a:'', r:'' });
+  const entry=this.aiX.chat[this.aiX.chat.length-1];
+  this.aiX.asking=true;
   // 方案 A：历史放宽到最近 10 条（5 轮），单条轻度截断防爆炸，不做总量一刀切
   const history=[]; for(const c of this.aiX.chat.slice(0,-1).slice(-5)){
     history.push({role:'user',content:String(c.q||'').slice(0,3000)});
@@ -315,7 +322,15 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
     try{
       if(trimLevel>0){ entry.a=''; this.flash('上下文较长，正在精简后重试…'); }
       const r=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject }, analysis:analysisCtx.slice(0,6000), history, ask:text, trim_level:trimLevel }, ctrl.signal,
-        (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
+        (d)=>{
+          if(d.reset){ entry.a=''; entry.r=''; }
+          // 追问以前整个丢掉了 d.reasoning，所以有推理能力的模型在追问里看不到思维链
+          if(d.reasoning)entry.r=(entry.r||'')+d.reasoning;
+          if(d.text)entry.a=d.acc;
+          if(d.fallback)this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型'));
+          if(d.streamFallback)this.flash('流式中断，已切换为一次性返回');
+          if(d.finish_reason==='length')this.flash('⚠ 回答被截断（token 上限），可追问「请继续」');
+        });
       if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
       if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } }
         if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试

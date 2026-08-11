@@ -1292,3 +1292,25 @@ h2{margin:.2em 0 .6em}
   overflow-wrap:anywhere;opacity:1}
 .kcard-lg-front .kcard-formula.is-text{background:rgba(255,255,255,.25);font-size:15px}
 [data-theme=dark] .kcard-lg-front .kcard-formula.is-text{background:rgba(0,0,0,.25)}
+
+/* ===================== 追问：推理过程 + 回到底部 ===================== */
+/* 追问以前既不流式也没有思维链，现在两者都补上，样式跟主解析的推理区保持一路 */
+.chat-reason{margin:6px 0 8px}
+.chat-reason-h{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink-soft);font:inherit;font-size:12px;font-weight:600;
+  padding:4px 10px;border-radius:999px;cursor:pointer;transition:border-color .15s,color .15s}
+.chat-reason-h:hover{border-color:var(--accent);color:var(--accent)}
+.chat-reason-h:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chat-reason-b{margin-top:6px;max-height:220px;overflow:auto;white-space:pre-wrap;
+  font-size:12.5px;line-height:1.7;color:var(--ink-soft);
+  background:var(--surface-2);border-radius:10px;padding:10px 12px}
+
+/* 生成中用户往上滑了，就不再强行拽回底部，改成给一个可点的回去入口 */
+.back-bottom{position:sticky;bottom:14px;left:50%;transform:translateX(-50%);
+  display:inline-flex;align-items:center;gap:5px;z-index:5;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  font:inherit;font-size:12.5px;font-weight:600;padding:6px 14px;border-radius:999px;
+  box-shadow:var(--shadow);cursor:pointer}
+.back-bottom:hover{border-color:var(--accent);color:var(--accent)}
+.back-bottom:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.chat-reason-h,.back-bottom{transition:none}}

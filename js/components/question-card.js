@@ -19,9 +19,10 @@ const QuestionCard={
     aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
     aiText(v){ if(this.aiBusy) this._chatScroll(); if(v && this.localReasonOpen && this.aiReasoning && !this._reasonAutoCollapsed){ this.localReasonOpen=false; this._reasonAutoCollapsed=true; } },
     aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
-    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } },
+    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; this.stickBottom=true; } },
+    aiAsking(v){ if(v)this.stickBottom=true; },
   },
-  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false, passageOpen:false }; },
+  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false, passageOpen:false, chatReasonOpen:{}, stickBottom:true }; },
   computed:{
     // 阅读材料很长时（截图里那篇 side jobs 有 1600+ 字符）整屏都被材料占满，
     // 题干和选项被顶到折叠线以下，必须先滚很久才能看到在问什么。
@@ -76,8 +77,15 @@ const QuestionCard={
     finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
     graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
   },
-  mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); } },
-  beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){} },
+  mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); }
+    this._userScroll=this._onUserScroll.bind(this); this._scroll=this._onScroll.bind(this);
+    for(const ev of ['wheel','touchmove','keydown'])window.addEventListener(ev,this._userScroll,{passive:true});
+    window.addEventListener('scroll',this._scroll,{passive:true});
+  },
+  beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){}
+    for(const ev of ['wheel','touchmove','keydown'])window.removeEventListener(ev,this._userScroll);
+    window.removeEventListener('scroll',this._scroll);
+  },
   methods:{
     taGrow(e){ const el=e&&e.target; if(!el)return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight+2, Math.round(window.innerHeight*0.5))+'px'; },
     segToggle(){ this.segMode=!this.segMode; if(!this.segMode)this._segClear(); },
@@ -111,14 +119,28 @@ const QuestionCard={
         this.copied=key; setTimeout(()=>{ if(this.copied===key)this.copied=''; },1500);
       }catch(_){} },
     doAsk(){ const t=this.askInput.trim(); if(!t||this.aiAsking)return; this.$emit('ai-ask',t); this.askInput=''; this.$nextTick(()=>this._chatScroll()); },
-    _chatScroll(){ this.$nextTick(()=>{ this.$nextTick(()=>{
+    // 生成过程中默认贴底跟随，但一旦用户自己往上滑就撒手 —— 不能强按着人看完。
+    // 判定只认「明确的用户手势」（滚轮 / 触摸拖动 / 翻页键），不认 scroll 事件，
+    // 因为我们自己的 smooth 滚动同样会触发 scroll，用它判断会自己把自己关掉。
+    _nearBottom(gap){ const d=document.documentElement;
+      return (d.scrollHeight - window.scrollY - window.innerHeight) <= (gap==null?90:gap); },
+    _onUserScroll(e){
+      const up = e.type==='wheel' ? e.deltaY<0
+        : e.type==='keydown' ? ['PageUp','ArrowUp','Home'].includes(e.key)
+        : true;                       // touchmove：方向拿不准，一律当成用户接管
+      if(up && this.stickBottom)this.stickBottom=false;
+    },
+    _onScroll(){ if(!this.stickBottom && this._nearBottom())this.stickBottom=true; },
+    backToBottom(){ this.stickBottom=true; this._chatScroll(); },
+    _chatScroll(force){ if(!force && !this.stickBottom)return;
+      this.$nextTick(()=>{ this.$nextTick(()=>{
       // 双 nextTick：第一层等 Vue 更新 DOM，第二层等浏览器布局完成
       try{ window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'}); }catch(_){}
     }); }); },
     // 英语卡片的 formula 放的是句型结构（not only ... but also ...），不是 LaTeX，
     // 拿不到 .kcard-formula .katex 那个高亮胶囊，单独标一下好上样式
     isTextFormula(f){ return !!String(f||'').trim() && !/\$/.test(f); },
-    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; if(this.segMode){ this.segMode=false; this.segCount=0; } },
+    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; this.stickBottom=true; this.chatReasonOpen={}; if(this.segMode){ this.segMode=false; this.segCount=0; } },
     // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
     snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
     restoreState(s){ if(!s||typeof s!=='object')return;
@@ -297,6 +319,14 @@ const QuestionCard={
                 <button v-if="!aiAsking && c.a" class="chat-icon-btn" @click="$emit('ai-retry',i)" title="重新生成这条回答"><icon name="rotate-cw" :size="14" /></button>
               </div>
             </div>
+            <div v-if="c.r" class="chat-reason">
+              <button class="chat-reason-h" @click="chatReasonOpen[i]=!chatReasonOpen[i]">
+                <icon name="brain" :size="13" /> 推理过程
+                <span v-if="aiAsking && i===aiChat.length-1 && !c.a" class="spin"></span>
+                <icon :name="chatReasonOpen[i]?'chevron-up':'chevron-down'" :size="12" />
+              </button>
+              <div v-show="chatReasonOpen[i]" :ref="'chatReason'+i" class="chat-reason-b">{{ c.r }}</div>
+            </div>
             <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="c.a" />
               <div v-if="!aiAsking && !c.err" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
                 <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式"><icon :name="segMode?'x':'text-cursor-input'" :size="12" />{{ segMode?'退出':'选段' }}</button>
@@ -305,6 +335,9 @@ const QuestionCard={
             </div>
             <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
           </div>
+          <button v-if="(aiBusy||aiAsking) && !stickBottom" class="back-bottom" @click="backToBottom">
+            <icon name="chevron-down" :size="14" /> 回到底部
+          </button>
           <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
             <input ref="askInp" v-model="askInput" :disabled="aiAsking" :placeholder="aiKind==='concept' ? '对知识点卡片有疑问？追问…' : '对解析有疑问？追问…'" style="flex:1;min-width:0" @keyup.enter="doAsk" />
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
