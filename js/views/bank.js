@@ -71,40 +71,90 @@ async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fl
 async bankAiFillAnswers(){
       if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.offline){ this.flash('离线状态下无法调用 AI',true); return; }
-      const sel=new Set(this.bank.sel||[]);
-      const pool=(this.bank.items||[]).filter(q=>(sel.size?sel.has(q.id):true))
-        .filter(q=>!(Array.isArray(q.answer)&&q.answer.length));
-      if(!pool.length){ this.flash(sel.size?'勾选的题都已经有答案了':'本页没有缺答案的题',true); return; }
-      if(!confirm('给 '+pool.length+' 道缺答案的题用 AI 补参考答案？\n\n· 会消耗 AI 额度（每 6 题一次请求）\n· 补出来的一律标成「待审」草稿，需要你在题库里筛出来逐条过一遍再发布\n· 依赖插图的题 AI 会跳过，不会硬编\n\n继续？'))return;
-      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0 };
+      const sel=[...(this.bank.sel||[])];
+      let pool;
+      if(sel.length){
+        // 跨页勾选：sel 里的 id 不一定都在本页 items 里。原来 pool 直接从 bank.items 过滤，
+        // 不在本页的勾选会被静默丢掉——连 skipped 都不计，提示还说「已补 N 题」。
+        // 批量加标签那条链路早就修过同样的问题（见 questions.js PATCH 的注释），这里漏了。
+        const have=new Map((this.bank.items||[]).map(q=>[q.id,q]));
+        const miss=sel.filter(id=>!have.has(id));
+        const fetched=[];
+        if(miss.length){
+          try{
+            for(let i=0;i<miss.length;i+=200){
+              const chunk=miss.slice(i,i+200);
+              const d=await this.api('/api/questions?ids='+encodeURIComponent(chunk.join(','))+'&limit=200&order=seq');
+              for(const q of (d.items||[]))fetched.push(q);
+            }
+          }catch(e){ if(e.message==='unauth')throw e;
+            this.flash('拉取跨页勾选的题目失败，已中止：'+e.message,true); return; }
+        }
+        pool=[...sel.map(id=>have.get(id)).filter(Boolean), ...fetched];
+      } else {
+        pool=(this.bank.items||[]).slice();
+      }
+      pool=pool.filter(q=>!(Array.isArray(q.answer)&&q.answer.length));
+      if(!pool.length){ this.flash(sel.length?'勾选的题都已经有答案了':'本页没有缺答案的题',true); return; }
+      const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
+      if(!confirm('给 '+pool.length+' 道缺答案的题用 AI 补参考答案？\n\n· 会消耗 AI 额度（每 '+CH+' 题一次请求，共约 '+Math.ceil(pool.length/CH)+' 次）\n· 补出来的一律标成「待审」草稿，需要你在题库里筛出来逐条过一遍再发布\n· 依赖插图的题 AI 会跳过，不会硬编\n· 生成中可以点「停止」中断\n\n继续？'))return;
+      const ctrl=new AbortController(); this._aiFillCtrl=ctrl;
+      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0, canceled:false };
       try{
-        const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
         for(let i=0;i<pool.length;i+=CH){
+          if(ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
           const part=pool.slice(i,i+CH);
           this.bankAiFill.prog='正在生成 '+Math.min(i+CH,pool.length)+' / '+pool.length+'…';
           let d=null;
           try{
-            d=await this.api('/api/answerfill',{method:'POST',body:JSON.stringify(Object.assign({
+            d=await this.api('/api/answerfill',{method:'POST',signal:ctrl.signal,body:JSON.stringify(Object.assign({
               questions: part.map(q=>({ id:q.id, type:q.type, stem:q.stem, options:q.options, passage:q.passage, subject:q.subject })),
             }, this.aiOv()))});
-          }catch(e){ if(e.message==='unauth')throw e; this.bankAiFill.failed+=part.length; continue; }
+          }catch(e){ if(e.message==='unauth')throw e;
+            if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
+            this.bankAiFill.failed+=part.length; continue; }
+          // 攒成一个 items 批量 PATCH。原来是每题一个请求，6 题一组也就 6 次往返，
+          // 200 题下来 200 次；中途失败还会留下「补了一半」的状态。
+          // 服务端新增的 items 路径按 id 分别赋值，一次请求一个 D1 事务。
+          const patch=[];
           for(const it of (d.items||[])){
             if(!it || !Array.isArray(it.answer) || !it.answer.length){ this.bankAiFill.skipped++; continue; }
+            // analysis 只在非空时才带。PATCH 的判定是 `!== undefined && !== null`，
+            // 空字符串照样会写库——原来无条件发 `analysis: it.analysis||''`，
+            // 会把题目原有的解析（比如从真题答案区抽出来的【精析】）直接抹掉。
+            const row={ id:it.id, answer:it.answer, status:'draft' };
+            if(String(it.analysis||'').trim())row.analysis=it.analysis;
+            patch.push(row);
+          }
+          if(patch.length){
             try{
-              await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({
-                ids:[it.id], answer:it.answer, analysis:it.analysis||'', status:'draft' })});
-              const q=(this.bank.items||[]).find(x=>x.id===it.id);
-              if(q){ q.answer=it.answer; if(it.analysis)q.analysis=it.analysis; q.status='draft'; }
-              this.bankAiFill.filled++;
-            }catch(e){ if(e.message==='unauth')throw e; this.bankAiFill.failed++; }
+              const r=await this.api('/api/questions',{method:'PATCH',signal:ctrl.signal,body:JSON.stringify({items:patch})});
+              const missIds=new Set(((r&&r.missing)||[]).map(String));
+              const byId=new Map((this.bank.items||[]).map(x=>[x.id,x]));
+              for(const row of patch){
+                if(missIds.has(String(row.id))){ this.bankAiFill.failed++; continue; }
+                const q=byId.get(row.id);
+                if(q){ q.answer=row.answer; if(row.analysis)q.analysis=row.analysis; q.status='draft'; }
+                this.bankAiFill.filled++;
+              }
+            }catch(e){ if(e.message==='unauth')throw e;
+              if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
+              this.bankAiFill.failed+=patch.length; }
           }
           this.bankAiFill.skipped+=((d&&d.missing)||[]).length;
         }
         const f=this.bankAiFill;
-        this.flash('已补 '+f.filled+' 题'+(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')+(f.failed?('；失败 '+f.failed+' 题'):'')+'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
+        const done=f.filled+f.skipped+f.failed;
+        this.flash((f.canceled?'已停止（处理了 '+done+' / '+f.total+' 题）：':'')
+          +'已补 '+f.filled+' 题'
+          +(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')
+          +(f.failed?('；失败 '+f.failed+' 题'):'')
+          +'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
         this.bankDirty=true; this.statsDirty=true;
       }catch(e){ if(e.message!=='unauth')this.flash('AI 补答案失败：'+e.message,true); }
+      if(this._aiFillCtrl===ctrl)this._aiFillCtrl=null;
       this.bankAiFill.busy=false; this.bankAiFill.prog=''; },
+bankAiFillStop(){ if(this._aiFillCtrl){ try{ this._aiFillCtrl.abort(); }catch(_){} this.bankAiFill.prog='正在停止…'; } },
 async bankBatchTag(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const t=prompt('给选中 '+ids.length+' 题添加标签（逗号分隔；会与原标签合并去重）：'); if(t===null)return; const add=t.split(/[,，、]/).map(s=>s.trim()).filter(Boolean); if(!add.length){ this.flash('未输入标签',true); return; } try{
         // 合并交给服务端（addTags）：一个请求搞定任意条数，
         // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。

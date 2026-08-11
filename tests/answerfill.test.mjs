@@ -159,17 +159,60 @@ describe('前端：落库标草稿、跳过不落库', () => {
     });
   }
 
+  // 契约变更：落库从「每题一个 {ids:[id],...}」改成「一个 {items:[{id,...},...]}」。
+  // 每题答案都不一样，单值路径用不上，200 题就是 200 次往返且中途失败会补一半。
   it('有答案的落库时带 status=draft，并就地更新本页', async () => {
     global.confirm = () => true;
     const items = [{ id: 'q1', type: 'short_answer', stem: 's', answer: [] }];
     const c = ctx(items, { items: [{ id: 'q1', answer: ['A1'], analysis: '思路' }] });
     await Bank.methods.bankAiFillAnswers.call(c);
     const patch = c.calls.find((x) => x.p === '/api/questions');
-    expect(patch.body).toMatchObject({ ids: ['q1'], answer: ['A1'], analysis: '思路', status: 'draft' });
+    expect(patch.body.items).toHaveLength(1);
+    expect(patch.body.items[0]).toMatchObject({ id: 'q1', answer: ['A1'], analysis: '思路', status: 'draft' });
     expect(items[0].answer).toEqual(['A1']);
     expect(items[0].status).toBe('draft');
     expect(c.flashes[0][0]).toMatch(/已补 1 题/);
     expect(c.flashes[0][0]).toMatch(/待审/);
+  });
+
+  it('一组多题只发一个 PATCH，不再每题一个请求', async () => {
+    global.confirm = () => true;
+    const items = [
+      { id: 'q1', type: 'short_answer', stem: 's1', answer: [] },
+      { id: 'q2', type: 'short_answer', stem: 's2', answer: [] },
+      { id: 'q3', type: 'short_answer', stem: 's3', answer: [] },
+    ];
+    const c = ctx(items, { items: [
+      { id: 'q1', answer: ['A'], analysis: '甲' },
+      { id: 'q2', answer: ['B'], analysis: '' },
+      { id: 'q3', answer: ['C'], analysis: '丙' },
+    ] });
+    await Bank.methods.bankAiFillAnswers.call(c);
+    const patches = c.calls.filter((x) => x.p === '/api/questions');
+    expect(patches).toHaveLength(1);
+    expect(patches[0].body.items.map((x) => x.id)).toEqual(['q1', 'q2', 'q3']);
+    // 空 analysis 的那条不带 analysis 字段，避免抹掉原有解析
+    expect(patches[0].body.items[1]).not.toHaveProperty('analysis');
+    expect(items.map((q) => q.answer)).toEqual([['A'], ['B'], ['C']]);
+  });
+
+  it('服务端报 missing 的算失败，不冒充已补', async () => {
+    global.confirm = () => true;
+    const items = [
+      { id: 'q1', type: 'short_answer', stem: 's1', answer: [] },
+      { id: 'q2', type: 'short_answer', stem: 's2', answer: [] },
+    ];
+    const c = Object.assign(ctx(items, { items: [
+      { id: 'q1', answer: ['A'] }, { id: 'q2', answer: ['B'] },
+    ] }), {});
+    const origApi = c.api;
+    c.api = async function (p, o) {
+      const r = await origApi.call(this, p, o);
+      return p === '/api/questions' ? { ok: true, missing: ['q2'] } : r;
+    };
+    await Bank.methods.bankAiFillAnswers.call(c);
+    expect(c.bankAiFill.filled).toBe(1);
+    expect(c.bankAiFill.failed).toBe(1);
   });
 
   it('被跳过的题不发 PATCH，计入 skipped 并在提示里说明', async () => {

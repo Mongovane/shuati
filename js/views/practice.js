@@ -303,18 +303,27 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
   // target，绕开了 setter，依赖收集完全不触发 —— 所以追问看不到流式，
   // 只有最后 asking=false 触发整体重渲染时文字才「啪」地一次性出现。
   // 必须拿 push 之后的代理来改。
-  this.aiX.chat.push({ q:text, a:'', r:'' });
+  // 追问归属哪个视图：解题解析和知识点卡片是两条独立的线程。
+  // 以前 chat 是一条共享数组，在解析里追问完切到卡片，那些问答照样显示在卡片下面，
+  // 而输入框的占位符写着「对知识点卡片有疑问？」—— 上下文和界面在自相矛盾。
+  const kind=(this.aiX.view==='concept')?'concept':'explain';
+  this.aiX.chat.push({ q:text, a:'', r:'', kind });
   const entry=this.aiX.chat[this.aiX.chat.length-1];
   this.aiX.asking=true;
   // 方案 A：历史放宽到最近 10 条（5 轮），单条轻度截断防爆炸，不做总量一刀切
-  const history=[]; for(const c of this.aiX.chat.slice(0,-1).slice(-5)){
+  // 历史只带同一视图的轮次，否则卡片的追问会把解析的问答当上下文
+  const sameKind=this.aiX.chat.slice(0,-1).filter(c=>((c.kind||'explain')===kind));
+  const history=[]; for(const c of sameKind.slice(-5)){
     history.push({role:'user',content:String(c.q||'').slice(0,3000)});
     if(c.a&&!c.err)history.push({role:'assistant',content:String(c.a).slice(0,4000)});
   }
   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
   // 构建上下文：explain 用 aiX.text，concept 用卡片序列化
-  let analysisCtx=this.aiX.text||'';
-  if(!analysisCtx && this.aiX.cards && this.aiX.cards.length){ analysisCtx=this.aiX.cards.map((c,i)=>'【'+(i+1)+'】'+c.term+(c.formula?' '+c.formula:'')+'：'+c.plain+(c.example?' 例：'+c.example:'')).join('\n'); }
+  // 上下文必须跟着当前视图走。原来是 `aiX.text || cards`，只要生成过解析就永远优先用解析——
+  // 于是在卡片视图里问「这张卡片的 not only 倒装怎么用」，模型收到的其实是解题解析，
+  // 卡片内容它压根没看见。
+  const cardsCtx=()=>(this.aiX.cards||[]).map((c,i)=>'【'+(i+1)+'】'+c.term+(c.formula?' '+c.formula:'')+'：'+c.plain+(c.example?' 例：'+c.example:'')).join('\n');
+  let analysisCtx = kind==='concept' ? (cardsCtx() || this.aiX.text || '') : (this.aiX.text || cardsCtx());
   const isCtxErr=(m)=>/context[_\s-]*length|context window|maximum context|max(?:imum)?[_\s-]*tokens|too many tokens|reduce the length|too long|上下文|请求(?:体|内容)?过长|token\s*数(?:超|过)/i.test(m||'');
   // 方案 B：上下文超限时递增 trim_level 自动缩减历史重试（最多 2 次）
   let done=false;
@@ -356,7 +365,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
 
 ,
 aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
-aiClearChat(){ if(!this.aiX.chat.length)return; if(!confirm('清空全部追问记录？（不影响解析和卡片）'))return; this.aiX.chat=[]; const st=this.aiStates[this.aiX.id]; if(st)st.chat=[]; this.flash('追问记录已清空'); },
+aiClearChat(){ const kind=(this.aiX.view==='concept')?'concept':'explain';
+  const mine=(this.aiX.chat||[]).filter(c=>((c.kind||'explain')===kind));
+  if(!mine.length)return;
+  const label=kind==='concept'?'知识点卡片':'解题解析';
+  if(!confirm('清空「'+label+'」下的 '+mine.length+' 条追问记录？（另一个视图的追问和解析本身都不受影响）'))return;
+  const keep=(this.aiX.chat||[]).filter(c=>((c.kind||'explain')!==kind));
+  this.aiX.chat=keep; const st=this.aiStates[this.aiX.id]; if(st)st.chat=keep.slice();
+  this.flash(label+'的追问记录已清空'); },
 aiRetryAsk(i){ const list=this.aiX.chat||[]; const c=list[i];
   if(!c || this.aiX.asking) return;
   const q=c.q; list.splice(i,1);

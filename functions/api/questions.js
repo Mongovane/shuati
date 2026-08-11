@@ -189,10 +189,76 @@ export async function onRequestPatch({ request, env }) {
   if (!auth.ok) return auth.resp;
   let body;
   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
-  const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
-  if (!ids.length) return json({ error: '缺少题目 id' }, 400);
   const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis', 'options', 'answer', 'tags', 'status', 'ai_cards'];
   const JSON_FIELDS = new Set(['options', 'answer', 'tags', 'ai_cards']);
+
+  // —— 逐题不同值的批量更新：body.items = [{id, ...字段}] ——
+  //
+  // 原有的 {ids, 字段} 是「给所有 id 设同一个值」，AI 补答案这种每题答案都不一样的场景用不上，
+  // 前端只能一题发一个 PATCH —— 100 题就是 100 个往返，而且中间失败会留下补了一半的状态。
+  // 这里补一条按 id 分别赋值的入口，一次请求搞定，D1 侧走 batch（同一事务）。
+  //
+  // 只开放 answer / analysis / status / difficulty 四个字段：这是「补答案」「批量订正」真正需要的，
+  // 题干、选项、科目这些结构性字段仍然只能走单值路径，避免一个接口能改一切。
+  if (Array.isArray(body && body.items)) {
+    const PER_ITEM = new Set(['answer', 'analysis', 'status', 'difficulty']);
+    const MAX = 200;
+    const raw = body.items.filter((it) => it && it.id).slice(0, MAX);
+    if (!raw.length) return json({ error: 'items 里没有可更新的条目' }, 400);
+    if (body.items.length > MAX) return json({ error: `items 一次最多 ${MAX} 条` }, 400);
+
+    // 先确认哪些 id 真的存在，不存在的如实报出来而不是当成成功
+    const idList = [...new Set(raw.map((it) => String(it.id)))];
+    const exist = new Set();
+    try {
+      for (let i = 0; i < idList.length; i += 80) {
+        const part = idList.slice(i, i + 80);
+        const rs = await env.DB.prepare(
+          `SELECT id FROM questions WHERE id IN (${part.map(() => '?').join(',')})`
+        ).bind(...part).all();
+        for (const r of (rs && rs.results) || []) exist.add(String(r.id));
+      }
+    } catch (e) {
+      return json({ error: '校验题目 id 失败：' + e.message }, 500);
+    }
+
+    const stmts = [];
+    const skipped = [];
+    for (const it of raw) {
+      const id = String(it.id);
+      if (!exist.has(id)) continue;                    // 不存在 → 落到 missing
+      const sets2 = [], vals2 = [];
+      for (const k of ALLOWED) {
+        if (!PER_ITEM.has(k)) continue;
+        if (it[k] === undefined || it[k] === null) continue;   // 与单值路径一致：不传就不动
+        if (k === 'status') {
+          const v = String(it[k]); if (v !== 'draft' && v !== 'ok') continue;
+          sets2.push('status = ?'); vals2.push(v); continue;
+        }
+        sets2.push(`${k} = ?`);
+        if (k === 'difficulty') vals2.push(Number(it[k]) || 3);
+        else if (JSON_FIELDS.has(k)) vals2.push(JSON.stringify(Array.isArray(it[k]) ? it[k] : (it[k] === '' ? [] : [it[k]])));
+        else vals2.push(String(it[k]));
+      }
+      if (!sets2.length) { skipped.push(id); continue; }        // 一个可写字段都没带
+      stmts.push(env.DB.prepare(`UPDATE questions SET ${sets2.join(', ')} WHERE id = ?`).bind(...vals2, id));
+    }
+    if (!stmts.length) {
+      return json({ ok: true, updated: 0, matched: 0, missing: idList.filter((x) => !exist.has(x)), skipped });
+    }
+    try {
+      await batchChunked(env, stmts, 80);
+    } catch (e) {
+      return json({ error: '批量更新失败：' + e.message }, 500);
+    }
+    return json({
+      ok: true, updated: stmts.length, matched: stmts.length,
+      missing: idList.filter((x) => !exist.has(x)), skipped,
+    });
+  }
+
+  const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
+  if (!ids.length) return json({ error: '缺少题目 id' }, 400);
   const sets = [], vals = [];
   for (const k of ALLOWED) {
     if (body[k] !== undefined && body[k] !== null) {

@@ -142,7 +142,7 @@ describe('模板', () => {
   it('每轮追问渲染可折叠的推理过程', () => {
     expect(tpl).toContain('chat-reason');
     expect(tpl).toContain('推理过程');
-    expect(tpl).toContain('chatReasonOpen[i]');
+    expect(tpl).toContain('chatReasonOpen[r.i]');
   });
   it('撒手且仍在生成时给「回到底部」入口', () => {
     expect(tpl).toContain('(aiBusy||aiAsking) && !stickBottom');

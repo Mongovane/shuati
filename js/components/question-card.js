@@ -37,6 +37,11 @@ const QuestionCard={
       const cjk=(p.match(/[\u4e00-\u9fa5]/g)||[]).length; return cjk / p.length < 0.15; },
     passageWords(){ const p=String((this.q&&this.q.passage)||'');
       return this.passageEnglish ? ((p.match(/[A-Za-z][A-Za-z'-]*/g)||[]).length + ' words') : (p.length + ' 字'); },
+    // 追问按视图分线程。带上原始下标 i —— ai-retry / ai-stop 要按 aiChat 的真实位置
+    // 操作，如果直接用 v-for 过滤后的序号，删错条目是必然的。
+    chatRounds(){ const kind=(this.aiKind==='concept')?'concept':'explain';
+      const out=[]; (this.aiChat||[]).forEach((c,i)=>{ if((c.kind||'explain')===kind)out.push({ c, i }); });
+      return out; },
     // 完形填空：当前这道题问的是第几个空（题干形如「（完形填空 第 21 空）」）
     clozeNo(){ const m=String((this.q&&this.q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/); return m?parseInt(m[1],10):0; },
     // 短文里的空由抽题阶段标成「＿＿21＿＿」。这里再套一层 span：
@@ -310,27 +315,27 @@ const QuestionCard={
           </div>
         </div>
         <template v-if="(aiText || (aiKind==='concept' && aiCards.length)) && !aiBusy">
-          <div v-for="(c,i) in aiChat" :key="'aq'+i" class="chat-round">
+          <div v-for="r in chatRounds" :key="'aq'+r.i" class="chat-round">
             <div class="chat-bub chat-q">
               <div class="chat-tag"><icon name="user" :size="13" /> 你</div>
-              <rich-text :content="c.q" />
+              <rich-text :content="r.c.q" />
               <div class="chat-q-acts">
-                <button v-if="aiAsking && i===aiChat.length-1" class="chat-icon-btn" @click="$emit('ai-stop')" title="停止生成"><icon name="square" :size="14" /></button>
-                <button v-if="!aiAsking && c.a" class="chat-icon-btn" @click="$emit('ai-retry',i)" title="重新生成这条回答"><icon name="rotate-cw" :size="14" /></button>
+                <button v-if="aiAsking && r.i===aiChat.length-1" class="chat-icon-btn" @click="$emit('ai-stop')" title="停止生成"><icon name="square" :size="14" /></button>
+                <button v-if="!aiAsking && r.c.a" class="chat-icon-btn" @click="$emit('ai-retry',r.i)" title="重新生成这条回答"><icon name="rotate-cw" :size="14" /></button>
               </div>
             </div>
-            <div v-if="c.r" class="chat-reason">
-              <button class="chat-reason-h" @click="chatReasonOpen[i]=!chatReasonOpen[i]">
+            <div v-if="r.c.r" class="chat-reason">
+              <button class="chat-reason-h" @click="chatReasonOpen[r.i]=!chatReasonOpen[r.i]">
                 <icon name="brain" :size="13" /> 推理过程
-                <span v-if="aiAsking && i===aiChat.length-1 && !c.a" class="spin"></span>
-                <icon :name="chatReasonOpen[i]?'chevron-up':'chevron-down'" :size="12" />
+                <span v-if="aiAsking && r.i===aiChat.length-1 && !r.c.a" class="spin"></span>
+                <icon :name="chatReasonOpen[r.i]?'chevron-up':'chevron-down'" :size="12" />
               </button>
-              <div v-show="chatReasonOpen[i]" :ref="'chatReason'+i" class="chat-reason-b">{{ c.r }}</div>
+              <div v-show="chatReasonOpen[r.i]" class="chat-reason-b">{{ r.c.r }}</div>
             </div>
-            <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="c.a" />
-              <div v-if="!aiAsking && !c.err" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+            <div v-if="r.c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="r.c.a" />
+              <div v-if="!aiAsking && !r.c.err" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
                 <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式"><icon :name="segMode?'x':'text-cursor-input'" :size="12" />{{ segMode?'退出':'选段' }}</button>
-                <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记"><icon name="notebook-pen" :size="12" />存为笔记</button>
+                <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:r.c.q,a:r.c.a})" title="把这一轮问答追加到本题笔记"><icon name="notebook-pen" :size="12" />存为笔记</button>
               </div>
             </div>
             <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
@@ -341,7 +346,7 @@ const QuestionCard={
           <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
             <input ref="askInp" v-model="askInput" :disabled="aiAsking" :placeholder="aiKind==='concept' ? '对知识点卡片有疑问？追问…' : '对解析有疑问？追问…'" style="flex:1;min-width:0" @keyup.enter="doAsk" />
             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
-            <button v-if="aiChat.length && !aiAsking" class="chat-icon-btn" @click="$emit('ai-clear-chat')" title="清空追问记录" style="opacity:.6"><icon name="trash-2" :size="15" /></button>
+            <button v-if="chatRounds.length && !aiAsking" class="chat-icon-btn" @click="$emit('ai-clear-chat')" title="清空追问记录" style="opacity:.6"><icon name="trash-2" :size="15" /></button>
           </div>
         </template>
         <div v-if="segMode" class="seg-bar">
