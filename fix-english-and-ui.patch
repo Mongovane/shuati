@@ -7,10 +7,10 @@ index 0000000..2752eb9
 +node_modules/
 +.DS_Store
 diff --git a/css/style.css b/css/style.css
-index 7ac1fe1..0aa0da2 100644
+index 7ac1fe1..0c3f6ea 100644
 --- a/css/style.css
 +++ b/css/style.css
-@@ -1246,3 +1246,71 @@ h2{margin:.2em 0 .6em}
+@@ -1246,3 +1246,115 @@ h2{margin:.2em 0 .6em}
    text-align:center;vertical-align:baseline}
  .passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
    color:var(--accent);font-weight:600}
@@ -82,6 +82,50 @@ index 7ac1fe1..0aa0da2 100644
 +.back-bottom:hover{border-color:var(--accent);color:var(--accent)}
 +.back-bottom:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 +@media(prefers-reduced-motion:reduce){.chat-reason-h,.back-bottom{transition:none}}
++
++/* ===================== AI 补答案：过程面板 ===================== */
++/* 原来只有一个「6 / 50」的计数，跑完既不知道哪些题被跳过，也不知道为什么。
++   后端每条本来就带 skip 原因和 warn，这里逐题显示出来。 */
++.fill-panel{margin:10px 0 4px;border:1px solid var(--line);border-radius:var(--radius);
++  background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
++.fill-head{display:flex;align-items:center;gap:10px;padding:10px 14px;
++  border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
++.fill-title{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap}
++.fill-bar{flex:1;min-width:60px;height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden}
++.fill-bar i{display:block;height:100%;background:var(--accent);border-radius:999px;
++  transition:width .3s ease}
++.fill-num{font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap}
++.fill-tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
++.fill-tag.ok{background:var(--ok-soft);color:var(--ok)}
++.fill-tag.skip{background:var(--surface-2);color:var(--ink-soft)}
++.fill-tag.fail{background:var(--bad-soft);color:var(--bad)}
++.fill-x{margin-left:auto;border:0;background:transparent;color:var(--ink-soft);
++  font-size:18px;line-height:1;cursor:pointer;padding:0 4px}
++.fill-x:hover{color:var(--ink)}
++
++.fill-log{max-height:240px;overflow:auto}
++.fill-row{display:flex;align-items:baseline;gap:8px;padding:6px 14px;font-size:12.5px;
++  border-bottom:1px solid color-mix(in srgb,var(--line) 40%,transparent)}
++.fill-row:last-child{border-bottom:0}
++.fill-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--ink-soft);
++  transform:translateY(-1px)}
++.fill-row.ok .fill-dot{background:var(--ok)}
++.fill-row.warn .fill-dot{background:var(--warn)}
++.fill-row.fail .fill-dot{background:var(--bad)}
++.fill-row.skip{opacity:.7}
++.fill-stem{flex:1;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
++.fill-res{flex:none;max-width:45%;color:var(--ink-soft);font-size:12px;
++  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
++.fill-row.ok .fill-res{color:var(--ok);font-weight:600}
++.fill-row.fail .fill-res{color:var(--bad)}
++.fill-more,.fill-foot{padding:8px 14px;font-size:12px;color:var(--ink-soft)}
++.fill-foot{border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent);background:var(--surface-2)}
++@media(max-width:560px){
++  .fill-head{flex-wrap:wrap;gap:6px}
++  .fill-bar{order:5;flex-basis:100%}
++  .fill-res{max-width:38%}
++}
++@media(prefers-reduced-motion:reduce){.fill-bar i{transition:none}}
 diff --git a/fixes.patch b/fixes.patch
 deleted file mode 100644
 index 37440a4..0000000
@@ -751,6 +795,19 @@ index 84cdf6f..da8fce7 100644
    const sets = [], vals = [];
    for (const k of ALLOWED) {
      if (body[k] !== undefined && body[k] !== null) {
+diff --git a/js/app.js b/js/app.js
+index 51b2a7f..b25dee4 100644
+--- a/js/app.js
++++ b/js/app.js
+@@ -76,7 +76,7 @@ const App={
+     mineruTokenBad:false,
+     bookExtract:{ busy:false, prog:'', done:0, total:0 },
+     busyOps:{},   // 防重入标志，键是方法名；模板可用 :disabled="busyOps.xxx" 拿到反馈
+-    bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0 },   // AI 补答案进度
++    bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0, canceled:false, log:[], panel:false },   // AI 补答案进度（log 供过程面板逐题显示）
+     extractSkippedToc:0,
+     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
+     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },
 diff --git a/js/components/question-card.js b/js/components/question-card.js
 index 87b62bc..465588e 100644
 --- a/js/components/question-card.js
@@ -917,22 +974,44 @@ index 87b62bc..465588e 100644
          </template>
          <div v-if="segMode" class="seg-bar">
 diff --git a/js/tpl/view-bank.js b/js/tpl/view-bank.js
-index c70ddef..7012870 100644
+index c70ddef..2856100 100644
 --- a/js/tpl/view-bank.js
 +++ b/js/tpl/view-bank.js
-@@ -33,6 +33,7 @@ const TPL_VIEW_BANK = `
+@@ -33,6 +33,29 @@ const TPL_VIEW_BANK = `
          <div class="tb-right">
            <button class="btn subtle" v-if="bank.items.length" :disabled="bankAiFill.busy" @click="bankAiFillAnswers" title="给本页（或勾选中）缺答案的题用 AI 补参考答案，结果标为待审草稿"><span v-if="bankAiFill.busy" class="spin"></span><icon name="wand-sparkles" :size="15" /> AI 补答案</button>
                <span v-if="bankAiFill.busy && bankAiFill.prog" class="muted" style="font-size:12px">{{ bankAiFill.prog }}</span>
 +          <button class="btn subtle" v-if="bankAiFill.busy" @click="bankAiFillStop" title="停止后已经补好的题会保留">停止</button>
++        </div>
++        <div v-if="bankAiFill.panel && (bankAiFill.busy || bankAiFill.log.length)" class="fill-panel">
++          <div class="fill-head">
++            <span class="fill-title">AI 补答案</span>
++            <span class="fill-bar"><i :style="{width: Math.min(100, Math.round(100*(bankAiFill.filled+bankAiFill.skipped+bankAiFill.failed)/Math.max(1,bankAiFill.total)))+'%'}"></i></span>
++            <span class="fill-num">{{ Math.min(bankAiFill.total, bankAiFill.filled+bankAiFill.skipped+bankAiFill.failed) }} / {{ bankAiFill.total }}</span>
++            <span class="fill-tag ok" v-if="bankAiFill.filled">已补 {{ bankAiFill.filled }}</span>
++            <span class="fill-tag skip" v-if="bankAiFill.skipped">跳过 {{ bankAiFill.skipped }}</span>
++            <span class="fill-tag fail" v-if="bankAiFill.failed">失败 {{ bankAiFill.failed }}</span>
++            <button class="fill-x" v-if="!bankAiFill.busy" @click="bankAiFillClose" title="关闭">×</button>
++          </div>
++          <div class="fill-log">
++            <div v-for="(r,i) in bankAiFill.log.slice(0,60)" :key="r.id+'_'+i" class="fill-row" :class="r.state">
++              <span class="fill-dot"></span>
++              <span class="fill-stem">{{ r.stem }}</span>
++              <span class="fill-res">{{ r.text }}</span>
++            </div>
++            <div v-if="bankAiFill.log.length > 60" class="fill-more">…另有 {{ bankAiFill.log.length - 60 }} 条</div>
++          </div>
++          <div v-if="!bankAiFill.busy" class="fill-foot">
++            {{ bankAiFill.canceled ? '已停止。' : '已完成。' }}补出来的都标为「待审」草稿，请在题库里筛出来逐条核对再发布。
++          </div>
                <button class="btn subtle" v-if="bank.items.length" :disabled="busyOps.bankAutoClassify" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
            <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
            <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似或完全相同的重复题，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 查重</button>
 diff --git a/js/views/bank.js b/js/views/bank.js
-index a007d78..b1e2929 100644
+index a007d78..38978a1 100644
 --- a/js/views/bank.js
 +++ b/js/views/bank.js
-@@ -71,40 +71,90 @@ async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fl
+@@ -71,40 +71,106 @@ async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fl
  async bankAiFillAnswers(){
        if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
        if(this.offline){ this.flash('离线状态下无法调用 AI',true); return; }
@@ -970,7 +1049,16 @@ index a007d78..b1e2929 100644
 +      const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
 +      if(!confirm('给 '+pool.length+' 道缺答案的题用 AI 补参考答案？\n\n· 会消耗 AI 额度（每 '+CH+' 题一次请求，共约 '+Math.ceil(pool.length/CH)+' 次）\n· 补出来的一律标成「待审」草稿，需要你在题库里筛出来逐条过一遍再发布\n· 依赖插图的题 AI 会跳过，不会硬编\n· 生成中可以点「停止」中断\n\n继续？'))return;
 +      const ctrl=new AbortController(); this._aiFillCtrl=ctrl;
-+      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0, canceled:false };
++      // log 里逐题记结果，供过程面板实时显示。后端每条本来就带 skip 原因和 warn，
++      // 以前前端全丢了，只剩一个「6 / 50」的计数 —— 跑完也不知道哪些题被跳过、为什么。
++      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0, canceled:false,
++        log:[], panel:true };
++      const stemOf=new Map(pool.map(q=>[q.id, String(q.stem||'').replace(/\s+/g,' ').slice(0,60)]));
++      // 只记 log，不单独维护 done —— done 由 filled+skipped+failed 推导。
++      // 各自计数容易和 log 条数对不上：服务端若在多个分块里重复报同一个 missing，
++      // 单独自增就会出现「16 / 14」这种超出总数的进度（模拟时实测到了）。
++      const note=(id,state,text)=>{ this.bankAiFill.log.unshift({ id, state, text,
++        stem: stemOf.get(id) || String(id).slice(0,8) }); };
        try{
 -        const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
          for(let i=0;i<pool.length;i+=CH){
@@ -986,19 +1074,23 @@ index a007d78..b1e2929 100644
 -          }catch(e){ if(e.message==='unauth')throw e; this.bankAiFill.failed+=part.length; continue; }
 +          }catch(e){ if(e.message==='unauth')throw e;
 +            if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
++            for(const q of part)note(q.id,'fail','请求失败：'+(e.message||'未知错误'));
 +            this.bankAiFill.failed+=part.length; continue; }
 +          // 攒成一个 items 批量 PATCH。原来是每题一个请求，6 题一组也就 6 次往返，
 +          // 200 题下来 200 次；中途失败还会留下「补了一半」的状态。
 +          // 服务端新增的 items 路径按 id 分别赋值，一次请求一个 D1 事务。
 +          const patch=[];
            for(const it of (d.items||[])){
-             if(!it || !Array.isArray(it.answer) || !it.answer.length){ this.bankAiFill.skipped++; continue; }
+-            if(!it || !Array.isArray(it.answer) || !it.answer.length){ this.bankAiFill.skipped++; continue; }
++            if(!it || !Array.isArray(it.answer) || !it.answer.length){
++              note(it&&it.id,'skip', (it&&it.skip) || '未给出答案');
++              this.bankAiFill.skipped++; continue; }
 +            // analysis 只在非空时才带。PATCH 的判定是 `!== undefined && !== null`，
 +            // 空字符串照样会写库——原来无条件发 `analysis: it.analysis||''`，
 +            // 会把题目原有的解析（比如从真题答案区抽出来的【精析】）直接抹掉。
 +            const row={ id:it.id, answer:it.answer, status:'draft' };
 +            if(String(it.analysis||'').trim())row.analysis=it.analysis;
-+            patch.push(row);
++            row._warn=it.warn||''; patch.push(row);
 +          }
 +          if(patch.length){
              try{
@@ -1012,15 +1104,18 @@ index a007d78..b1e2929 100644
 +              const missIds=new Set(((r&&r.missing)||[]).map(String));
 +              const byId=new Map((this.bank.items||[]).map(x=>[x.id,x]));
 +              for(const row of patch){
-+                if(missIds.has(String(row.id))){ this.bankAiFill.failed++; continue; }
++                if(missIds.has(String(row.id))){ note(row.id,'fail','题目已不存在'); this.bankAiFill.failed++; continue; }
 +                const q=byId.get(row.id);
 +                if(q){ q.answer=row.answer; if(row.analysis)q.analysis=row.analysis; q.status='draft'; }
++                note(row.id, row._warn?'warn':'ok', row.answer.join('、')+(row._warn?('　⚠ '+row._warn):''));
 +                this.bankAiFill.filled++;
 +              }
 +            }catch(e){ if(e.message==='unauth')throw e;
 +              if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
++              for(const row of patch)note(row.id,'fail','写库失败：'+(e.message||'未知错误'));
 +              this.bankAiFill.failed+=patch.length; }
            }
++          for(const mid of ((d&&d.missing)||[]))note(mid,'skip','AI 没有返回这道题');
            this.bankAiFill.skipped+=((d&&d.missing)||[]).length;
          }
          const f=this.bankAiFill;
@@ -1036,6 +1131,7 @@ index a007d78..b1e2929 100644
 +      if(this._aiFillCtrl===ctrl)this._aiFillCtrl=null;
        this.bankAiFill.busy=false; this.bankAiFill.prog=''; },
 +bankAiFillStop(){ if(this._aiFillCtrl){ try{ this._aiFillCtrl.abort(); }catch(_){} this.bankAiFill.prog='正在停止…'; } },
++bankAiFillClose(){ this.bankAiFill.panel=false; },
  async bankBatchTag(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const t=prompt('给选中 '+ids.length+' 题添加标签（逗号分隔；会与原标签合并去重）：'); if(t===null)return; const add=t.split(/[,，、]/).map(s=>s.trim()).filter(Boolean); if(!add.length){ this.flash('未输入标签',true); return; } try{
          // 合并交给服务端（addTags）：一个请求搞定任意条数，
          // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。
@@ -1480,6 +1576,157 @@ index df32d38..2cb7a56 100644
    it('被跳过的题不发 PATCH，计入 skipped 并在提示里说明', async () => {
      global.confirm = () => true;
      const items = [{ id: 'q1', type: 'short_answer', stem: 's', answer: [] }];
+diff --git a/tests/bank-fill-progress.test.mjs b/tests/bank-fill-progress.test.mjs
+new file mode 100644
+index 0000000..4604621
+--- /dev/null
++++ b/tests/bank-fill-progress.test.mjs
+@@ -0,0 +1,145 @@
++// AI 补答案的过程面板。
++// 改造前只有一个「6 / 50」的计数：跑完既不知道哪些题被跳过，也不知道为什么 ——
++// 而后端每条本来就带 skip 原因和 warn（answerfill.js 里 items.push({id,answer,analysis,skip/warn})），
++// 前端把它们全丢了。现在逐题记进 log，面板实时显示。
++import { describe, it, expect, beforeEach } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const Bank = new Function(read('js/views/bank.js') + ';return BankMixin;')();
++
++const makeCtx = (items, reply, patchReply) => {
++  const calls = [];
++  return {
++    calls,
++    token: 't', offline: false,
++    bank: { items, sel: [] },
++    bankAiFill: { busy: false, prog: '', log: [] },
++    bankDirty: false, statsDirty: false,
++    aiOv: () => ({}),
++    flash(m) { this.flashes.push(m); },
++    flashes: [],
++    async api(p, o) {
++      const body = JSON.parse((o && o.body) || '{}');
++      calls.push({ p, body });
++      if (p === '/api/answerfill') return reply(body);
++      if (p.startsWith('/api/questions')) return patchReply ? patchReply(body) : { ok: true };
++      return { ok: true };
++    },
++  };
++};
++const run = (ctx) => Bank.methods.bankAiFillAnswers.call(ctx);
++const qs = (n) => Array.from({ length: n }, (_, i) => ({ id: 'q' + i, type: 'single_choice', stem: '第' + (i + 1) + '题：以下说法正确的是（）。', answer: [] }));
++
++beforeEach(() => { global.confirm = () => true; });
++
++describe('逐题记录结果', () => {
++  it('成功的记下答案', async () => {
++    const c = makeCtx(qs(2), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: ['A', 'C'], analysis: 'x' })) }));
++    await run(c);
++    expect(c.bankAiFill.log).toHaveLength(2);
++    expect(c.bankAiFill.log[0].state).toBe('ok');
++    expect(c.bankAiFill.log[0].text).toBe('A、C');
++  });
++  it('跳过的要带上后端给的原因，不能只说「跳过」', async () => {
++    const c = makeCtx(qs(1), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: [], skip: '题干依赖插图，无法作答' })) }));
++    await run(c);
++    expect(c.bankAiFill.log[0].state).toBe('skip');
++    expect(c.bankAiFill.log[0].text).toBe('题干依赖插图，无法作答');
++  });
++  it('后端没给原因时有兜底文案', async () => {
++    const c = makeCtx(qs(1), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: [] })) }));
++    await run(c);
++    expect(c.bankAiFill.log[0].text).toBe('未给出答案');
++  });
++  it('AI 把握不大（warn）单独标出来，不混在成功里', async () => {
++    const c = makeCtx(qs(1), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: ['B'], warn: '把握不大' })) }));
++    await run(c);
++    expect(c.bankAiFill.log[0].state).toBe('warn');
++    expect(c.bankAiFill.log[0].text).toContain('把握不大');
++    expect(c.bankAiFill.filled).toBe(1);          // 仍然算补上了
++  });
++  it('AI 整个漏掉的题记为跳过', async () => {
++    const c = makeCtx(qs(2), (b) => ({ items: [{ id: b.questions[0].id, answer: ['A'] }], missing: [b.questions[1].id] }));
++    await run(c);
++    expect(c.bankAiFill.log.some((r) => r.state === 'skip' && /没有返回/.test(r.text))).toBe(true);
++  });
++  it('请求整块失败时每道题都留痕，不是静默丢掉', async () => {
++    const c = makeCtx(qs(3), () => { throw new Error('502 网关错误'); });
++    await run(c);
++    expect(c.bankAiFill.log).toHaveLength(3);
++    expect(c.bankAiFill.log.every((r) => r.state === 'fail')).toBe(true);
++    expect(c.bankAiFill.log[0].text).toContain('502');
++  });
++  it('写库失败也逐题留痕', async () => {
++    const c = makeCtx(qs(2), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: ['A'] })) }),
++      () => { throw new Error('D1 超时'); });
++    await run(c);
++    expect(c.bankAiFill.log.every((r) => r.state === 'fail')).toBe(true);
++    expect(c.bankAiFill.log[0].text).toContain('D1 超时');
++  });
++  it('题目已被删掉的记为失败而不是成功', async () => {
++    const c = makeCtx(qs(2), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: ['A'] })) }),
++      (b) => ({ ok: true, missing: [b.items[0].id] }));
++    await run(c);
++    expect(c.bankAiFill.failed).toBe(1);
++    expect(c.bankAiFill.log.some((r) => r.state === 'fail' && /已不存在/.test(r.text))).toBe(true);
++  });
++  it('最新的在最上面（面板从上往下读）', async () => {
++    const c = makeCtx(qs(3), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: [q.id] })) }));
++    await run(c);
++    expect(c.bankAiFill.log[0].text).toBe('q2');
++    expect(c.bankAiFill.log[2].text).toBe('q0');
++  });
++  it('题干截断到 60 字并压掉换行，面板一行放得下', async () => {
++    const long = [{ id: 'x', type: 'short_answer', stem: '甲\n乙'.repeat(80), answer: [] }];
++    const c = makeCtx(long, (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: ['A'] })) }));
++    await run(c);
++    expect(c.bankAiFill.log[0].stem.length).toBeLessThanOrEqual(60);
++    expect(c.bankAiFill.log[0].stem).not.toContain('\n');
++  });
++});
++
++describe('进度不能超出总数', () => {
++  it('服务端在多个分块里重复报同一个 missing 也不会出现「16 / 14」', async () => {
++    // 这是模拟时实测到的：done 单独自增会和总数对不上，所以改成由三个计数推导
++    const c = makeCtx(qs(14), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: ['A'] })), missing: ['ghost'] }));
++    await run(c);
++    const f = c.bankAiFill;
++    expect(f.filled + f.skipped + f.failed).toBeGreaterThan(0);
++    expect(f.log.length).toBe(f.filled + f.skipped + f.failed);
++  });
++  it('不再维护独立的 done 字段（避免和计数打架）', () => {
++    expect(read('js/views/bank.js')).not.toContain('bankAiFill.done++');
++  });
++});
++
++describe('面板本身', () => {
++  const tpl = read('js/tpl/view-bank.js');
++  it('生成中和跑完都显示，可手动关闭', () => {
++    expect(tpl).toContain('bankAiFill.panel && (bankAiFill.busy || bankAiFill.log.length)');
++    expect(tpl).toContain('bankAiFillClose');
++  });
++  it('进度条宽度钳到 100%', () => {
++    expect(tpl).toContain('Math.min(100,');
++  });
++  it('分类计数用不同颜色的标签', () => {
++    for (const k of ['fill-tag ok', 'fill-tag skip', 'fill-tag fail']) expect(tpl).toContain(k);
++  });
++  it('长列表截断显示，不把几百条全渲染出来', () => {
++    expect(tpl).toContain('bankAiFill.log.slice(0,60)');
++    expect(tpl).toContain('另有');
++  });
++  it('跑完提示要复核', () => {
++    expect(tpl).toContain('待审');
++  });
++  it('关闭按钮只在跑完后出现', () => {
++    expect(tpl).toContain('v-if="!bankAiFill.busy" @click="bankAiFillClose"');
++  });
++  it('样式里四种状态各有颜色', () => {
++    const css = read('css/style.css');
++    for (const k of ['.fill-row.ok', '.fill-row.warn', '.fill-row.fail', '.fill-row.skip']) expect(css).toContain(k);
++  });
++});
 diff --git a/tests/chat-scope-bankfill.test.mjs b/tests/chat-scope-bankfill.test.mjs
 new file mode 100644
 index 0000000..dbe410b

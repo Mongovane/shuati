@@ -1314,3 +1314,47 @@ h2{margin:.2em 0 .6em}
 .back-bottom:hover{border-color:var(--accent);color:var(--accent)}
 .back-bottom:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){.chat-reason-h,.back-bottom{transition:none}}
+
+/* ===================== AI 补答案：过程面板 ===================== */
+/* 原来只有一个「6 / 50」的计数，跑完既不知道哪些题被跳过，也不知道为什么。
+   后端每条本来就带 skip 原因和 warn，这里逐题显示出来。 */
+.fill-panel{margin:10px 0 4px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
+.fill-head{display:flex;align-items:center;gap:10px;padding:10px 14px;
+  border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.fill-title{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap}
+.fill-bar{flex:1;min-width:60px;height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.fill-bar i{display:block;height:100%;background:var(--accent);border-radius:999px;
+  transition:width .3s ease}
+.fill-num{font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fill-tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.fill-tag.ok{background:var(--ok-soft);color:var(--ok)}
+.fill-tag.skip{background:var(--surface-2);color:var(--ink-soft)}
+.fill-tag.fail{background:var(--bad-soft);color:var(--bad)}
+.fill-x{margin-left:auto;border:0;background:transparent;color:var(--ink-soft);
+  font-size:18px;line-height:1;cursor:pointer;padding:0 4px}
+.fill-x:hover{color:var(--ink)}
+
+.fill-log{max-height:240px;overflow:auto}
+.fill-row{display:flex;align-items:baseline;gap:8px;padding:6px 14px;font-size:12.5px;
+  border-bottom:1px solid color-mix(in srgb,var(--line) 40%,transparent)}
+.fill-row:last-child{border-bottom:0}
+.fill-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--ink-soft);
+  transform:translateY(-1px)}
+.fill-row.ok .fill-dot{background:var(--ok)}
+.fill-row.warn .fill-dot{background:var(--warn)}
+.fill-row.fail .fill-dot{background:var(--bad)}
+.fill-row.skip{opacity:.7}
+.fill-stem{flex:1;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fill-res{flex:none;max-width:45%;color:var(--ink-soft);font-size:12px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fill-row.ok .fill-res{color:var(--ok);font-weight:600}
+.fill-row.fail .fill-res{color:var(--bad)}
+.fill-more,.fill-foot{padding:8px 14px;font-size:12px;color:var(--ink-soft)}
+.fill-foot{border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent);background:var(--surface-2)}
+@media(max-width:560px){
+  .fill-head{flex-wrap:wrap;gap:6px}
+  .fill-bar{order:5;flex-basis:100%}
+  .fill-res{max-width:38%}
+}
+@media(prefers-reduced-motion:reduce){.fill-bar i{transition:none}}
