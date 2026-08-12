@@ -99,13 +99,27 @@ export async function onRequestPost({ request, env }) {
       messages.push({ role: 'user', content: '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头。' });
     }
   }
+  // 用户覆盖的输出上限：太小会导致推理模型永远写不到正文，太大会被上游拒绝，
+  // 所以钳在 [1024, 32000]。传 0 / 不传 = 用各场景的默认值。
+  const ovMax = Math.floor(Number(b.max_tokens) || 0);
+  const capOut = (def) => (ovMax > 0 ? Math.min(32000, Math.max(1024, ovMax)) : def);
   const payload = {
     model: pageImage ? (String(b.vision_model||'').trim() || ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (ovModel || env.AI_MODEL || 'gpt-4o'),
     messages,
     temperature: 0.3,
     // 续写轮不需要再来一次完整预算，但也不能太小，否则一轮只能挤出几行、要续很多次
-    max_tokens: ask ? 4096 : (concept ? 6000 : ((contFrom || b.continue_kickoff) ? 6000 : 8192)),   // 续写轮 6000：太小会要续很多次
+    // 输出上限。推理模型会把 reasoning_content 一起算进 completion_tokens（实测
+    // deepseek-v4-flash 一次推理 5.4K），所以这个数字必须留出「推理 + 正文」两份空间。
+    // 旧值 ask=4096 比推理量本身还小 → 追问必然空输出；concept=6000 只剩 0.6K
+    // 写 JSON → 卡片解析必然失败。这不是模型坏，是预算给少了。
+    // 用户可在「设置 → AI 解析」里按自己中转站/模型的实际上限调整（0 = 用下面的默认值）。
+    max_tokens: capOut(ask ? 12000 : (concept ? 12000 : ((contFrom || b.continue_kickoff) ? 8000 : 16000))),
   };
+  // 上游若因 max_tokens 过大而 400，自动降档重试一次。
+  // 各家模型的输出上限差别很大（8K / 16K / 32K+），把默认值调高就必然会撞到一些，
+  // 报错甩给用户不如自己退一步。
+  const tooLarge = (t) => /max[_\s-]*(?:completion[_\s-]*)?tokens|maximum.*tokens|too large|exceeds?.*(?:limit|maximum)|超过.*(?:上限|最大)/i.test(String(t||''));
+  let outCap = payload.max_tokens;
   const call = (stream) => fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + effKey },
@@ -120,7 +134,15 @@ export async function onRequestPost({ request, env }) {
 
   try {
     if (wantStream) {
-      const up = await call(true);
+      let up = await call(true);
+      if (!up.ok && up.status === 400) {
+        const t = await up.clone().text().catch(() => '');
+        if (tooLarge(t) && outCap > 4096) {
+          outCap = Math.max(4096, Math.floor(outCap / 2));
+          payload.max_tokens = outCap;
+          up = await call(true);
+        }
+      }
       if (up.ok && up.body) {
         // SSE 原样透传 + 附带 Gateway 降级信息供前端显示实际模型
         const served = up.headers.get('X-Served-Model') || up.headers.get('x-served-model') || '';

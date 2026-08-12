@@ -12,6 +12,8 @@ import { normalizeAnswer } from './process.js';
 // 依赖插图的题（「对图 1-9 所示的函数…」）会被要求返回 skip 而不是硬编一个答案 ——
 // 插图现在存在 R2，提示词里只有短链，模型看不到图，硬答必然是幻觉。
 
+const TIMEOUT_MS = 180000;   // 3 分钟：一次 8 题，正常十几秒；超过说明上游卡了
+
 const TYPE_CN = {
   single_choice: '单选题', multiple_choice: '多选题', true_false: '判断题',
   fill_blank: '填空题', short_answer: '简答/计算/证明题', code: '编程题',
@@ -76,6 +78,9 @@ export async function onRequestPost({ request, env }) {
   const qs = raw.filter((q) => q && q.id && String(q.stem || '').trim()).slice(0, 8);
   if (!qs.length) return json({ error: '缺少要补答案的题目' }, 400);
 
+  // 用户在「设置 → AI 解析 → 输出上限」里填的值（bank.js 走 aiOv() 带过来），0 = 用默认
+  const ovMax = Math.floor(Number(b.max_tokens) || 0);
+
   const blocks = qs.map((q, i) => {
     const parts = [`### 第 ${i + 1} 题 (id=${q.id})`];
     parts.push(`题型：${TYPE_CN[q.type] || '简答题'}`);
@@ -97,10 +102,24 @@ export async function onRequestPost({ request, env }) {
     resp = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      signal: request.signal,
+      // 超时保护：这条路是非流式的（await 完整响应再解析 JSON），没有字节在流动，
+      // 生成多久整个请求就吊多久。给它一个上限，免得一次卡住把整轮补答案堵死。
+      // 用户中断（request.signal）和超时取先到的那个；AbortSignal.any 不可用时退回只认中断。
+      signal: (typeof AbortSignal !== 'undefined' && AbortSignal.any && AbortSignal.timeout)
+        ? AbortSignal.any([request.signal, AbortSignal.timeout(TIMEOUT_MS)])
+        : request.signal,
       body: JSON.stringify({
         model, temperature: 0.1,
         response_format: { type: 'json_object' },
+        // 必须给上限。省略 max_tokens 不等于「用模型最大值」——
+        // OpenAI 兼容接口下这是「让服务商决定」，而部分中转站会塞一个很小的默认值
+        // （512 / 1024 之类），于是看起来"不限"实际被静默截断。而这里是 JSON 模式，
+        // 一旦截断就是非法 JSON，8 道题会一起废掉而不是废一道。
+        // 基数 6000 是给思维链留的：实测这个中转站的推理模型一次思考就要 5.4K，
+        // 而它算进 completion_tokens。基数给 2000 的话 6 道题只剩 2K 写 JSON，
+        // 截断了整批全废，比多花点 token 贵得多。每题再加 900 覆盖答案+简短解析。
+        // 用户在设置里填了输出上限就听他的。
+        max_tokens: ovMax > 0 ? Math.min(32000, Math.max(1024, ovMax)) : Math.min(20000, 6000 + qs.length * 900),
         messages: [
           { role: 'system', content: SYS },
           { role: 'user', content: `请为下面 ${qs.length} 道题补出参考答案：\n\n${blocks.join('\n\n')}` },
@@ -108,7 +127,14 @@ export async function onRequestPost({ request, env }) {
       }),
     });
   } catch (e) {
-    if (e && e.name === 'AbortError') return json({ error: '已取消' }, 499);
+    // 超时和用户主动取消都表现为 AbortError / TimeoutError，要分开说，
+    // 否则用户看到「已取消」会以为是自己点了停止。
+    if (e && (e.name === 'TimeoutError' || /timed? ?out/i.test(String(e.message || ''))))
+      return json({ error: `AI 中转站超过 ${Math.round(TIMEOUT_MS / 1000)} 秒没有返回，已放弃这一批（可减少每批题数或换更快的模型）` }, 504);
+    if (e && e.name === 'AbortError') {
+      if (request.signal && request.signal.aborted) return json({ error: '已取消' }, 499);
+      return json({ error: `AI 中转站超过 ${Math.round(TIMEOUT_MS / 1000)} 秒没有返回，已放弃这一批` }, 504);
+    }
     return json({ error: '调用 AI 中转站失败：' + e.message }, 502);
   }
   if (!resp.ok) {
