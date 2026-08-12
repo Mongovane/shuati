@@ -76,7 +76,7 @@ const App={
     mineruTokenBad:false,
     bookExtract:{ busy:false, prog:'', done:0, total:0 },
     busyOps:{},   // 防重入标志，键是方法名；模板可用 :disabled="busyOps.xxx" 拿到反馈
-    bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0 },   // AI 补答案进度
+    bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0, canceled:false, log:[], panel:false },   // AI 补答案进度（log 供过程面板逐题显示）
     extractSkippedToc:0,
     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },

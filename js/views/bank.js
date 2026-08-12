@@ -99,7 +99,16 @@ async bankAiFillAnswers(){
       const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
       if(!confirm('给 '+pool.length+' 道缺答案的题用 AI 补参考答案？\n\n· 会消耗 AI 额度（每 '+CH+' 题一次请求，共约 '+Math.ceil(pool.length/CH)+' 次）\n· 补出来的一律标成「待审」草稿，需要你在题库里筛出来逐条过一遍再发布\n· 依赖插图的题 AI 会跳过，不会硬编\n· 生成中可以点「停止」中断\n\n继续？'))return;
       const ctrl=new AbortController(); this._aiFillCtrl=ctrl;
-      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0, canceled:false };
+      // log 里逐题记结果，供过程面板实时显示。后端每条本来就带 skip 原因和 warn，
+      // 以前前端全丢了，只剩一个「6 / 50」的计数 —— 跑完也不知道哪些题被跳过、为什么。
+      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0, canceled:false,
+        log:[], panel:true };
+      const stemOf=new Map(pool.map(q=>[q.id, String(q.stem||'').replace(/\s+/g,' ').slice(0,60)]));
+      // 只记 log，不单独维护 done —— done 由 filled+skipped+failed 推导。
+      // 各自计数容易和 log 条数对不上：服务端若在多个分块里重复报同一个 missing，
+      // 单独自增就会出现「16 / 14」这种超出总数的进度（模拟时实测到了）。
+      const note=(id,state,text)=>{ this.bankAiFill.log.unshift({ id, state, text,
+        stem: stemOf.get(id) || String(id).slice(0,8) }); };
       try{
         for(let i=0;i<pool.length;i+=CH){
           if(ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
@@ -112,19 +121,22 @@ async bankAiFillAnswers(){
             }, this.aiOv()))});
           }catch(e){ if(e.message==='unauth')throw e;
             if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
+            for(const q of part)note(q.id,'fail','请求失败：'+(e.message||'未知错误'));
             this.bankAiFill.failed+=part.length; continue; }
           // 攒成一个 items 批量 PATCH。原来是每题一个请求，6 题一组也就 6 次往返，
           // 200 题下来 200 次；中途失败还会留下「补了一半」的状态。
           // 服务端新增的 items 路径按 id 分别赋值，一次请求一个 D1 事务。
           const patch=[];
           for(const it of (d.items||[])){
-            if(!it || !Array.isArray(it.answer) || !it.answer.length){ this.bankAiFill.skipped++; continue; }
+            if(!it || !Array.isArray(it.answer) || !it.answer.length){
+              note(it&&it.id,'skip', (it&&it.skip) || '未给出答案');
+              this.bankAiFill.skipped++; continue; }
             // analysis 只在非空时才带。PATCH 的判定是 `!== undefined && !== null`，
             // 空字符串照样会写库——原来无条件发 `analysis: it.analysis||''`，
             // 会把题目原有的解析（比如从真题答案区抽出来的【精析】）直接抹掉。
             const row={ id:it.id, answer:it.answer, status:'draft' };
             if(String(it.analysis||'').trim())row.analysis=it.analysis;
-            patch.push(row);
+            row._warn=it.warn||''; patch.push(row);
           }
           if(patch.length){
             try{
@@ -132,15 +144,18 @@ async bankAiFillAnswers(){
               const missIds=new Set(((r&&r.missing)||[]).map(String));
               const byId=new Map((this.bank.items||[]).map(x=>[x.id,x]));
               for(const row of patch){
-                if(missIds.has(String(row.id))){ this.bankAiFill.failed++; continue; }
+                if(missIds.has(String(row.id))){ note(row.id,'fail','题目已不存在'); this.bankAiFill.failed++; continue; }
                 const q=byId.get(row.id);
                 if(q){ q.answer=row.answer; if(row.analysis)q.analysis=row.analysis; q.status='draft'; }
+                note(row.id, row._warn?'warn':'ok', row.answer.join('、')+(row._warn?('　⚠ '+row._warn):''));
                 this.bankAiFill.filled++;
               }
             }catch(e){ if(e.message==='unauth')throw e;
               if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
+              for(const row of patch)note(row.id,'fail','写库失败：'+(e.message||'未知错误'));
               this.bankAiFill.failed+=patch.length; }
           }
+          for(const mid of ((d&&d.missing)||[]))note(mid,'skip','AI 没有返回这道题');
           this.bankAiFill.skipped+=((d&&d.missing)||[]).length;
         }
         const f=this.bankAiFill;
@@ -155,6 +170,7 @@ async bankAiFillAnswers(){
       if(this._aiFillCtrl===ctrl)this._aiFillCtrl=null;
       this.bankAiFill.busy=false; this.bankAiFill.prog=''; },
 bankAiFillStop(){ if(this._aiFillCtrl){ try{ this._aiFillCtrl.abort(); }catch(_){} this.bankAiFill.prog='正在停止…'; } },
+bankAiFillClose(){ this.bankAiFill.panel=false; },
 async bankBatchTag(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const t=prompt('给选中 '+ids.length+' 题添加标签（逗号分隔；会与原标签合并去重）：'); if(t===null)return; const add=t.split(/[,，、]/).map(s=>s.trim()).filter(Boolean); if(!add.length){ this.flash('未输入标签',true); return; } try{
         // 合并交给服务端（addTags）：一个请求搞定任意条数，
         // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。

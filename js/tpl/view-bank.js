@@ -34,6 +34,28 @@ const TPL_VIEW_BANK = `
           <button class="btn subtle" v-if="bank.items.length" :disabled="bankAiFill.busy" @click="bankAiFillAnswers" title="给本页（或勾选中）缺答案的题用 AI 补参考答案，结果标为待审草稿"><span v-if="bankAiFill.busy" class="spin"></span><icon name="wand-sparkles" :size="15" /> AI 补答案</button>
               <span v-if="bankAiFill.busy && bankAiFill.prog" class="muted" style="font-size:12px">{{ bankAiFill.prog }}</span>
           <button class="btn subtle" v-if="bankAiFill.busy" @click="bankAiFillStop" title="停止后已经补好的题会保留">停止</button>
+        </div>
+        <div v-if="bankAiFill.panel && (bankAiFill.busy || bankAiFill.log.length)" class="fill-panel">
+          <div class="fill-head">
+            <span class="fill-title">AI 补答案</span>
+            <span class="fill-bar"><i :style="{width: Math.min(100, Math.round(100*(bankAiFill.filled+bankAiFill.skipped+bankAiFill.failed)/Math.max(1,bankAiFill.total)))+'%'}"></i></span>
+            <span class="fill-num">{{ Math.min(bankAiFill.total, bankAiFill.filled+bankAiFill.skipped+bankAiFill.failed) }} / {{ bankAiFill.total }}</span>
+            <span class="fill-tag ok" v-if="bankAiFill.filled">已补 {{ bankAiFill.filled }}</span>
+            <span class="fill-tag skip" v-if="bankAiFill.skipped">跳过 {{ bankAiFill.skipped }}</span>
+            <span class="fill-tag fail" v-if="bankAiFill.failed">失败 {{ bankAiFill.failed }}</span>
+            <button class="fill-x" v-if="!bankAiFill.busy" @click="bankAiFillClose" title="关闭">×</button>
+          </div>
+          <div class="fill-log">
+            <div v-for="(r,i) in bankAiFill.log.slice(0,60)" :key="r.id+'_'+i" class="fill-row" :class="r.state">
+              <span class="fill-dot"></span>
+              <span class="fill-stem">{{ r.stem }}</span>
+              <span class="fill-res">{{ r.text }}</span>
+            </div>
+            <div v-if="bankAiFill.log.length > 60" class="fill-more">…另有 {{ bankAiFill.log.length - 60 }} 条</div>
+          </div>
+          <div v-if="!bankAiFill.busy" class="fill-foot">
+            {{ bankAiFill.canceled ? '已停止。' : '已完成。' }}补出来的都标为「待审」草稿，请在题库里筛出来逐条核对再发布。
+          </div>
               <button class="btn subtle" v-if="bank.items.length" :disabled="busyOps.bankAutoClassify" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
           <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
           <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似或完全相同的重复题，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 查重</button>
