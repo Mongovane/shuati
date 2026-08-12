@@ -80,11 +80,19 @@ describe('用量按题累加、切题重置', () => {
     expect(src).toContain("(a.completion||0)+(u.completion||0)");
     expect(src).toContain("rounds:(a.rounds||0)+1");
   });
-  it('开始新生成时清零', () => {
-    expect(src).toContain('this.aiX.usage=null;');
+  // usage 现在按视图分两个字段（usage / cardsUsage），和 model / cardsModel 一致
+  it('开始新生成时清零对应视图的用量', () => {
+    expect(src).toContain('this.aiX[UK]=null;');
+    expect(src).toContain("const UK=isConcept?'cardsUsage':'usage';");
   });
-  it('切题时 aiX 重建带 usage:null', () => {
-    expect(read('js/app.js')).toContain('reasonOpen:true, usage:null }');
+  it('切题时 aiX 重建把两个视图的用量都清空', () => {
+    const app = read('js/app.js');
+    expect(app).toContain('usage:null, cardsUsage:null }');
+  });
+  it('思维链也按视图分开，否则切回解析会看到卡片那次的推理', () => {
+    const app = read('js/app.js');
+    expect(app).toContain("this.aiX.view==='concept' ? (this.aiX.cardsReasoning||'')");
+    expect(app).toContain('curAiUsage()');
   });
   it('失败提示带上实际用量，不再空口断言原因', () => {
     expect(src).toContain('本次用量：输出');
@@ -99,5 +107,55 @@ describe('诊断文案不能把推断当结论', () => {
   });
   it('只陈述可观测事实：正文为空 + 已达输出上限', () => {
     expect(src).toContain('只输出了推理、正文为空（已达输出上限）');
+  });
+});
+
+describe('输出预算：按实测的推理量重新分配', () => {
+  const src = read('functions/api/explain.js');
+  // 实测 deepseek-v4-flash 一次推理 5.4K，而它算进 completion_tokens。
+  // 旧值 ask=4096 比推理量本身还小 → 追问必然空输出；concept=6000 只剩 0.6K 写 JSON。
+  const budgets = () => {
+    const m = src.match(/max_tokens: capOut\(ask \? (\d+) : \(concept \? (\d+) : \(\(contFrom \|\| b\.continue_kickoff\) \? (\d+) : (\d+)\)\)\)/);
+    expect(m).toBeTruthy();
+    const [, ask, concept, cont, first] = m.map(Number);
+    return { ask, concept, cont, first };
+  };
+  it('追问的预算必须明显大于典型推理量（旧值 4096 是必然失败的）', () => {
+    expect(budgets().ask).toBeGreaterThanOrEqual(10000);
+  });
+  it('知识点卡片同理（要留出写完整 JSON 的空间）', () => {
+    expect(budgets().concept).toBeGreaterThanOrEqual(10000);
+  });
+  it('解题解析是最长的场景，预算最大', () => {
+    const b = budgets();
+    expect(b.first).toBeGreaterThanOrEqual(b.ask);
+    expect(b.first).toBeGreaterThanOrEqual(b.concept);
+  });
+  it('用户覆盖值被钳在合理区间，避免设成 100 或 999999', () => {
+    expect(src).toContain('Math.min(32000, Math.max(1024, ovMax))');
+  });
+  it('传 0 / 不传就用默认值', () => {
+    expect(src).toContain('ovMax > 0 ?');
+  });
+  it('上游嫌值太大时自动降档一次，而不是把错误甩给用户', () => {
+    expect(src).toContain('tooLarge');
+    expect(src).toContain('Math.max(4096, Math.floor(outCap / 2))');
+  });
+});
+
+describe('设置项接线', () => {
+  it('explainCfg 有 maxTokens 字段', () => {
+    expect(read('js/app.js')).toContain("model:'', maxTokens:0 }");
+  });
+  it('aiOv 把它带进每个 AI 请求', () => {
+    expect(read('js/app.js')).toContain('o.max_tokens=Math.floor(Number(e.maxTokens))');
+  });
+  it('practice 统一走 aiOv，不再各处内联拼 ov（否则新增字段必漏）', () => {
+    const src = read('js/views/practice.js');
+    expect(src).not.toContain('{base_url:this.explainCfg.base,api_key:this.explainCfg.key}');
+    expect(src.match(/const ov=this\.aiOv\(\);/g)).toHaveLength(2);
+  });
+  it('设置界面有这个输入框', () => {
+    expect(read('js/tpl/view-settings.js')).toContain('explainCfg.maxTokens');
   });
 });

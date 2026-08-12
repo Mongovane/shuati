@@ -51,6 +51,16 @@ const TPL_VIEW_SETTINGS = `
             </div>
           </div>
         </div>
+        <div class="row" style="gap:10px;margin-top:10px;align-items:flex-end;flex-wrap:wrap">
+          <div class="field" style="margin:0;min-width:200px">
+            <label>输出上限 max_tokens（0 = 自动）</label>
+            <input class="inp" type="number" min="0" max="32000" step="1000" v-model.number="explainCfg.maxTokens" @change="saveExplainCfg" placeholder="0" />
+          </div>
+          <span class="muted" style="font-size:12px;max-width:420px;line-height:1.6">
+            推理模型会把思维链一起算进输出量（解析标题旁的用量小标会显示「输出 x（推理 y）」）。
+            如果正文常被截断、或只出推理不出正文，调到 16000～24000 再试；超过模型实际上限时会自动降档。
+          </span>
+        </div>
         <div class="row" style="gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn subtle xs" :disabled="modelPick.busy" @click="fetchModels" title="向中转站 /v1/models 拉取可用模型列表"><span v-if="modelPick.busy" class="spin"></span><icon name="download" :size="15" /> 从端点拉取</button>
           <button class="btn subtle xs" :disabled="aiTestBusy" @click="testAiConnection" title="发一条简单消息测试中转站是否通畅"><span v-if="aiTestBusy" class="spin"></span><icon name="wifi" :size="15" /> 测试连接</button>

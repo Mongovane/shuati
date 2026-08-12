@@ -22,7 +22,13 @@ const makeCtx = (script) => {
     cur: { id: 'q1', stem: '求公共部分面积', options: [], answer: [], type: 'short_answer', subject: 'math' },
     aiX: { id: 'q1', view: 'explain', text: '', reasoning: '', cards: [], chat: [], busy: false, reasonOpen: true, flip: {} },
     aiStates: { q1: st },
-    _aiJobs: {}, explainCfg: {}, autoSaveAi: false,
+    _aiJobs: {}, explainCfg: {}, autoSaveAi: false, ocrCfg: {},
+    // aiExplain / aiAsk 现在统一走 aiOv()（原来各处内联拼 ov，新增字段容易漏）
+    aiOv() { const e = this.explainCfg || {}; const o = {};
+      if (e.base && e.key) { o.base_url = e.base; o.api_key = e.key; }
+      if (e.model) o.model = e.model;
+      if (Number(e.maxTokens) > 0) o.max_tokens = Math.floor(Number(e.maxTokens));
+      return o; },
     flash(m) { this.flashes.push(String(m)); },
     go() {}, token: 't',
     async aiFetch(body, signal, onDelta) {
@@ -149,8 +155,13 @@ describe('服务端续写入口', () => {
     const askBlock = src.slice(src.indexOf('if (ask) {'));
     expect(askBlock).toContain('contFrom');
   });
-  it('续写轮的预算不能太小，否则要续很多次', () => {
-    expect(src).toMatch(/continue_kickoff\) \? 6000 : 8192/);
+  // 不绑死具体数字（预算后来按实测的推理量整体上调了），只保证「续写轮 < 首轮」
+  it('续写轮预算比首轮小，但不至于一轮只挤出几行', () => {
+    const m = src.match(/continue_kickoff\) \? (\d+) : (\d+)\)/);
+    expect(m).toBeTruthy();
+    const [, cont, first] = m.map(Number);
+    expect(cont).toBeGreaterThanOrEqual(8000);
+    expect(cont).toBeLessThan(first);
   });
   it('continue_from 有长度上限，避免把整篇塞回去', () => {
     expect(src).toContain("slice(-6000)");

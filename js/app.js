@@ -55,12 +55,12 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true, usage:null }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
+    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
     ocrCfg:{ model:'', base:'', key:'' },
-    explainCfg:{ base:'', key:'', model:'' },  // AI 解析中转站（本机 localStorage，留空用服务端）
+    explainCfg:{ base:'', key:'', model:'', maxTokens:0 },  // AI 解析中转站（本机 localStorage，留空用服务端）。maxTokens=0 用服务端默认值
     autoSaveAi:false,  // 自动保存 AI 解析/知识点卡片到题目（默认关：手动保存更省存储/额度）
     modelPick:{ busy:false, list:[] }, modelBoxOpen:false, aiTestBusy:false,  // 「从端点拉取」到的模型候选列表
     explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
@@ -148,7 +148,12 @@ const App={
     mockResult(){ const v=Object.values(this.mock.answers); const correct=v.filter(x=>x===true).length; const half=v.filter(x=>x===0.5).length;
       return { graded:v.filter(x=>x!==null).length, correct, half, score:correct+half*0.5, total:this.mock.questions.length }; },
     curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? this.aiX.text : ''; },
-    curAiReasoning(){ const q=this.cur; return (q && this.aiX.id===q.id) ? (this.aiX.reasoning||'') : ''; },
+    // 按视图取，和 curAiModel 一致。以前 reasoning 只有一份，生成完卡片切回解析，
+    // 解析下面挂的是卡片那次的思维链。
+    curAiReasoning(){ const q=this.cur; if(!q||this.aiX.id!==q.id)return '';
+      return this.aiX.view==='concept' ? (this.aiX.cardsReasoning||'') : (this.aiX.reasoning||''); },
+    curAiUsage(){ const q=this.cur; if(!q||this.aiX.id!==q.id)return null;
+      return this.aiX.view==='concept' ? (this.aiX.cardsUsage||null) : (this.aiX.usage||null); },
     curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && (this.aiX.view==='explain'||this.aiX.view==='concept')) ? (this.aiX.chat||[]) : []; },
     readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
     // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
@@ -199,7 +204,7 @@ const App={
       if(s){
         const view=s.view|| (genC?'concept':'explain');
         const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
-        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) }, reasoning:'', reasonOpen:true, usage:null };
+        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) }, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null };
       } else {
         // 无会话缓存：从题目已存的 ai_cards 和 analysis 同时恢复（两者可共存）
         const savedCards = nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length ? nc.ai_cards.slice() : [];
@@ -384,6 +389,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
   const e=this.explainCfg||{}; const o={};
   if(e.base&&e.key){ o.base_url=e.base; o.api_key=e.key; }
   if(e.model) o.model=e.model;
+  // 输出上限：推理模型会把思维链算进 completion_tokens，默认值不够时用户可自己调大
+  if(Number(e.maxTokens)>0) o.max_tokens=Math.floor(Number(e.maxTokens));
   if(vision && this.ocrCfg && (this.ocrCfg.model||'').trim()) o.vision_model=this.ocrCfg.model.trim();
   return o; },
 flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },

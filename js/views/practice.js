@@ -222,15 +222,21 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   if(isConcept){ st.cards=[]; st.cardsModel=''; st.flip={}; } else { st.text=''; st.chat=[]; st.model=''; }
   // 若当前正显示这道题，把显示切过去并标记生成中
   const showing=()=> this.cur && this.cur.id===qid;
+  // 思维链和用量按视图分开存：解题解析和知识点卡片是两套独立结果。
+  // 以前 reasoning 是单一字段、usage 也是（我加的），于是生成完卡片再切回解析，
+  // 解析标题下面挂的是卡片那次的思维链和用量 —— 和 model/cardsModel 的做法不一致。
+  // 注意必须声明在函数作用域：下面 let acc 那行和流回调里都要用。
+  const RK=isConcept?'cardsReasoning':'reasoning';
+  const UK=isConcept?'cardsUsage':'usage';
   if(showing()){
     this.aiX.id=qid; this.aiX.view=st.view; this.aiX.busy=true; this.aiX.asking=false;
-    this.aiX.reasoning='';   // 思维链：每次生成从零开始，只存内存
+    this.aiX[RK]='';   // 思维链：每次生成从零开始，只存内存
     if(isConcept){ this.aiX.cards=[]; this.aiX.cardsModel=''; this.aiX.flip={}; if(this.aiX.text&&!force)this.flash('解题解析已保留，随时可切回'); }
     else { this.aiX.text=''; this.aiX.chat=[]; this.aiX.model=''; if(this.aiX.cards&&this.aiX.cards.length&&!force)this.flash('知识点卡片已保留，随时可切回'); }
   }
   const ctrl=new AbortController(); this._aiJobs[jobKey]=ctrl;
-  const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
-  let acc=''; if(this.aiX.id===qid)this.aiX.usage=null;
+  const ov=this.aiOv();   // 统一走 aiOv：base/key 成对生效 + model + 输出上限，避免各处内联拼漏字段
+  let acc=''; if(this.aiX.id===qid)this.aiX[UK]=null;
   // 自动续写：正文被 token 上限截断时接着写，而不是甩给用户一句「可追问请继续」。
   // 两种截断都要接住：
   //   ① 正文写了一半被截 → finish_reason=length 且已有正文
@@ -252,19 +258,18 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
       r=await this.aiFetch(body, ctrl.signal,
       (d)=>{
         // 思维链只写 aiX（内存），不写 st（aiStates 缓存），因此切题/刷新即消失，也不会被自动保存写库
-        if(d.reasoning && showing()){ this.aiX.reasoning=(this.aiX.reasoning||'')+d.reasoning; }
-        if(d.reset && showing()){ this.aiX.reasoning=''; }
+        if(d.reasoning && showing()){ this.aiX[RK]=(this.aiX[RK]||'')+d.reasoning; }
+        if(d.reset && showing()){ this.aiX[RK]=''; }
         if(d.fallback && showing()){ this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型')); }
         if(d.streamFallback && showing()){ this.flash('流式中断，已切换为一次性返回'); }
         // 用量：累加各轮（含续写轮），让「谁吃掉了预算」变成可观测的数字而不是推测
-        if(d.usage && showing()){ const u=d.usage; const a=this.aiX.usage||{prompt:0,completion:0,reasoning:0,rounds:0};
-          this.aiX.usage={ prompt:(a.prompt||0)+(u.prompt||0), completion:(a.completion||0)+(u.completion||0),
-            reasoning:(a.reasoning||0)+(u.reasoning||0), rounds:(a.rounds||0)+1,
-            cap:this.aiX.usage&&this.aiX.usage.cap||0 }; }
+        if(d.usage && showing()){ const u=d.usage; const a=this.aiX[UK]||{prompt:0,completion:0,reasoning:0,rounds:0};
+          this.aiX[UK]={ prompt:(a.prompt||0)+(u.prompt||0), completion:(a.completion||0)+(u.completion||0),
+            reasoning:(a.reasoning||0)+(u.reasoning||0), rounds:(a.rounds||0)+1 }; }
         if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=contBase+d.acc; }
         else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=contBase+d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=st.text; } }
         // 正文开始输出 → 自动收起思维链（用户想看再点开）
-        if(d.text && showing() && this.aiX.reasonOpen && (this.aiX.reasoning||'').length) this.aiX.reasonOpen=false;
+        if(d.text && showing() && this.aiX.reasonOpen && (this.aiX[RK]||'').length) this.aiX.reasonOpen=false;
         // 被截断 → 记下来，退出流后自动续写（不再要求用户手动追问「请继续」）
         if(d.finish_reason==='length') truncated=true;
       });
@@ -296,8 +301,8 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
     else if(!st.text){
       // 区分「真没输出」和「思考占满预算」——后者续写 MAX_CONT 轮仍为空才算失败，
       // 提示也要说清是哪种情况，否则用户只会反复换模型而问题依旧。
-      if(cont>=MAX_CONT && (this.aiX.reasoning||'').length){
-        const u=this.aiX.usage;
+      if(cont>=MAX_CONT && (this.aiX[RK]||'').length){
+        const u=this.aiX[UK];
         const detail=u&&u.completion ? ('（本次用量：输出 '+u.completion+' token'+(u.reasoning?('，其中推理 '+u.reasoning):'')+'）') : '';
         throw new Error(MAX_CONT+' 轮都只有推理、没有正文'+detail+'。可在「设置 → AI 解析」里换一个非推理模型再试');
       }
@@ -360,7 +365,7 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
     history.push({role:'user',content:String(c.q||'').slice(0,3000)});
     if(c.a&&!c.err)history.push({role:'assistant',content:String(c.a).slice(0,4000)});
   }
-  const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
+  const ov=this.aiOv();   // 统一走 aiOv：base/key 成对生效 + model + 输出上限，避免各处内联拼漏字段
   // 构建上下文：explain 用 aiX.text，concept 用卡片序列化
   // 上下文必须跟着当前视图走。原来是 `aiX.text || cards`，只要生成过解析就永远优先用解析——
   // 于是在卡片视图里问「这张卡片的 not only 倒装怎么用」，模型收到的其实是解题解析，

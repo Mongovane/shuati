@@ -221,7 +221,16 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
           question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页的图片提问，请先识别图中文字再回答）', type:'short_answer', subject:'教材' },
           analysis:'', history, ask:q };
       }
-      const r=await this.aiFetch(reqBody, ctrl.signal, (d)=>{ if(d.reset)entry.a=''; if(d.text){ entry.a=d.acc; this._scrollRaiList('pdfAiList'); } });
+      // 被 token 上限截断时自动续写（以前连 finish_reason 都没接，直接留半截话）
+      let cut=false, cont=0; const MAXC=2;
+      let r=await this.aiFetch(reqBody, ctrl.signal, (d)=>{ if(d.reset)entry.a=''; if(d.text){ entry.a=d.acc; this._scrollRaiList('pdfAiList'); }
+        if(d.finish_reason==='length')cut=true; });
+      while(r && r.ok && cut && cont<MAXC && !ctrl.signal.aborted){
+        cont++; cut=false; const base=entry.a||'';
+        r=await this.aiFetch({ ...reqBody, continue_from:base.slice(-6000) }, ctrl.signal,
+          (d)=>{ if(d.text){ entry.a=base+d.acc; this._scrollRaiList('pdfAiList'); }
+                 if(d.finish_reason==='length')cut=true; });
+      }
       if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.pdfvClose(); this.go('settings'); throw new Error('访问码无效'); }
       if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
       if(!entry.a) entry.a='_（模型没有返回内容）_';
