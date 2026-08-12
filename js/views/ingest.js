@@ -205,17 +205,40 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
       let curAns=null; let answerMarkerStreak=0;   // 连续答案标记计数(无标题切区用)
       let answerMissStreak=0;                      // 中间夹了几行"不像答案"的噪声(水印/页码)
       let inEx=false, exLabel='';
+      // 教材正文里的小节标题会被 numRe 当成编号题吃进来（实测「4.4 算法的空间复杂度」
+      // 「5 小结」都变成了题目）。但试卷是整篇都是题、根本没有「习题」标题的，
+      // 所以不能无条件要求 inEx。做法：先扫一遍全文——
+      //   · 文档里存在习题/思考题这类分区标题 → 只在分区内抽题（教材）
+      //   · 完全没有 → 保持原行为，全文抽（试卷、小红本）
+      const hasExSections=/(^|\n)\s*#{0,6}\s*\**\s*(习\s*题|思\s*考\s*题|练\s*习(?!册)|复\s*习\s*题|自\s*测\s*题|课后练习|单元测试)/.test(text);
+      const mineHere=()=>!hasExSections || inEx;
       // —— 阅读材料关联 ——
       // 英语/语文真题结构:一段短文(A/B/C 标记 或 "阅读下面短文")后跟若干题,这些题共享短文。
       // 累积「非题目、非选项、非标记」的连续文本行作为 passage;遇到新题号就把它关联进去。
       let curPassage='', passageBuf=[];
+      // 材料长度硬上限。真实阅读短文再长也就两三千字；教材正文却能一路涨到几万字，
+      // 而 passage 是「每道题都带一份」的字段——138 题 × 几十 KB 直接把 D1 的 32MiB
+      // RPC 上限撑爆（线上实测：the size of this value was: 95036377 bytes）。
+      const PASSAGE_MAX=2400;
+      // 是否正处在「阅读材料区」：由 A/B/C、Passage N、「阅读下列短文」这类标记开启，
+      // 由章节 / 习题标题关闭。只有在区内，短小标题（Spain / Greece）才算材料的一部分；
+      // 区外的小标题（教材的「基本概念和术语」）必须重置材料，否则正文会跨节无限累积。
+      let inReading=false;
       const isProseLine=(s)=>{ const t=s.trim(); if(t.length<25)return false;
+        // MinerU 把插图输出成 <figure><img src="data:image/png;base64,…"> 内联在正文里。
+        // 单行能有 7 万字符（实测数据结构 p29 一行 69905 字），而 base64 全是字母，
+        // 下面的 enWords>=6 必然成立 —— 于是整块 base64 被当成散文塞进 passage，
+        // 而 passage 是每道题都带一份的字段，138 道题就是几十 MB，直接把 D1 的
+        // 32MiB RPC 上限撑爆。这类行根本不是正文，先挡掉。
+        if(/^[<|]/.test(t))return false;                       // HTML 块 / 表格行
+        if(/data:[a-z]+\/[a-z0-9.+-]+;base64,/i.test(t))return false;
+        if(t.length>1500)return false;                          // 正文段落不会这么长，是 blob
         if(numRe.test(t)||braRe.test(t))return false;
         if(/^\s*[（(]?[A-EＡ-Ｅ][）).．、]/.test(t))return false;
         if(answerBody.test(t))return false;
         const enWords=(t.match(/[A-Za-z]{2,}/g)||[]).length;
         return enWords>=6 || t.length>=40; };
-      const flushPassage=()=>{ const p=passageBuf.join(' ').replace(/\s+/g,' ').trim(); if(p.length>=40)curPassage=p; passageBuf=[]; };
+      const flushPassage=()=>{ const p=passageBuf.join(' ').replace(/\s+/g,' ').trim(); if(p.length>=40)curPassage=p.slice(0,PASSAGE_MAX); passageBuf=[]; };
       const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n'))){ if(curPassage&&!cur.passage)cur.passage=curPassage; items.push(cur); } cur=null; };
       // 答案字母优先从「故选 X / 答案为 X」里取；有些条目没有这句收尾，
       // 就退回取【精析】紧跟的那个大写字母。后面的 (?![A-Za-z]) 是为了不把
@@ -263,7 +286,13 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
           continue;
         }
         if(head){ const t=head.replace(/\*\*/g,'').trim();
-          if(xitiHead.test(t)){ inEx=true; exLabel=''; } else if(zhang.test(t)){ inEx=false; exLabel=''; }
+          if(xitiHead.test(t)){ inEx=true; exLabel=''; }
+          else if(zhang.test(t)){ inEx=false; exLabel=''; }
+          // 习题区的退出条件：任何「既不是习题标题、也不是小节标签」的标题都算离开。
+          // 少了这条，inEx 被「# 习题」打开后就再也关不掉，后面整本正文的小节标题
+          // 都会被 numRe 当成编号题抽进来（实测「4.4 算法的空间复杂度」「5 小结」）。
+          // 只在 hasExSections 为真时生效，试卷（没有习题分区）完全不受影响。
+          else if(inEx && hasExSections && !this._isChoiceLabel(t) && !this._isSectionLabel(t)){ inEx=false; exLabel=''; }
           if(this._isChoiceLabel(t))exLabel='choice'; else if(this._isSectionLabel(t))exLabel='other';
           // 阅读段落标记(单个 A/B/C/D 或 Spain/Denmark 这类小标题)后面跟的是新短文 → 清空旧材料重新累积。
           // 关键顺序:必须先 flush(关闭并 push 当前挂起的题,让它保住当前 passage),再清空 passage,
@@ -275,13 +304,21 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
             || /^(Passage|Text|Part)\s*[A-E0-9]/i.test(t)
             || /阅读下(列|面)/.test(t)
             || /^第\s*[一二三四五六七八九十0-9０-９]+\s*[节部]/.test(t);
-          if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; continue; }
-          if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; }
-          // 短文中间的小标题是材料的一部分,不能丢——丢了就看不出哪段讲哪个国家
-          else if(!cur && !this._isSectionLabel(t) && t.length<=40 && !/^\$/.test(t))passageBuf.push(t);
+          if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; inReading=false; continue; }
+          if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; inReading=true; }
+          // 短文中间的小标题是材料的一部分,不能丢——丢了就看不出哪段讲哪个国家。
+          // 但这只在阅读区内成立：区外（教材正文）的标题必须像 9eaa3fb 那样重置材料，
+          // 上一轮我把重置一并去掉了，教材的 passage 于是跨节累积直到把写库撑爆。
+          else if(inReading && !cur && !this._isSectionLabel(t) && t.length<=40 && !/^\$/.test(t))passageBuf.push(t);
+          else if(!inReading){ flush(); flushPassage(); curPassage=''; passageBuf=[]; }
           if(h){ flush(); continue; } }
-        const nm=raw.match(numRe); if(nm){ flushPassage(); flush();
+        const nm=raw.match(numRe); if(nm && mineHere()){ flushPassage(); flush();
           if(this._isChoiceLabel(nm[2]))exLabel='choice'; else if(this._isSectionLabel(nm[2]))exLabel='other';
+          // 既不是「选择题」也不是别的小节标签 → 这是一道真题目，不是小节表头。
+          // 必须清掉 exLabel：否则「5．选择题」留下的 choice 会一直生效，
+          // 让「6．试分析下列各算法的时间复杂度。」下面的 (1)…(6) 代码段
+          // 全被当成独立题目抽出来，父题干丢失，抽出一堆没头没尾的代码片段。
+          else exLabel='';
           cur={ num:nm[1], chapter, lines:[nm[2]], bra:false }; continue; }
         const bm=raw.match(braRe);
         // 「（1）」是独立题还是子项？
@@ -291,10 +328,12 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
         //    都靠这一条保持原样，不会被拆散、不会和后面的「解」失联。
         const standalone = inEx && exLabel==='choice';
         const sibling = !!(cur && cur.bra);
-        if(bm && (standalone || sibling)){
+        if(bm && mineHere() && (standalone || sibling)){
           flush(); cur={ num:bm[1], chapter, lines:[bm[2]], bra:true }; continue; }
         if(cur)cur.lines.push(raw);
-        else if(isProseLine(raw))passageBuf.push(raw.trim()); }   // 题目之外的散文行 → 累积为阅读材料
+        else if(isProseLine(raw)){   // 题目之外的散文行 → 累积为阅读材料（到上限就停，不再无限吃）
+          let used=0; for(const x of passageBuf)used+=x.length+1;
+          if(used<PASSAGE_MAX)passageBuf.push(raw.trim()); } }
       flushPassage(); flush(); flushAns();
       const out=[]; let qnum=0; for(const it of items){ const q=this._buildQuestionFromItem(it, ctx); if(!q)continue;
         if(this._isRefEntry(q.stem))continue;      // 参考书目条目，不是题
@@ -343,6 +382,24 @@ _isSectionLabel(t){ const s=String(t||'').replace(/[\s*#]/g,'').replace(/^[（(]
 // 同一行里的 A. / B. / C. / D. 选项拆出来。
 // MinerU 常把整道选择题压成一行：「…分成（）。A. 甲 B. 乙 C. 丙 D. 丁」，
 // 原来的 optRe 只认独占一行的选项，所以这类题全都退化成简答。
+// 选项行整体拆分。教材里选项常常一行放两个（或四个）：
+//   A．动态结构和静态结构            B．紧凑结构和非紧凑结构
+//   C．线性结构和非线性结构           D．内部结构和外部结构
+// 逐行的 optRe 是 `^…([A-D])…(.+)$`，那个 (.+)$ 会把整行剩余全吃进第一个选项，
+// 于是 B 被塞进 A 的文本里、D 被塞进 C 里 —— 只剩 2 个选项且内容是错的，
+// 比干脆丢掉更难发现。所以先把所有选项行拼起来，再按 A→B→C→D 严格递进切。
+// 这里已经确认每行都以选项标记开头，所以 2 个就够（不像正文里要求 3 个防误判）。
+_optionsFromLines(lines){ const t=(lines||[]).join(' ');
+      const re=/([A-EＡ-Ｅ])\s*[）).．、]\s*/g; const found=[]; let m;
+      while((m=re.exec(t)))found.push({ key:this._fullToHalf(m[1]), at:m.index, end:m.index+m[0].length });
+      const want=['A','B','C','D','E']; const seq=[];
+      for(const f of found){ if(f.key===want[seq.length])seq.push(f); }
+      if(seq.length<2)return null;
+      const out=[];
+      for(let i=0;i<seq.length;i++){ const e=(i+1<seq.length)?seq[i+1].at:t.length;
+        const txt=t.slice(seq[i].end,e).replace(/\s+/g,' ').trim();
+        if(!txt)return null; out.push({ key:seq[i].key, text:txt }); }
+      return out; },
 _splitInlineOptions(text){ const t=String(text||''); const re=/([A-DＡ-Ｄ])\s*[.．、]\s*/g; const found=[]; let m;
       while((m=re.exec(t))){ found.push({ key:this._fullToHalf(m[1]), at:m.index, end:m.index+m[0].length }); }
       // 必须是 A,B,C[,D] 严格递进且至少三个，否则正文里偶然出现的「A.」会被误判
@@ -378,8 +435,24 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
       if(m && m.index!=null){ const cut=m.index+(m[1]?m[1].length:0); const head=body.slice(0,cut).trim(); if(head){ stemPart=head; solPart=body.slice(cut).trim(); } else { stemPart=body; } }
       else { stemPart=body; }
       const optRe=/^\s*[（(]?\s*([A-DＡ-Ｄ])\s*[）).．、]\s*(.+)$/; const sl=stemPart.split('\n'); const opts=[]; const keep=[];
-      for(const ln of sl){ const om=ln.match(optRe); if(om){ opts.push({ key:this._fullToHalf(om[1]), text:om[2].trim() }); } else keep.push(ln); }
+      const optLines=[];
+      for(const ln of sl){ if(optRe.test(ln))optLines.push(ln); else keep.push(ln); }
+      if(optLines.length){
+        const merged=this._optionsFromLines(optLines);
+        if(merged){ for(const o of merged)opts.push(o); }
+        // 拆不出严格递进的序列（选项残缺、跨页断了）就退回逐行，至少别丢内容
+        else for(const ln of optLines){ const om=ln.match(optRe); if(om)opts.push({ key:this._fullToHalf(om[1]), text:om[2].trim() }); }
+      }
       let type='short_answer', options=[], answer=[], analysis='';
+      // 选项行拆出来了、但一个题干字都没剩 = 完形填空的孤儿选项行
+      //（「21. A. cooking B. cleaning C. jobs D. exercise」，空在上面的短文里）。
+      // 以前这条靠 opts.length<2 落到下面的 _splitInlineOptions 去识别 orphan；
+      // 现在 _optionsFromLines 会直接把 4 个选项拆出来，绕过了那条路，
+      // 于是完形填空全变成没有题干的空题。所以这里要单独接住。
+      if(opts.length>=2 && !keep.join('').trim()){
+        if(!(it.passage&&it.passage.length>=40))return null;   // 没短文可挂 → 永远做不了，丢掉
+        keep.push('（完形填空 第 '+(it.num||'?')+' 空）');
+      }
       // 独占一行的选项没找到时，再试同一行内的 A./B./C./D.
       if(opts.length<2){ const inl=this._splitInlineOptions(keep.join('\n').trim()||stemPart);
         if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0;
@@ -424,17 +497,34 @@ _stripPageFurniture(texts){ const arr=(texts||[]).map(t=>String(t||''));
       const norm=(s)=>s.replace(/[#*>`\s]/g,'').trim();
       if(arr.filter(t=>t.trim()).length<4)return arr;
       const freq=new Map(); let pageCount=0;
+      // 原来只统计每页首尾 3 行。但纸质书的书脊竖排标题（「数据结构（ 语」「C言版）（第 版」
+      // 「双色版」）被 PDF 抽取时会落在页面中部，混进题干里 —— 实测 88 题里 49 题带这种杂物。
+      // 所以改成全页扫。为了不误删正文，跳过看起来像题目内容的行：选项行、编号题行。
+      const looksContent=(x)=>/^[（(]?\s*[A-EＡ-Ｅ]\s*[）).．、]/.test(x) || /^\s*[0-9０-９]{1,3}\s*[.．、)）]\s*\S/.test(x);
       for(const t of arr){ const ls=t.split('\n').map(x=>x.trim()).filter(Boolean); if(!ls.length)continue; pageCount++;
-        const edge=new Set([...ls.slice(0,3), ...ls.slice(-3)]);
-        for(const ln of edge){ const k=norm(ln); if(!k||k.length>120)continue; freq.set(k,(freq.get(k)||0)+1); } }
+        const seen=new Set();
+        for(const ln of ls){ if(looksContent(ln))continue; const k=norm(ln);
+          // 上限保持 120：页眉页脚水印本来就长（「广东专插本考试信息网…电话: 153…」），
+          // 卡到 40 会把它排除在统计之外，等于把原来能剥的水印又漏回去。
+          if(!k||k.length>120)continue;
+          if(/^[A-EＡ-Ｅ]$/.test(k))continue;          // 阅读分篇标记「A」「B」，不是杂物
+          if(seen.has(k))continue; seen.add(k);
+          freq.set(k,(freq.get(k)||0)+1); } }
       if(!pageCount)return arr;
-      const junk=new Set(); for(const [k,n] of freq)if(n/pageCount>=0.6)junk.add(k);
+      // 阈值按行长分档：书脊竖排标题只印在单侧页面（recto/verso 交替），
+      // 频次天然只有 ~50%，用 60% 会正好卡在门外（实测「双色版」「C言版）（第 版」都是这样）。
+      // 短行本来就不可能是题目内容，放宽到 40%；长行保持 60% 以免误删正文。
+      const junk=new Set(); for(const [k,n] of freq){ const r=n/pageCount;
+        if(r >= (k.length<=12 ? 0.4 : 0.6))junk.add(k); }
       return arr.map(t=>{ if(!t.trim())return t;
         const ls=t.split('\n'); const out=[];
         for(let i=0;i<ls.length;i++){ const s=ls[i].trim(); const k=norm(s);
           if(k && junk.has(k))continue;
-          // 孤零零一行纯数字的页码,只在页首/页尾时删
-          if(/^[0-9０-９]{1,4}$/.test(s) && (i<2||i>=ls.length-2))continue;
+          // 孤立的纯数字行（页码）和孤立的单个汉字行（竖排文字被逐字切开：「第」「1」「章」）
+          // 在正文里不可能是内容，整页范围内都删。两字以上的（「绪论」）留给频次判定去处理。
+          if(/^[0-9０-９]{1,4}$/.test(s))continue;
+          if(/^[\u4e00-\u9fa5]$/.test(s))continue;
+          if(/^[—–\-—]{2,}$/.test(s))continue;
           out.push(ls[i]); }
         return out.join('\n').replace(/\n{3,}/g,'\n\n').trim(); }); },
 _extractWholeBook(book){
@@ -471,7 +561,9 @@ _extractWholeBook(book){
 // 转存同样能省体积（一条短链 ~40 字节 vs 几百 KB base64），而且图还在。
 _collectDataImages(q){ const out=[];
       const scan=(t)=>{ const s=String(t||''); const re=/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g; let m; while((m=re.exec(s)))out.push(m[0]); };
-      scan(q&&q.stem); scan(q&&q.analysis);
+      // passage 以前漏了。它同样会带 base64（MinerU 的插图内联在正文里），
+      // 而且是「每道题一份」，不转存的话比 stem 更容易把写库撑爆。
+      scan(q&&q.stem); scan(q&&q.analysis); scan(q&&q.passage);
       if(q&&Array.isArray(q.options))for(const o of q.options)scan(o&&o.text);
       if(q&&Array.isArray(q.answer))for(const a of q.answer)if(typeof a==='string')scan(a);
       return out; },
@@ -504,6 +596,7 @@ async _hoistImages(arr){
       if(map.size){
         const swap=(t)=>{ let s=String(t||''); for(const [k,v] of map)s=s.split(k).join(v); return s; };
         for(const q of arr){ q.stem=swap(q.stem); if(q.analysis)q.analysis=swap(q.analysis);
+          if(q.passage)q.passage=swap(q.passage);
           if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:swap(o.text)}));
           if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
       }

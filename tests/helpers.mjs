@@ -68,3 +68,6 @@ export function authedReq(url, opts = {}) {
   return new Request(url, { ...opts, headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json', ...(opts.headers || {}) } });
 }
 export function makeEnv(db) { return { DB: db, APP_TOKEN: TOKEN }; }
+
+// 转出给测试用（_utils.js 是标准 ESM，直接 re-export）
+export { batchChunked, rowBytes, D1_BATCH_BYTES } from '../functions/api/_utils.js';
