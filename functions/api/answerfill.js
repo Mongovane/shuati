@@ -111,15 +111,10 @@ export async function onRequestPost({ request, env }) {
       body: JSON.stringify({
         model, temperature: 0.1,
         response_format: { type: 'json_object' },
-        // 必须给上限。省略 max_tokens 不等于「用模型最大值」——
-        // OpenAI 兼容接口下这是「让服务商决定」，而部分中转站会塞一个很小的默认值
-        // （512 / 1024 之类），于是看起来"不限"实际被静默截断。而这里是 JSON 模式，
-        // 一旦截断就是非法 JSON，8 道题会一起废掉而不是废一道。
-        // 基数 6000 是给思维链留的：实测这个中转站的推理模型一次思考就要 5.4K，
-        // 而它算进 completion_tokens。基数给 2000 的话 6 道题只剩 2K 写 JSON，
-        // 截断了整批全废，比多花点 token 贵得多。每题再加 900 覆盖答案+简短解析。
-        // 用户在设置里填了输出上限就听他的。
-        max_tokens: ovMax > 0 ? Math.min(32000, Math.max(1024, ovMax)) : Math.min(20000, 6000 + qs.length * 900),
+        // 输出上限默认不传，用中转站/模型自己的最大值（和 explain.js 一致）。
+        // 这条路是非流式的，检测不了复读，所以「跑飞」只能靠上面的超时兜。
+        // 用户在「设置 → AI 解析 → 输出上限」里填了就听他的。
+        ...(ovMax > 0 ? { max_tokens: Math.min(200000, Math.max(256, ovMax)) } : {}),
         messages: [
           { role: 'system', content: SYS },
           { role: 'user', content: `请为下面 ${qs.length} 道题补出参考答案：\n\n${blocks.join('\n\n')}` },

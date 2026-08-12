@@ -101,25 +101,33 @@ export async function onRequestPost({ request, env }) {
   }
   // 用户覆盖的输出上限：太小会导致推理模型永远写不到正文，太大会被上游拒绝，
   // 所以钳在 [1024, 32000]。传 0 / 不传 = 用各场景的默认值。
+  // —— 输出上限：默认【不传】，用中转站/模型自己的最大值 ——
+  //
+  // 为什么不再设默认值：预设一个数字总是错的。给小了推理模型会把预算全花在思维链上
+  //（实测这个中转站一次推理 5.4K，而它算进 completion_tokens），正文一个字都写不出来；
+  // 给大了又会被上游以「超过模型上限」拒掉，还得降档重试。而各家模型的真实上限
+  // 从 8K 到 128K 都有，服务端没法替所有人猜。
+  //
+  // 不传的代价是失去了「跑飞」的硬止损。这个改由流层面兜住，而且比 max_tokens 更精确：
+  //   · 复读检测：我们自己持有流的 reader，尾部出现 3 次以上完全相同的重复段就中止
+  //   · 硬字数上限：极端情况下的最后一道闸
+  //   · 非流式的 answerfill 检测不了复读，仍然靠超时
+  // 见 js/app.js 的 aiFetch。
+  //
+  // 用户仍可在「设置 → AI 解析 → 输出上限」里显式指定（0 / 留空 = 不传）。
   const ovMax = Math.floor(Number(b.max_tokens) || 0);
-  const capOut = (def) => (ovMax > 0 ? Math.min(32000, Math.max(1024, ovMax)) : def);
   const payload = {
     model: pageImage ? (String(b.vision_model||'').trim() || ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (ovModel || env.AI_MODEL || 'gpt-4o'),
     messages,
     temperature: 0.3,
-    // 续写轮不需要再来一次完整预算，但也不能太小，否则一轮只能挤出几行、要续很多次
-    // 输出上限。推理模型会把 reasoning_content 一起算进 completion_tokens（实测
-    // deepseek-v4-flash 一次推理 5.4K），所以这个数字必须留出「推理 + 正文」两份空间。
-    // 旧值 ask=4096 比推理量本身还小 → 追问必然空输出；concept=6000 只剩 0.6K
-    // 写 JSON → 卡片解析必然失败。这不是模型坏，是预算给少了。
-    // 用户可在「设置 → AI 解析」里按自己中转站/模型的实际上限调整（0 = 用下面的默认值）。
-    max_tokens: capOut(ask ? 12000 : (concept ? 12000 : ((contFrom || b.continue_kickoff) ? 8000 : 16000))),
   };
+  if (ovMax > 0) payload.max_tokens = Math.min(200000, Math.max(256, ovMax));
   // 上游若因 max_tokens 过大而 400，自动降档重试一次。
   // 各家模型的输出上限差别很大（8K / 16K / 32K+），把默认值调高就必然会撞到一些，
   // 报错甩给用户不如自己退一步。
   const tooLarge = (t) => /max[_\s-]*(?:completion[_\s-]*)?tokens|maximum.*tokens|too large|exceeds?.*(?:limit|maximum)|超过.*(?:上限|最大)/i.test(String(t||''));
-  let outCap = payload.max_tokens;
+  // 只有用户显式设过上限时才有「降档」可言；没设的情况下这类 400 说明是别的原因，直接透传
+  let outCap = payload.max_tokens || 0;
   const call = (stream) => fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + effKey },
