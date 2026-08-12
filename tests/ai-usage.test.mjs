@@ -110,36 +110,23 @@ describe('诊断文案不能把推断当结论', () => {
   });
 });
 
-describe('输出预算：按实测的推理量重新分配', () => {
+describe('输出上限：默认不传，用中转站/模型自己的最大值', () => {
   const src = read('functions/api/explain.js');
-  // 实测 deepseek-v4-flash 一次推理 5.4K，而它算进 completion_tokens。
-  // 旧值 ask=4096 比推理量本身还小 → 追问必然空输出；concept=6000 只剩 0.6K 写 JSON。
-  const budgets = () => {
-    const m = src.match(/max_tokens: capOut\(ask \? (\d+) : \(concept \? (\d+) : \(\(contFrom \|\| b\.continue_kickoff\) \? (\d+) : (\d+)\)\)\)/);
-    expect(m).toBeTruthy();
-    const [, ask, concept, cont, first] = m.map(Number);
-    return { ask, concept, cont, first };
-  };
-  it('追问的预算必须明显大于典型推理量（旧值 4096 是必然失败的）', () => {
-    expect(budgets().ask).toBeGreaterThanOrEqual(10000);
+  // 契约变更：这里原来钉的是一张预算表（解析 16000 / 卡片 12000 / 追问 12000）。
+  // 但预设任何数字都会错——给小了推理模型写不到正文，给大了被上游拒。
+  // 现在默认不传，跑飞交给流层面的复读检测兜（见 ai-runaway-guard.test.mjs）。
+  it('不再有硬编码的默认预算表', () => {
+    expect(src).not.toMatch(/max_tokens: capOut\(/);
+    expect(src).not.toMatch(/ask \? 12000/);
   });
-  it('知识点卡片同理（要留出写完整 JSON 的空间）', () => {
-    expect(budgets().concept).toBeGreaterThanOrEqual(10000);
+  it('只在用户显式设置时才带 max_tokens', () => {
+    expect(src).toContain('if (ovMax > 0) payload.max_tokens =');
   });
-  it('解题解析是最长的场景，预算最大', () => {
-    const b = budgets();
-    expect(b.first).toBeGreaterThanOrEqual(b.ask);
-    expect(b.first).toBeGreaterThanOrEqual(b.concept);
+  it('用户覆盖值钳在 [256, 200000]', () => {
+    expect(src).toContain('Math.min(200000, Math.max(256, ovMax))');
   });
-  it('用户覆盖值被钳在合理区间，避免设成 100 或 999999', () => {
-    expect(src).toContain('Math.min(32000, Math.max(1024, ovMax))');
-  });
-  it('传 0 / 不传就用默认值', () => {
-    expect(src).toContain('ovMax > 0 ?');
-  });
-  it('上游嫌值太大时自动降档一次，而不是把错误甩给用户', () => {
-    expect(src).toContain('tooLarge');
-    expect(src).toContain('Math.max(4096, Math.floor(outCap / 2))');
+  it('没设过上限时不做「降档重试」（那类 400 是别的原因，应透传）', () => {
+    expect(src).toContain('let outCap = payload.max_tokens || 0;');
   });
 });
 

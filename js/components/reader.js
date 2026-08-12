@@ -50,12 +50,14 @@ const ReaderMixin = {
           analysis:'', history, ask:q };
         let r=await this.aiFetch(body, ctrl.signal,
           (d)=>{ if(d.reset)entry.a=''; if(d.text){ entry.a=d.acc; this._scrollRaiList('rdAiList'); }
-                 if(d.finish_reason==='length')cut=true; });
+                 if(d.finish_reason==='length')cut=true;
+                 if(d.runawayStop){ cut=false; this.flash(d.runawayStop==='loop'?'⚠ 模型开始重复输出，已自动停止':'⚠ 输出过长已自动停止', true); } });
         while(r && r.ok && cut && cont<MAXC && !ctrl.signal.aborted){
           cont++; cut=false; const base=entry.a||'';
           r=await this.aiFetch({ ...body, continue_from:base.slice(-6000) }, ctrl.signal,
             (d)=>{ if(d.text){ entry.a=base+d.acc; this._scrollRaiList('rdAiList'); }
-                   if(d.finish_reason==='length')cut=true; });
+                   if(d.finish_reason==='length')cut=true;
+                 if(d.runawayStop){ cut=false; this.flash(d.runawayStop==='loop'?'⚠ 模型开始重复输出，已自动停止':'⚠ 输出过长已自动停止', true); } });
         }
         if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.readerClose(); this.go('settings'); throw new Error('访问码无效'); }
         if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }

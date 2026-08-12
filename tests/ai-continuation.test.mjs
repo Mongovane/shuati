@@ -155,13 +155,10 @@ describe('服务端续写入口', () => {
     const askBlock = src.slice(src.indexOf('if (ask) {'));
     expect(askBlock).toContain('contFrom');
   });
-  // 不绑死具体数字（预算后来按实测的推理量整体上调了），只保证「续写轮 < 首轮」
-  it('续写轮预算比首轮小，但不至于一轮只挤出几行', () => {
-    const m = src.match(/continue_kickoff\) \? (\d+) : (\d+)\)/);
-    expect(m).toBeTruthy();
-    const [, cont, first] = m.map(Number);
-    expect(cont).toBeGreaterThanOrEqual(8000);
-    expect(cont).toBeLessThan(first);
+  // 预算表整体取消了（默认不传 max_tokens），续写轮不再有独立数字。
+  // 续写要保证的是「消息结构对」，不是「预算多少」。
+  it('续写轮不再有硬编码预算', () => {
+    expect(src).not.toMatch(/continue_kickoff\) \? \d+ : \d+\)/);
   });
   it('continue_from 有长度上限，避免把整篇塞回去', () => {
     expect(src).toContain("slice(-6000)");

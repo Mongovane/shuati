@@ -99,14 +99,11 @@ describe('没被改动的功能要保持原样', () => {
   // 省略它不等于「用模型最大值」，OpenAI 兼容接口下是「让服务商决定」，
   // 部分中转站会塞一个很小的默认值（512/1024），于是被静默截断；
   // 而这里是 JSON 模式，截断 = 非法 JSON = 8 道题一起废。
-  it('AI 补答案要有明确上限，并尊重用户设置', () => {
+  it('AI 补答案默认不传上限，但尊重用户设置', () => {
     const src = read('functions/api/answerfill.js');
-    expect(src).toContain('max_tokens:');
-    expect(src).toContain('Math.min(32000, Math.max(1024, ovMax))');
-    expect(src).toContain('6000 + qs.length * 900');
-    // 基数必须覆盖典型思维链（实测 5.4K），否则截断 → 非法 JSON → 整批废掉
-    const m = src.match(/Math\.min\((\d+), (\d+) \+ qs\.length \* (\d+)\)/);
-    expect(Number(m[2])).toBeGreaterThanOrEqual(6000);
+    expect(src).toContain('...(ovMax > 0 ? { max_tokens:');
+    expect(src).toContain('Math.min(200000, Math.max(256, ovMax))');
+    expect(src).not.toMatch(/qs\.length \* 900/);
   });
   it('AI 补答案是非流式的，必须有超时，否则一次卡住堵死整轮', () => {
     const src = read('functions/api/answerfill.js');

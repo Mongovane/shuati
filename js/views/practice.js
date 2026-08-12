@@ -262,6 +262,10 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
         if(d.reset && showing()){ this.aiX[RK]=''; }
         if(d.fallback && showing()){ this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型')); }
         if(d.streamFallback && showing()){ this.flash('流式中断，已切换为一次性返回'); }
+        // 跑飞被拦下：告诉用户为什么停了，否则会以为是网络断了
+        if(d.runawayStop && showing()){ truncated=false;   // 别再自动续写，续了还是会打转
+          this.flash(d.runawayStop==='loop' ? '⚠ 模型开始重复输出，已自动停止（已生成的内容保留）'
+                                            : '⚠ 输出过长已自动停止（已生成的内容保留）', true); }
         // 用量：累加各轮（含续写轮），让「谁吃掉了预算」变成可观测的数字而不是推测
         if(d.usage && showing()){ const u=d.usage; const a=this.aiX[UK]||{prompt:0,completion:0,reasoning:0,rounds:0};
           this.aiX[UK]={ prompt:(a.prompt||0)+(u.prompt||0), completion:(a.completion||0)+(u.completion||0),

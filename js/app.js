@@ -318,6 +318,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         if(useStream && ct.includes('text/event-stream') && res.body){
           let acc=''; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
           try{
+            let lastGuard=0, stopped=false;
+            const LOOP_MAX_CHARS=400000;   // 最后一道闸：40 万字，正常解析远达不到
             while(true){ const {done,value}=await reader.read(); if(done)break;
               buf+=dec.decode(value,{stream:true});
               let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
@@ -355,7 +357,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                     else { this._thinkBuf+=t.replace('<think>',''); if(onDelta)onDelta({reasoning:t.replace('<think>','')}); }
                   } else { acc+=t; if(onDelta)onDelta({text:t, acc}); }
                 } else if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); }
-                } }
+                // 跑飞防护：每多出 ~400 字查一次复读；命中就停下并保留已生成内容。
+                // 不 throw —— 已经写出来的部分通常有用，只是尾巴在打转。
+                if(acc.length - lastGuard >= 400){
+                  lastGuard=acc.length;
+                  if(acc.length > LOOP_MAX_CHARS){ if(onDelta)onDelta({runawayStop:'length'}); stopped=true; }
+                  else if(this._isLooping(acc)){ if(onDelta)onDelta({runawayStop:'loop'}); stopped=true; }
+                }
+                } if(stopped)break; }
+            if(stopped){ try{ await reader.cancel(); }catch(_){} return { res, text:acc, ok:true, runaway:true }; }
             return { res, text:acc, ok:true };
           }catch(e){
             if(signal && signal.aborted) throw e;
@@ -384,6 +394,26 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         }
       };
       return attempt(!stable, 2);
+    },
+    // —— 跑飞防护 ——
+    // 不再给 max_tokens 设默认值（用中转站/模型自己的最大值），代价是失去了硬止损。
+    // 补偿放在流层面，比预设一个数字更精确：我们自己持有 reader，能看着内容判断。
+    //
+    // 复读判定：在尾部搜索真实周期 p，若最后连续 3 段长度为 p 的内容完全相同，
+    // 就认为模型在打转。要求 p ≥ 20 且内容非空白，正常文本（选项列表、相似推导行）
+    // 撞不上；只在累计 600 字以后才判，避免开头误伤。
+    _isLooping(acc){
+      const tail=String(acc||'').slice(-2000);
+      if(tail.length<600)return false;
+      for(let p=20; p<=400; p++){
+        if(tail.length < p*3)break;
+        const unit=tail.slice(-p);
+        if(!unit.trim())continue;
+        let n=1, i=tail.length-p;
+        while(i>=p && tail.slice(i-p,i)===unit){ n++; i-=p; }
+        if(n>=3)return true;
+      }
+      return false;
     },
     aiOv(vision){ // 全局 AI 中转站覆盖：随所有 AI 请求携带（成对生效；拍照/看图另带视觉模型）
   const e=this.explainCfg||{}; const o={};
