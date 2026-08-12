@@ -77,21 +77,44 @@ export async function onRequestPost({ request, env }) {
     ? { role: 'user', content: [ { type: 'text', text: (userText || '（请阅读下图这一页教材内容）') }, { type: 'image_url', image_url: { url: pageImage } } ] }
     : { role: 'user', content: userText };
   const messages = [ { role: 'system', content: sys }, firstUser ];
+  // —— 续写：正文被 token 上限截断时，把已写部分回填成 assistant 轮，让模型接着往下写 ——
+  // 推理模型（deepseek-v4-flash 这类）尤其需要：它可能把整个 max_tokens 都花在
+  // reasoning_content 上，一个正文字都没吐出来就 finish_reason=length。
+  // 以前这种情况客户端直接报「模型没有返回内容」并把整段思维链丢掉。
+  const contFrom = String(b.continue_from || '').slice(-6000);
+  if (!ask && contFrom) {
+    messages.push({ role: 'assistant', content: contFrom });
+    messages.push({ role: 'user', content: '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头，直接从断掉的地方续上。' });
+  } else if (!ask && b.continue_kickoff) {
+    // 思考占满预算、正文还是空的：让它跳过再思考，直接给结论
+    messages.push({ role: 'user', content: '不要再展开思考过程了，请直接开始输出解析正文。' });
+  }
   if (ask) {
     if (priorAnalysis) messages.push({ role: 'assistant', content: priorAnalysis }); // 已生成的解析作为上一轮回答
     messages.push(...history);                                                        // 之前的追问轮次
     messages.push({ role: 'user', content: ask });                                    // 本次追问
+    // 追问的回答也会被 token 上限截断，同样要能续写
+    if (contFrom) {
+      messages.push({ role: 'assistant', content: contFrom });
+      messages.push({ role: 'user', content: '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头。' });
+    }
   }
   const payload = {
     model: pageImage ? (String(b.vision_model||'').trim() || ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (ovModel || env.AI_MODEL || 'gpt-4o'),
     messages,
     temperature: 0.3,
-    max_tokens: ask ? 4096 : (concept ? 6000 : 8192),
+    // 续写轮不需要再来一次完整预算，但也不能太小，否则一轮只能挤出几行、要续很多次
+    max_tokens: ask ? 4096 : (concept ? 6000 : ((contFrom || b.continue_kickoff) ? 6000 : 8192)),   // 续写轮 6000：太小会要续很多次
   };
   const call = (stream) => fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + effKey },
-    body: JSON.stringify({ ...payload, stream }),
+    // 流式时要用量：stream_options.include_usage 会在 [DONE] 前多发一帧带 usage 的 chunk。
+    // 之前代码从来没读过 usage，所以「推理占满了 token 预算」这类判断全是推测——
+    // 到底是 reasoning 吃掉了 completion 额度，还是中转站截流，没有数据没法分辨。
+    // 注意：部分中转站不认这个字段，多传一个未知字段一般会被忽略；万一报错，
+    // 下面的非流式回退路径本来就会兜住。
+    body: JSON.stringify(stream ? { ...payload, stream, stream_options: { include_usage: true } } : { ...payload, stream }),
     signal: request.signal, // 客户端中断 → 上游同步中断
   });
 
@@ -122,7 +145,7 @@ export async function onRequestPost({ request, env }) {
       }
       const d = await up2.json();
       const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
-      return json({ text, model: (d && d.model) || payload.model });
+      return json({ text, model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
     }
     const up = await call(false);
     if (!up.ok) {
@@ -132,7 +155,7 @@ export async function onRequestPost({ request, env }) {
     }
     const d = await up.json();
     const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
-    return json({ text, model: (d && d.model) || payload.model });
+    return json({ text, model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
   } catch (e) {
     if (e && e.name === 'AbortError') return json({ error: '已取消' }, 499);
     return json({ error: '连接 AI 中转站失败：' + e.message }, 502);

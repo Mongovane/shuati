@@ -1358,3 +1358,8 @@ h2{margin:.2em 0 .6em}
   .fill-res{max-width:38%}
 }
 @media(prefers-reduced-motion:reduce){.fill-bar i{transition:none}}
+
+/* AI 用量小标：挨着模型名，把「谁吃掉了输出预算」摆出来 */
+.usage-chip{font-weight:400;font-size:11px;margin-left:6px;padding:1px 7px;border-radius:999px;
+  background:var(--surface-2);color:var(--ink-soft);cursor:help;white-space:nowrap;
+  font-variant-numeric:tabular-nums}

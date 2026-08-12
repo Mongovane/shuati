@@ -7,10 +7,10 @@ index 0000000..2752eb9
 +node_modules/
 +.DS_Store
 diff --git a/css/style.css b/css/style.css
-index 7ac1fe1..0c3f6ea 100644
+index 7ac1fe1..08af693 100644
 --- a/css/style.css
 +++ b/css/style.css
-@@ -1246,3 +1246,115 @@ h2{margin:.2em 0 .6em}
+@@ -1246,3 +1246,120 @@ h2{margin:.2em 0 .6em}
    text-align:center;vertical-align:baseline}
  .passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
    color:var(--accent);font-weight:600}
@@ -126,6 +126,11 @@ index 7ac1fe1..0c3f6ea 100644
 +  .fill-res{max-width:38%}
 +}
 +@media(prefers-reduced-motion:reduce){.fill-bar i{transition:none}}
++
++/* AI 用量小标：挨着模型名，把「谁吃掉了输出预算」摆出来 */
++.usage-chip{font-weight:400;font-size:11px;margin-left:6px;padding:1px 7px;border-radius:999px;
++  background:var(--surface-2);color:var(--ink-soft);cursor:help;white-space:nowrap;
++  font-variant-numeric:tabular-nums}
 diff --git a/fixes.patch b/fixes.patch
 deleted file mode 100644
 index 37440a4..0000000
@@ -644,7 +649,7 @@ index 697edbb..328149a 100644
  
  // 把数据库行还原成前端可用的题目对象
 diff --git a/functions/api/explain.js b/functions/api/explain.js
-index 536fd4a..dec1a49 100644
+index 536fd4a..86d0e3b 100644
 --- a/functions/api/explain.js
 +++ b/functions/api/explain.js
 @@ -1,4 +1,5 @@
@@ -673,6 +678,71 @@ index 536fd4a..dec1a49 100644
  
    const base = effBase;
    // reading 模式：用「材料 + 选段」的自然表述做上下文，不套题目/选项/参考答案模板（否则模型误以为在解题而非阅读辅导）
+@@ -81,21 +77,44 @@ export async function onRequestPost({ request, env }) {
+     ? { role: 'user', content: [ { type: 'text', text: (userText || '（请阅读下图这一页教材内容）') }, { type: 'image_url', image_url: { url: pageImage } } ] }
+     : { role: 'user', content: userText };
+   const messages = [ { role: 'system', content: sys }, firstUser ];
++  // —— 续写：正文被 token 上限截断时，把已写部分回填成 assistant 轮，让模型接着往下写 ——
++  // 推理模型（deepseek-v4-flash 这类）尤其需要：它可能把整个 max_tokens 都花在
++  // reasoning_content 上，一个正文字都没吐出来就 finish_reason=length。
++  // 以前这种情况客户端直接报「模型没有返回内容」并把整段思维链丢掉。
++  const contFrom = String(b.continue_from || '').slice(-6000);
++  if (!ask && contFrom) {
++    messages.push({ role: 'assistant', content: contFrom });
++    messages.push({ role: 'user', content: '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头，直接从断掉的地方续上。' });
++  } else if (!ask && b.continue_kickoff) {
++    // 思考占满预算、正文还是空的：让它跳过再思考，直接给结论
++    messages.push({ role: 'user', content: '不要再展开思考过程了，请直接开始输出解析正文。' });
++  }
+   if (ask) {
+     if (priorAnalysis) messages.push({ role: 'assistant', content: priorAnalysis }); // 已生成的解析作为上一轮回答
+     messages.push(...history);                                                        // 之前的追问轮次
+     messages.push({ role: 'user', content: ask });                                    // 本次追问
++    // 追问的回答也会被 token 上限截断，同样要能续写
++    if (contFrom) {
++      messages.push({ role: 'assistant', content: contFrom });
++      messages.push({ role: 'user', content: '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头。' });
++    }
+   }
+   const payload = {
+     model: pageImage ? (String(b.vision_model||'').trim() || ovModel || env.AI_VISION_MODEL || env.AI_MODEL || 'gpt-4o') : (ovModel || env.AI_MODEL || 'gpt-4o'),
+     messages,
+     temperature: 0.3,
+-    max_tokens: ask ? 4096 : (concept ? 6000 : 8192),
++    // 续写轮不需要再来一次完整预算，但也不能太小，否则一轮只能挤出几行、要续很多次
++    max_tokens: ask ? 4096 : (concept ? 6000 : ((contFrom || b.continue_kickoff) ? 6000 : 8192)),   // 续写轮 6000：太小会要续很多次
+   };
+   const call = (stream) => fetch(`${base}/chat/completions`, {
+     method: 'POST',
+     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + effKey },
+-    body: JSON.stringify({ ...payload, stream }),
++    // 流式时要用量：stream_options.include_usage 会在 [DONE] 前多发一帧带 usage 的 chunk。
++    // 之前代码从来没读过 usage，所以「推理占满了 token 预算」这类判断全是推测——
++    // 到底是 reasoning 吃掉了 completion 额度，还是中转站截流，没有数据没法分辨。
++    // 注意：部分中转站不认这个字段，多传一个未知字段一般会被忽略；万一报错，
++    // 下面的非流式回退路径本来就会兜住。
++    body: JSON.stringify(stream ? { ...payload, stream, stream_options: { include_usage: true } } : { ...payload, stream }),
+     signal: request.signal, // 客户端中断 → 上游同步中断
+   });
+ 
+@@ -126,7 +145,7 @@ export async function onRequestPost({ request, env }) {
+       }
+       const d = await up2.json();
+       const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
+-      return json({ text, model: (d && d.model) || payload.model });
++      return json({ text, model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
+     }
+     const up = await call(false);
+     if (!up.ok) {
+@@ -136,7 +155,7 @@ export async function onRequestPost({ request, env }) {
+     }
+     const d = await up.json();
+     const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
+-    return json({ text, model: (d && d.model) || payload.model });
++    return json({ text, model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
+   } catch (e) {
+     if (e && e.name === 'AbortError') return json({ error: '已取消' }, 499);
+     return json({ error: '连接 AI 中转站失败：' + e.message }, 502);
 diff --git a/functions/api/process.js b/functions/api/process.js
 index f360f8d..737d183 100644
 --- a/functions/api/process.js
@@ -796,9 +866,18 @@ index 84cdf6f..da8fce7 100644
    for (const k of ALLOWED) {
      if (body[k] !== undefined && body[k] !== null) {
 diff --git a/js/app.js b/js/app.js
-index 51b2a7f..b25dee4 100644
+index 51b2a7f..2e51ae0 100644
 --- a/js/app.js
 +++ b/js/app.js
+@@ -55,7 +55,7 @@ const App={
+     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
+     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
+     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
+-    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
++    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true, usage:null }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
+     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
+     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
+     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
 @@ -76,7 +76,7 @@ const App={
      mineruTokenBad:false,
      bookExtract:{ busy:false, prog:'', done:0, total:0 },
@@ -808,11 +887,61 @@ index 51b2a7f..b25dee4 100644
      extractSkippedToc:0,
      extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
      bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },
+@@ -199,7 +199,7 @@ const App={
+       if(s){
+         const view=s.view|| (genC?'concept':'explain');
+         const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
+-        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) }, reasoning:'', reasonOpen:true };
++        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) }, reasoning:'', reasonOpen:true, usage:null };
+       } else {
+         // 无会话缓存：从题目已存的 ai_cards 和 analysis 同时恢复（两者可共存）
+         const savedCards = nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length ? nc.ai_cards.slice() : [];
+@@ -320,6 +320,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+                 if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
+                 if(j.error) throw new Error(j.error.message||String(j.error));
+                 if(j.model && onDelta) onDelta({model:j.model});
++                // include_usage 会在结束前补发一帧：choices 为空数组、只带 usage。
++                // reasoning token 的字段名各家不一样，全都收一遍。
++                if(j.usage && onDelta){ const u=j.usage;
++                  const det=u.completion_tokens_details||u.output_tokens_details||{};
++                  onDelta({ usage:{
++                    prompt: u.prompt_tokens ?? u.input_tokens ?? null,
++                    completion: u.completion_tokens ?? u.output_tokens ?? null,
++                    reasoning: det.reasoning_tokens ?? u.reasoning_tokens ?? u.completion_tokens_reasoning ?? null,
++                    total: u.total_tokens ?? null,
++                  } }); }
+                 const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
+                 const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
+                 if(fr && onDelta) onDelta({finish_reason:fr});
+@@ -353,6 +363,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+           if(d && d.error) return { res, text:'', ok:false, errText:d.error };
+           const txt = (d && d.text) || '';
+           if(d && d.model && onDelta) onDelta({model:d.model});
++          if(d && d.usage && onDelta){ const u=d.usage;
++            const det=u.completion_tokens_details||u.output_tokens_details||{};
++            onDelta({ usage:{
++              prompt: u.prompt_tokens ?? u.input_tokens ?? null,
++              completion: u.completion_tokens ?? u.output_tokens ?? null,
++              reasoning: det.reasoning_tokens ?? u.reasoning_tokens ?? null,
++              total: u.total_tokens ?? null,
++            } }); }
+           if(txt && onDelta) onDelta({text:txt, acc:txt, full:true});
+           return { res, text:txt, ok:true };
+         }catch(e){
 diff --git a/js/components/question-card.js b/js/components/question-card.js
-index 87b62bc..465588e 100644
+index 87b62bc..eb170bc 100644
 --- a/js/components/question-card.js
 +++ b/js/components/question-card.js
-@@ -19,10 +19,29 @@ const QuestionCard={
+@@ -6,7 +6,7 @@ const normAns=(v)=>String(v==null?'':v)
+ 
+ const QuestionCard={
+   components:{ RichText },
+-  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
++  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiUsage:{type:Object,default:null}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
+   emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop','ai-clear-chat'],
+   // 这里原来有两个 watch:{}（一个在 computed 前、一个在 mounted 前），
+   // 后者把前者整个覆盖掉，aiReasoning / aiText / aiChat / aiBusy 四个监听全部不生效：
+@@ -19,10 +19,46 @@ const QuestionCard={
      aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
      aiText(v){ if(this.aiBusy) this._chatScroll(); if(v && this.localReasonOpen && this.aiReasoning && !this._reasonAutoCollapsed){ this.localReasonOpen=false; this._reasonAutoCollapsed=true; } },
      aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
@@ -836,6 +965,23 @@ index 87b62bc..465588e 100644
 +      const cjk=(p.match(/[\u4e00-\u9fa5]/g)||[]).length; return cjk / p.length < 0.15; },
 +    passageWords(){ const p=String((this.q&&this.q.passage)||'');
 +      return this.passageEnglish ? ((p.match(/[A-Za-z][A-Za-z'-]*/g)||[]).length + ' words') : (p.length + ' 字'); },
++    // token 用量：把「谁吃掉了输出预算」摆出来。以前完全没读 usage，
++    // 所以「推理占满了预算」只能靠猜；现在有数字，一眼能分辨是模型思考太久
++    // 还是中转站截流。
++    usageText(){ const u=this.aiUsage; if(!u||!u.completion)return '';
++      const k=(n)=>n>=1000?((n/1000).toFixed(1)+'k'):String(n);
++      let t='输出 '+k(u.completion);
++      if(u.reasoning)t+='（推理 '+k(u.reasoning)+'）';
++      if(u.rounds>1)t+=' · '+u.rounds+' 轮';
++      return t; },
++    usageTitle(){ const u=this.aiUsage; if(!u)return '';
++      const parts=[];
++      if(u.prompt)parts.push('输入 '+u.prompt+' token');
++      if(u.completion)parts.push('输出 '+u.completion+' token');
++      if(u.reasoning)parts.push('其中推理 '+u.reasoning+' token');
++      if(u.rounds>1)parts.push('含 '+u.rounds+' 轮请求（首轮 + 自动续写）');
++      parts.push('推理 token 是否计入输出上限取决于服务商/中转站实现');
++      return parts.join('\n'); },
 +    // 追问按视图分线程。带上原始下标 i —— ai-retry / ai-stop 要按 aiChat 的真实位置
 +    // 操作，如果直接用 v-for 过滤后的序号，删错条目是必然的。
 +    chatRounds(){ const kind=(this.aiKind==='concept')?'concept':'explain';
@@ -844,7 +990,7 @@ index 87b62bc..465588e 100644
      // 完形填空：当前这道题问的是第几个空（题干形如「（完形填空 第 21 空）」）
      clozeNo(){ const m=String((this.q&&this.q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/); return m?parseInt(m[1],10):0; },
      // 短文里的空由抽题阶段标成「＿＿21＿＿」。这里再套一层 span：
-@@ -63,8 +82,15 @@ const QuestionCard={
+@@ -63,8 +99,15 @@ const QuestionCard={
      finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
      graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
    },
@@ -862,7 +1008,7 @@ index 87b62bc..465588e 100644
    methods:{
      taGrow(e){ const el=e&&e.target; if(!el)return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight+2, Math.round(window.innerHeight*0.5))+'px'; },
      segToggle(){ this.segMode=!this.segMode; if(!this.segMode)this._segClear(); },
-@@ -98,11 +124,28 @@ const QuestionCard={
+@@ -98,11 +141,28 @@ const QuestionCard={
          this.copied=key; setTimeout(()=>{ if(this.copied===key)this.copied=''; },1500);
        }catch(_){} },
      doAsk(){ const t=this.askInput.trim(); if(!t||this.aiAsking)return; this.$emit('ai-ask',t); this.askInput=''; this.$nextTick(()=>this._chatScroll()); },
@@ -893,7 +1039,7 @@ index 87b62bc..465588e 100644
      // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
      snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
      restoreState(s){ if(!s||typeof s!=='object')return;
-@@ -152,7 +195,13 @@ const QuestionCard={
+@@ -152,7 +212,13 @@ const QuestionCard={
        <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
        <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
      </div>
@@ -908,7 +1054,16 @@ index 87b62bc..465588e 100644
      <div class="stem"><rich-text :content="q.stem" /></div>
      <template v-if="isChoice">
        <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
-@@ -216,7 +265,7 @@ const QuestionCard={
+@@ -193,7 +259,7 @@ const QuestionCard={
+         <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单</button>
+       </div>
+             <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
+-        <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
++        <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span><span v-if="usageText" class="muted usage-chip" :title="usageTitle">{{ usageText }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
+         <div v-if="aiReasoning" class="reason-box">
+           <button class="reason-head" @click.stop="localReasonOpen=!localReasonOpen" :title="localReasonOpen?'收起推理过程':'展开推理过程'">
+             <icon name="brain" :size="13" />
+@@ -216,7 +282,7 @@ const QuestionCard={
                <div class="kcard-face kcard-front">
                  <div class="kcard-idx">{{ i+1 }}/{{ aiCards.length }}</div>
                  <div class="kcard-term"><rich-text :content="c.term" /></div>
@@ -917,7 +1072,7 @@ index 87b62bc..465588e 100644
                  <div class="kcard-hint">点击查看讲解 <icon name="rotate-cw" :size="15" /></div>
                </div>
                <div class="kcard-face kcard-back">
-@@ -232,7 +281,7 @@ const QuestionCard={
+@@ -232,7 +298,7 @@ const QuestionCard={
              <div v-if="!aiFlip[kcardIdx]" class="kcard-lg-face kcard-lg-front" @click="kcardTap">
                <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
                <div class="kcard-term" style="font-size:22px"><rich-text :content="aiCards[kcardIdx].term" /></div>
@@ -926,7 +1081,7 @@ index 87b62bc..465588e 100644
                <div class="kcard-hint">点击翻面看讲解</div>
              </div>
              <div v-else class="kcard-lg-face kcard-lg-back" @click="kcardTap">
-@@ -266,27 +315,38 @@ const QuestionCard={
+@@ -266,27 +332,38 @@ const QuestionCard={
            </div>
          </div>
          <template v-if="(aiText || (aiKind==='concept' && aiCards.length)) && !aiBusy">
@@ -1007,6 +1162,19 @@ index c70ddef..2856100 100644
                <button class="btn subtle" v-if="bank.items.length" :disabled="busyOps.bankAutoClassify" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
            <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
            <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似或完全相同的重复题，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 查重</button>
+diff --git a/js/tpl/view-practice.js b/js/tpl/view-practice.js
+index 73c38a0..8ac7b48 100644
+--- a/js/tpl/view-practice.js
++++ b/js/tpl/view-practice.js
+@@ -109,7 +109,7 @@ const TPL_VIEW_PRACTICE = `
+             <button class="bk-del-min" @click="deleteCurrentQuestion" title="从题库彻底删除本题（用于清理 OCR 坏题，不可恢复）">删除</button>
+           </div>
+           <transition name="qfade" mode="out-in">
+-          <question-card ref="curCard" :q="cur" :key="cur.id" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-reasoning="curAiReasoning" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" :ai-kind="aiX.id===cur.id ? (aiX.view||'') : ''" :ai-cards="aiX.id===cur.id && aiX.view==='concept' ? (aiX.cards||[]) : []" :ai-flip="aiX.id===cur.id ? (aiX.flip||{}) : {}" :has-explain="aiX.id===cur.id && !!aiX.text" :has-concept="aiX.id===cur.id && !!(aiX.cards&&aiX.cards.length)" :all-flipped="curAllFlipped" :init-state="qStates[cur.id]||null" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain()" @ai-concept="aiExplain('concept')" @ai-explain-redo="aiExplain('',true)" @ai-concept-redo="aiExplain('concept',true)" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" @ai-stop="aiStopAsk" @ai-clear-chat="aiClearChat" @seg-mode="segActive=$event" @card-flip="toggleCard" @cards-flip-all="toggleAllCards" @save-state="onSaveState" />
++          <question-card ref="curCard" :q="cur" :key="cur.id" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-reasoning="curAiReasoning" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" :ai-usage="aiX.id===cur.id ? (aiX.usage||null) : null" :ai-kind="aiX.id===cur.id ? (aiX.view||'') : ''" :ai-cards="aiX.id===cur.id && aiX.view==='concept' ? (aiX.cards||[]) : []" :ai-flip="aiX.id===cur.id ? (aiX.flip||{}) : {}" :has-explain="aiX.id===cur.id && !!aiX.text" :has-concept="aiX.id===cur.id && !!(aiX.cards&&aiX.cards.length)" :all-flipped="curAllFlipped" :init-state="qStates[cur.id]||null" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain()" @ai-concept="aiExplain('concept')" @ai-explain-redo="aiExplain('',true)" @ai-concept-redo="aiExplain('concept',true)" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" @ai-stop="aiStopAsk" @ai-clear-chat="aiClearChat" @seg-mode="segActive=$event" @card-flip="toggleCard" @cards-flip-all="toggleAllCards" @save-state="onSaveState" />
+           </transition>
+           <div class="q-nav-bar">
+             <button class="btn subtle" :disabled="qi<=0" @click="prev"><icon name="arrow-left" :size="15" /> 上一题</button>
 diff --git a/js/views/bank.js b/js/views/bank.js
 index a007d78..38978a1 100644
 --- a/js/views/bank.js
@@ -1387,10 +1555,91 @@ index 209d29a..20ba6c3 100644
            if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
        }
 diff --git a/js/views/practice.js b/js/views/practice.js
-index 905810d..51bde13 100644
+index 905810d..4bc7d42 100644
 --- a/js/views/practice.js
 +++ b/js/views/practice.js
-@@ -298,16 +298,32 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
+@@ -230,22 +230,56 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
+   }
+   const ctrl=new AbortController(); this._aiJobs[jobKey]=ctrl;
+   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
+-  let acc='';
++  let acc=''; if(this.aiX.id===qid)this.aiX.usage=null;
++  // 自动续写：正文被 token 上限截断时接着写，而不是甩给用户一句「可追问请继续」。
++  // 两种截断都要接住：
++  //   ① 正文写了一半被截 → finish_reason=length 且已有正文
++  //   ② 推理模型把预算全花在思维链上，正文一个字都没有 → length 且正文为空
++  //      （旧代码在这里直接 throw「模型没有返回内容」，连同整段思维链一起丢掉）
++  const MAX_CONT=3;
++  let cont=0, truncated=false, kickoff=false;
++  // d.acc 是「这一次请求」的累加器，续写轮会从 0 重新累加。
++  // 直接 st.text=d.acc 会把前半段覆盖掉，所以要记住已写部分作为前缀。
++  let contBase='';
++  const question={ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject };
+   try{
+-    const r=await this.aiFetch({ ...ov, ...(isConcept?{kind:'concept'}:{}), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }, ctrl.signal,
++    let r;
++    do{
++      truncated=false;
++      const body={ ...ov, ...(isConcept?{kind:'concept'}:{}), question };
++      contBase = cont>0 ? (isConcept?acc:(st.text||'')) : '';
++      if(cont>0){ if(kickoff)body.continue_kickoff=1; else body.continue_from=contBase.slice(-6000); }
++      r=await this.aiFetch(body, ctrl.signal,
+       (d)=>{
+         // 思维链只写 aiX（内存），不写 st（aiStates 缓存），因此切题/刷新即消失，也不会被自动保存写库
+         if(d.reasoning && showing()){ this.aiX.reasoning=(this.aiX.reasoning||'')+d.reasoning; }
+         if(d.reset && showing()){ this.aiX.reasoning=''; }
+         if(d.fallback && showing()){ this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型')); }
+         if(d.streamFallback && showing()){ this.flash('流式中断，已切换为一次性返回'); }
+-        if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=d.acc; }
+-        else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } }
++        // 用量：累加各轮（含续写轮），让「谁吃掉了预算」变成可观测的数字而不是推测
++        if(d.usage && showing()){ const u=d.usage; const a=this.aiX.usage||{prompt:0,completion:0,reasoning:0,rounds:0};
++          this.aiX.usage={ prompt:(a.prompt||0)+(u.prompt||0), completion:(a.completion||0)+(u.completion||0),
++            reasoning:(a.reasoning||0)+(u.reasoning||0), rounds:(a.rounds||0)+1,
++            cap:this.aiX.usage&&this.aiX.usage.cap||0 }; }
++        if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=contBase+d.acc; }
++        else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=contBase+d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=st.text; } }
+         // 正文开始输出 → 自动收起思维链（用户想看再点开）
+         if(d.text && showing() && this.aiX.reasonOpen && (this.aiX.reasoning||'').length) this.aiX.reasonOpen=false;
+-        // 输出被截断提示
+-        if(d.finish_reason==='length' && showing()) this.flash('⚠ 模型输出被截断（token 上限），可点重新生成或追问"请继续"');
++        // 被截断 → 记下来，退出流后自动续写（不再要求用户手动追问「请继续」）
++        if(d.finish_reason==='length') truncated=true;
+       });
++      if(r.res && r.res.status===401)break;
++      if(!r.ok)break;
++      if(!truncated || cont>=MAX_CONT)break;
++      // 正文一个字都没有 = 预算被思维链吃光，下一轮让它跳过思考直接给结论
++      kickoff = isConcept ? !acc : !st.text;
++      cont++;
++      // 文案保持中性：正文为空 + finish_reason=length 只能说明「撞了某个上限」，
++      // 至于是 reasoning 吃掉了 completion 额度还是中转站截流，要看 usage 才知道。
++      if(showing())this.flash(kickoff
++        ? ('只输出了推理、正文为空（已达输出上限），正在直接索取正文…（'+cont+'/'+MAX_CONT+'）')
++        : ('正文较长，正在自动续写…（'+cont+'/'+MAX_CONT+'）'));
++    }while(cont<=MAX_CONT);
+     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
+     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
+     if(isConcept){
+@@ -259,7 +293,16 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
+       if(!cards.length) throw new Error('知识点卡片生成失败，可点重试');
+       st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards;
+     }
+-    else if(!st.text) throw new Error('模型没有返回内容，可换个模型再试');
++    else if(!st.text){
++      // 区分「真没输出」和「思考占满预算」——后者续写 MAX_CONT 轮仍为空才算失败，
++      // 提示也要说清是哪种情况，否则用户只会反复换模型而问题依旧。
++      if(cont>=MAX_CONT && (this.aiX.reasoning||'').length){
++        const u=this.aiX.usage;
++        const detail=u&&u.completion ? ('（本次用量：输出 '+u.completion+' token'+(u.reasoning?('，其中推理 '+u.reasoning):'')+'）') : '';
++        throw new Error(MAX_CONT+' 轮都只有推理、没有正文'+detail+'。可在「设置 → AI 解析」里换一个非推理模型再试');
++      }
++      throw new Error('模型没有返回内容，可换个模型再试');
++    }
+   }catch(e){ if(e.name!=='AbortError'){ this._conceptRetried=false; let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
+   if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
+   // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
+@@ -298,28 +341,68 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
    if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
    const ctrl=new AbortController(); this._aiCtrl=ctrl;
    if(!Array.isArray(this.aiX.chat))this.aiX.chat=[];
@@ -1426,8 +1675,10 @@ index 905810d..51bde13 100644
 +  let analysisCtx = kind==='concept' ? (cardsCtx() || this.aiX.text || '') : (this.aiX.text || cardsCtx());
    const isCtxErr=(m)=>/context[_\s-]*length|context window|maximum context|max(?:imum)?[_\s-]*tokens|too many tokens|reduce the length|too long|上下文|请求(?:体|内容)?过长|token\s*数(?:超|过)/i.test(m||'');
    // 方案 B：上下文超限时递增 trim_level 自动缩减历史重试（最多 2 次）
-   let done=false;
-@@ -315,7 +331,15 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
+-  let done=false;
++  let done=false, askTruncated=false, askCont=0;
++  const ASK_MAX_CONT=2;
+   for(let trimLevel=0; trimLevel<=2 && !done; trimLevel++){
      try{
        if(trimLevel>0){ entry.a=''; this.flash('上下文较长，正在精简后重试…'); }
        const r=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject }, analysis:analysisCtx.slice(0,6000), history, ask:text, trim_level:trimLevel }, ctrl.signal,
@@ -1439,12 +1690,31 @@ index 905810d..51bde13 100644
 +          if(d.text)entry.a=d.acc;
 +          if(d.fallback)this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型'));
 +          if(d.streamFallback)this.flash('流式中断，已切换为一次性返回');
-+          if(d.finish_reason==='length')this.flash('⚠ 回答被截断（token 上限），可追问「请继续」');
++          if(d.finish_reason==='length')askTruncated=true;
 +        });
        if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
        if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } }
          if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试
-@@ -341,7 +365,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
+         throw new Error(msg); }
++      // 追问同样自动续写：被 token 上限截断就接着写，不要求用户手动打「请继续」
++      while(askTruncated && askCont<ASK_MAX_CONT && !ctrl.signal.aborted){
++        askCont++; askTruncated=false;
++        this.flash('回答较长，正在自动续写…（'+askCont+'/'+ASK_MAX_CONT+'）');
++        const base=entry.a||'';
++        const r2=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
++          analysis:analysisCtx.slice(0,6000), history, ask:text, trim_level:trimLevel,
++          continue_from:base.slice(-6000) }, ctrl.signal,
++          (d)=>{
++            if(d.reasoning)entry.r=(entry.r||'')+d.reasoning;
++            if(d.text)entry.a=base+d.acc;
++            if(d.finish_reason==='length')askTruncated=true;
++          });
++        if(!r2 || !r2.ok)break;
++      }
+       if(!entry.a){ entry.a='_（模型没有返回内容）_'; }
+       done=true;
+     }catch(e){ if(e.name==='AbortError'){ done=true; break; }
+@@ -341,7 +424,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
  
  ,
  aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
@@ -1508,6 +1778,296 @@ index e73c766..5f8d281 100644
      "eslint": "^10.7.0",
      "globals": "^17.7.0",
      "vitest": "^1.6.0"
+diff --git a/tests/ai-continuation.test.mjs b/tests/ai-continuation.test.mjs
+new file mode 100644
+index 0000000..3a16ba1
+--- /dev/null
++++ b/tests/ai-continuation.test.mjs
+@@ -0,0 +1,175 @@
++// 两个线上现象，同一个根因：max_tokens 用完了没有续写机制。
++//
++//  ① 推理模型（deepseek-v4-flash）把整个预算花在 reasoning_content 上，正文一个字都没吐，
++//     finish_reason=length。旧代码走到 `if(!st.text) throw '模型没有返回内容，可换个模型再试'`，
++//     报错中断，连用户刚看完的一大段思维链一起丢掉。换模型也解决不了——问题不在模型坏，
++//     在于它需要更多预算才能写到正文。
++//  ② 正文写到一半被截断，只提示「可追问请继续」，要用户手动打字。
++import { describe, it, expect, beforeEach } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const Practice = new Function(read('js/views/practice.js') + ';return PracticeMixin;')();
++
++// 每次 aiFetch 按脚本吐一段流；记录收到的 body 便于断言续写参数
++const makeCtx = (script) => {
++  const bodies = [];
++  const st = { text: '', chat: [], model: '', cards: [] };
++  const ctx = {
++    bodies, flashes: [],
++    cur: { id: 'q1', stem: '求公共部分面积', options: [], answer: [], type: 'short_answer', subject: 'math' },
++    aiX: { id: 'q1', view: 'explain', text: '', reasoning: '', cards: [], chat: [], busy: false, reasonOpen: true, flip: {} },
++    aiStates: { q1: st },
++    _aiJobs: {}, explainCfg: {}, autoSaveAi: false,
++    flash(m) { this.flashes.push(String(m)); },
++    go() {}, token: 't',
++    async aiFetch(body, signal, onDelta) {
++      bodies.push(body);
++      const step = script[bodies.length - 1];
++      if (!step) return { ok: true, res: { status: 200 }, text: '' };
++      let acc = '';
++      for (const r of (step.reasoning || [])) onDelta({ reasoning: r });
++      for (const t of (step.text || [])) { acc += t; onDelta({ text: t, acc }); }
++      if (step.finish) onDelta({ finish_reason: step.finish });
++      return { ok: true, res: { status: 200 }, text: acc };
++    },
++    _parseConceptCards: () => [],
++    _autoSaveExplain: async () => {}, _autoSaveConcept: async () => {},
++  };
++  return ctx;
++};
++const run = (ctx) => Practice.methods.aiExplain.call(ctx, 'explain', true);
++
++beforeEach(() => { global.AbortController = AbortController; });
++
++describe('情况①：推理占满预算，正文为空', () => {
++  it('不再报「模型没有返回内容」，而是自动再要一轮正文', async () => {
++    const c = makeCtx([
++      { reasoning: ['先设极坐标…', '再比较两个圆…'], finish: 'length' },   // 全是思维链，正文空
++      { text: ['公共部分面积为 ', '(3π/4 - 1/2)a²。'], finish: 'stop' },
++    ]);
++    await run(c);
++    expect(c.aiStates.q1.text).toContain('公共部分面积为');
++    expect(c.flashes.join(' ')).not.toContain('没有返回内容');
++  });
++  it('第二轮请求带 continue_kickoff，让模型跳过再思考', async () => {
++    const c = makeCtx([
++      { reasoning: ['想很久'], finish: 'length' },
++      { text: ['结论'], finish: 'stop' },
++    ]);
++    await run(c);
++    expect(c.bodies).toHaveLength(2);
++    expect(c.bodies[1].continue_kickoff).toBe(1);
++    expect(c.bodies[1].continue_from).toBeUndefined();
++  });
++  // 文案刻意保持中性：正文为空 + finish_reason=length 只能说明撞了某个输出上限，
++  // 至于是 reasoning 吃掉了 completion 额度、还是中转站截流，没有 usage 数据无法断言。
++  // 早先写的是「推理占满了 token 预算」，那是推测冒充结论。
++  it('提示只陈述可观测事实，不断言原因', async () => {
++    const c = makeCtx([
++      { reasoning: ['想'], finish: 'length' },
++      { text: ['答'], finish: 'stop' },
++    ]);
++    await run(c);
++    const msg = c.flashes.join(' ');
++    expect(msg).toMatch(/正文为空/);
++    expect(msg).toMatch(/输出上限/);
++    expect(msg).not.toMatch(/推理占满/);
++  });
++  it('思维链保住了，不会跟着报错一起丢', async () => {
++    const c = makeCtx([
++      { reasoning: ['关键的推导过程'], finish: 'length' },
++      { text: ['答'], finish: 'stop' },
++    ]);
++    await run(c);
++    expect(c.aiX.reasoning).toContain('关键的推导过程');
++  });
++  it('续满 3 轮仍然没有正文才算失败，且提示换非推理模型', async () => {
++    const c = makeCtx(Array.from({ length: 6 }, () => ({ reasoning: ['还在想'], finish: 'length' })));
++    await run(c);
++    const msg = c.flashes.join(' ');
++    expect(msg).toMatch(/只有推理、没有正文/);
++    expect(msg).toMatch(/非推理模型/);
++  });
++});
++
++describe('情况②：正文写一半被截断', () => {
++  it('自动续写并把两段接起来', async () => {
++    const c = makeCtx([
++      { text: ['第一步：设 ', 'ρ ≤ a sinθ，'], finish: 'length' },
++      { text: ['第二步：积分得到结果。'], finish: 'stop' },
++    ]);
++    await run(c);
++    expect(c.aiStates.q1.text).toBe('第一步：设 ρ ≤ a sinθ，第二步：积分得到结果。');
++  });
++  it('续写请求带 continue_from（已写部分），不是重新开头', async () => {
++    const c = makeCtx([
++      { text: ['已经写好的前半段'], finish: 'length' },
++      { text: ['后半段'], finish: 'stop' },
++    ]);
++    await run(c);
++    expect(c.bodies[1].continue_from).toBe('已经写好的前半段');
++    expect(c.bodies[1].continue_kickoff).toBeUndefined();
++  });
++  it('不再让用户手动追问「请继续」', async () => {
++    const c = makeCtx([
++      { text: ['半截'], finish: 'length' },
++      { text: ['补完'], finish: 'stop' },
++    ]);
++    await run(c);
++    expect(c.flashes.join(' ')).not.toContain('请继续');
++    expect(c.flashes.some((f) => /自动续写/.test(f))).toBe(true);
++  });
++  it('连续截断最多续 3 轮，不会无限烧额度', async () => {
++    const c = makeCtx(Array.from({ length: 8 }, (_, i) => ({ text: ['段' + i], finish: 'length' })));
++    await run(c);
++    expect(c.bodies.length).toBe(4);            // 首轮 + 3 次续写
++  });
++  it('一轮就写完时不会多发请求', async () => {
++    const c = makeCtx([{ text: ['一次写完'], finish: 'stop' }]);
++    await run(c);
++    expect(c.bodies).toHaveLength(1);
++    expect(c.flashes.some((f) => /续写/.test(f))).toBe(false);
++  });
++});
++
++describe('服务端续写入口', () => {
++  const src = read('functions/api/explain.js');
++  it('continue_from 回填成 assistant 轮，并要求不要重复', () => {
++    expect(src).toContain("b.continue_from");
++    expect(src).toContain('不要重复已经写过的部分');
++  });
++  it('continue_kickoff 让模型跳过再思考直接给正文', () => {
++    expect(src).toContain('b.continue_kickoff');
++    expect(src).toContain('不要再展开思考过程了');
++  });
++  it('追问路径也能续写（不能被 !ask 挡住）', () => {
++    const askBlock = src.slice(src.indexOf('if (ask) {'));
++    expect(askBlock).toContain('contFrom');
++  });
++  it('续写轮的预算不能太小，否则要续很多次', () => {
++    expect(src).toMatch(/continue_kickoff\) \? 6000 : 8192/);
++  });
++  it('continue_from 有长度上限，避免把整篇塞回去', () => {
++    expect(src).toContain("slice(-6000)");
++  });
++});
++
++describe('追问也自动续写', () => {
++  const src = read('js/views/practice.js');
++  it('截断后接着写，不再提示「可追问请继续」', () => {
++    expect(src).toContain('askTruncated');
++    expect(src).not.toContain('可追问「请继续」');
++  });
++  it('续写时把已写部分作为前缀累加，不覆盖', () => {
++    expect(src).toContain('entry.a=base+d.acc;');
++  });
++  it('追问续写上限 2 轮', () => {
++    expect(src).toContain('ASK_MAX_CONT=2');
++  });
++  it('用户中断时立刻停止续写', () => {
++    expect(src).toContain('!ctrl.signal.aborted');
++  });
++});
+diff --git a/tests/ai-usage.test.mjs b/tests/ai-usage.test.mjs
+new file mode 100644
+index 0000000..10429da
+--- /dev/null
++++ b/tests/ai-usage.test.mjs
+@@ -0,0 +1,103 @@
++// token 用量可观测。
++//
++// 起因：我把「推理占满了 token 预算」当成结论说了出去，但代码从来没有读过 usage,
++// 这个判断纯属推断。而 reasoning token 到底算不算进输出上限，各家实现不一样：
++//   · OpenAI o 系列：reasoning 按 output token 计费，且计入 completion 预算
++//     （正是为此把 max_tokens 换成了 max_completion_tokens）
++//   · DeepSeek 官方 reasoner：max_tokens 只约束 CoT 之后的最终回答，CoT 另有额度
++//   · 走中转站时取决于它怎么翻译字段，无法预设
++// 所以别猜，把数字摆出来。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const QC = new Function('RichText', read('js/constants.js') + '\n' + read('js/components/question-card.js') + '\nreturn QuestionCard;')({});
++const card = (aiUsage) => {
++  const self = { aiUsage };
++  for (const k of ['usageText', 'usageTitle']) Object.defineProperty(self, k, { get() { return QC.computed[k].call(self); } });
++  return self;
++};
++
++describe('用量小标的文案', () => {
++  it('推理吃掉大头时一眼能看出来', () => {
++    expect(card({ prompt: 900, completion: 8192, reasoning: 7900, rounds: 2 }).usageText)
++      .toBe('输出 8.2k（推理 7.9k） · 2 轮');
++  });
++  it('非推理模型只显示输出量', () => {
++    expect(card({ prompt: 900, completion: 1200, reasoning: 0, rounds: 1 }).usageText).toBe('输出 1.2k');
++  });
++  it('单轮不显示轮数（少一个噪声）', () => {
++    expect(card({ completion: 500, rounds: 1 }).usageText).not.toContain('轮');
++  });
++  it('中转站不返回用量时整块不显示，而不是显示 0', () => {
++    expect(card({ prompt: 900, completion: 0, reasoning: 0, rounds: 1 }).usageText).toBe('');
++    expect(card(null).usageText).toBe('');
++    expect(card(undefined).usageText).toBe('');
++  });
++  it('tooltip 给出明细，并注明「算不算上限取决于服务商」', () => {
++    const t = card({ prompt: 900, completion: 8192, reasoning: 7900, rounds: 2 }).usageTitle;
++    expect(t).toContain('输入 900 token');
++    expect(t).toContain('其中推理 7900 token');
++    expect(t).toContain('取决于服务商');
++  });
++});
++
++describe('服务端要主动索取用量', () => {
++  const src = read('functions/api/explain.js');
++  it('流式请求带 stream_options.include_usage', () => {
++    expect(src).toContain('stream_options: { include_usage: true }');
++  });
++  it('只在流式时带，非流式请求体不变', () => {
++    expect(src).toMatch(/stream \? \{ \.\.\.payload, stream, stream_options/);
++  });
++  it('非流式的两个返回也带 usage', () => {
++    expect(src.match(/usage: \(d && d\.usage\) \|\| null/g)).toHaveLength(2);
++  });
++});
++
++describe('客户端解析用量：字段名各家不同，要全收', () => {
++  const src = read('js/app.js');
++  it('兼容 prompt_tokens / input_tokens', () => {
++    expect(src).toContain('u.prompt_tokens ?? u.input_tokens');
++  });
++  it('兼容 completion_tokens / output_tokens', () => {
++    expect(src).toContain('u.completion_tokens ?? u.output_tokens');
++  });
++  it('推理 token 从 completion_tokens_details 里取（OpenAI o 系列的位置）', () => {
++    expect(src).toContain('completion_tokens_details');
++    expect(src).toContain('det.reasoning_tokens');
++  });
++  it('流式和非流式两条路都解析', () => {
++    expect(src.match(/onDelta\(\{ usage:\{/g)).toHaveLength(2);
++  });
++});
++
++describe('用量按题累加、切题重置', () => {
++  const src = read('js/views/practice.js');
++  it('多轮（含续写）累加而不是覆盖', () => {
++    expect(src).toContain("(a.completion||0)+(u.completion||0)");
++    expect(src).toContain("rounds:(a.rounds||0)+1");
++  });
++  it('开始新生成时清零', () => {
++    expect(src).toContain('this.aiX.usage=null;');
++  });
++  it('切题时 aiX 重建带 usage:null', () => {
++    expect(read('js/app.js')).toContain('reasonOpen:true, usage:null }');
++  });
++  it('失败提示带上实际用量，不再空口断言原因', () => {
++    expect(src).toContain('本次用量：输出');
++    expect(src).not.toContain('模型一直在推理');
++  });
++});
++
++describe('诊断文案不能把推断当结论', () => {
++  const src = read('js/views/practice.js');
++  it('不再声称「推理占满了 token 预算」', () => {
++    expect(src).not.toContain('推理占满');
++  });
++  it('只陈述可观测事实：正文为空 + 已达输出上限', () => {
++    expect(src).toContain('只输出了推理、正文为空（已达输出上限）');
++  });
++});
 diff --git a/tests/answerfill.test.mjs b/tests/answerfill.test.mjs
 index df32d38..2cb7a56 100644
 --- a/tests/answerfill.test.mjs
