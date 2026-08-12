@@ -230,22 +230,56 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   }
   const ctrl=new AbortController(); this._aiJobs[jobKey]=ctrl;
   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
-  let acc='';
+  let acc=''; if(this.aiX.id===qid)this.aiX.usage=null;
+  // 自动续写：正文被 token 上限截断时接着写，而不是甩给用户一句「可追问请继续」。
+  // 两种截断都要接住：
+  //   ① 正文写了一半被截 → finish_reason=length 且已有正文
+  //   ② 推理模型把预算全花在思维链上，正文一个字都没有 → length 且正文为空
+  //      （旧代码在这里直接 throw「模型没有返回内容」，连同整段思维链一起丢掉）
+  const MAX_CONT=3;
+  let cont=0, truncated=false, kickoff=false;
+  // d.acc 是「这一次请求」的累加器，续写轮会从 0 重新累加。
+  // 直接 st.text=d.acc 会把前半段覆盖掉，所以要记住已写部分作为前缀。
+  let contBase='';
+  const question={ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject };
   try{
-    const r=await this.aiFetch({ ...ov, ...(isConcept?{kind:'concept'}:{}), question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject } }, ctrl.signal,
+    let r;
+    do{
+      truncated=false;
+      const body={ ...ov, ...(isConcept?{kind:'concept'}:{}), question };
+      contBase = cont>0 ? (isConcept?acc:(st.text||'')) : '';
+      if(cont>0){ if(kickoff)body.continue_kickoff=1; else body.continue_from=contBase.slice(-6000); }
+      r=await this.aiFetch(body, ctrl.signal,
       (d)=>{
         // 思维链只写 aiX（内存），不写 st（aiStates 缓存），因此切题/刷新即消失，也不会被自动保存写库
         if(d.reasoning && showing()){ this.aiX.reasoning=(this.aiX.reasoning||'')+d.reasoning; }
         if(d.reset && showing()){ this.aiX.reasoning=''; }
         if(d.fallback && showing()){ this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型')); }
         if(d.streamFallback && showing()){ this.flash('流式中断，已切换为一次性返回'); }
-        if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=d.acc; }
-        else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=d.acc; } }
+        // 用量：累加各轮（含续写轮），让「谁吃掉了预算」变成可观测的数字而不是推测
+        if(d.usage && showing()){ const u=d.usage; const a=this.aiX.usage||{prompt:0,completion:0,reasoning:0,rounds:0};
+          this.aiX.usage={ prompt:(a.prompt||0)+(u.prompt||0), completion:(a.completion||0)+(u.completion||0),
+            reasoning:(a.reasoning||0)+(u.reasoning||0), rounds:(a.rounds||0)+1,
+            cap:this.aiX.usage&&this.aiX.usage.cap||0 }; }
+        if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=contBase+d.acc; }
+        else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=contBase+d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=st.text; } }
         // 正文开始输出 → 自动收起思维链（用户想看再点开）
         if(d.text && showing() && this.aiX.reasonOpen && (this.aiX.reasoning||'').length) this.aiX.reasonOpen=false;
-        // 输出被截断提示
-        if(d.finish_reason==='length' && showing()) this.flash('⚠ 模型输出被截断（token 上限），可点重新生成或追问"请继续"');
+        // 被截断 → 记下来，退出流后自动续写（不再要求用户手动追问「请继续」）
+        if(d.finish_reason==='length') truncated=true;
       });
+      if(r.res && r.res.status===401)break;
+      if(!r.ok)break;
+      if(!truncated || cont>=MAX_CONT)break;
+      // 正文一个字都没有 = 预算被思维链吃光，下一轮让它跳过思考直接给结论
+      kickoff = isConcept ? !acc : !st.text;
+      cont++;
+      // 文案保持中性：正文为空 + finish_reason=length 只能说明「撞了某个上限」，
+      // 至于是 reasoning 吃掉了 completion 额度还是中转站截流，要看 usage 才知道。
+      if(showing())this.flash(kickoff
+        ? ('只输出了推理、正文为空（已达输出上限），正在直接索取正文…（'+cont+'/'+MAX_CONT+'）')
+        : ('正文较长，正在自动续写…（'+cont+'/'+MAX_CONT+'）'));
+    }while(cont<=MAX_CONT);
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
     if(isConcept){
@@ -259,7 +293,16 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
       if(!cards.length) throw new Error('知识点卡片生成失败，可点重试');
       st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards;
     }
-    else if(!st.text) throw new Error('模型没有返回内容，可换个模型再试');
+    else if(!st.text){
+      // 区分「真没输出」和「思考占满预算」——后者续写 MAX_CONT 轮仍为空才算失败，
+      // 提示也要说清是哪种情况，否则用户只会反复换模型而问题依旧。
+      if(cont>=MAX_CONT && (this.aiX.reasoning||'').length){
+        const u=this.aiX.usage;
+        const detail=u&&u.completion ? ('（本次用量：输出 '+u.completion+' token'+(u.reasoning?('，其中推理 '+u.reasoning):'')+'）') : '';
+        throw new Error(MAX_CONT+' 轮都只有推理、没有正文'+detail+'。可在「设置 → AI 解析」里换一个非推理模型再试');
+      }
+      throw new Error('模型没有返回内容，可换个模型再试');
+    }
   }catch(e){ if(e.name!=='AbortError'){ this._conceptRetried=false; let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
   if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
   // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
@@ -326,7 +369,8 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
   let analysisCtx = kind==='concept' ? (cardsCtx() || this.aiX.text || '') : (this.aiX.text || cardsCtx());
   const isCtxErr=(m)=>/context[_\s-]*length|context window|maximum context|max(?:imum)?[_\s-]*tokens|too many tokens|reduce the length|too long|上下文|请求(?:体|内容)?过长|token\s*数(?:超|过)/i.test(m||'');
   // 方案 B：上下文超限时递增 trim_level 自动缩减历史重试（最多 2 次）
-  let done=false;
+  let done=false, askTruncated=false, askCont=0;
+  const ASK_MAX_CONT=2;
   for(let trimLevel=0; trimLevel<=2 && !done; trimLevel++){
     try{
       if(trimLevel>0){ entry.a=''; this.flash('上下文较长，正在精简后重试…'); }
@@ -338,12 +382,27 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
           if(d.text)entry.a=d.acc;
           if(d.fallback)this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型'));
           if(d.streamFallback)this.flash('流式中断，已切换为一次性返回');
-          if(d.finish_reason==='length')this.flash('⚠ 回答被截断（token 上限），可追问「请继续」');
+          if(d.finish_reason==='length')askTruncated=true;
         });
       if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
       if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } }
         if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试
         throw new Error(msg); }
+      // 追问同样自动续写：被 token 上限截断就接着写，不要求用户手动打「请继续」
+      while(askTruncated && askCont<ASK_MAX_CONT && !ctrl.signal.aborted){
+        askCont++; askTruncated=false;
+        this.flash('回答较长，正在自动续写…（'+askCont+'/'+ASK_MAX_CONT+'）');
+        const base=entry.a||'';
+        const r2=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
+          analysis:analysisCtx.slice(0,6000), history, ask:text, trim_level:trimLevel,
+          continue_from:base.slice(-6000) }, ctrl.signal,
+          (d)=>{
+            if(d.reasoning)entry.r=(entry.r||'')+d.reasoning;
+            if(d.text)entry.a=base+d.acc;
+            if(d.finish_reason==='length')askTruncated=true;
+          });
+        if(!r2 || !r2.ok)break;
+      }
       if(!entry.a){ entry.a='_（模型没有返回内容）_'; }
       done=true;
     }catch(e){ if(e.name==='AbortError'){ done=true; break; }

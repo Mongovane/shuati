@@ -55,7 +55,7 @@ const App={
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
     sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
-    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
+    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true, usage:null }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
     ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
     cfocr:{ used:0, limit:70, budget:10000, npp:115 },
@@ -199,7 +199,7 @@ const App={
       if(s){
         const view=s.view|| (genC?'concept':'explain');
         const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
-        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) }, reasoning:'', reasonOpen:true };
+        this.aiX={ id:nid, view:view, text:s.text||'', busy:busy, chat:(s.chat||[]).slice(), asking:false, model:s.model||'', cards:(s.cards||[]).slice(), cardsModel:s.cardsModel||'', flip:{ ...(s.flip||{}) }, reasoning:'', reasonOpen:true, usage:null };
       } else {
         // 无会话缓存：从题目已存的 ai_cards 和 analysis 同时恢复（两者可共存）
         const savedCards = nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length ? nc.ai_cards.slice() : [];
@@ -320,6 +320,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                 if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
                 if(j.error) throw new Error(j.error.message||String(j.error));
                 if(j.model && onDelta) onDelta({model:j.model});
+                // include_usage 会在结束前补发一帧：choices 为空数组、只带 usage。
+                // reasoning token 的字段名各家不一样，全都收一遍。
+                if(j.usage && onDelta){ const u=j.usage;
+                  const det=u.completion_tokens_details||u.output_tokens_details||{};
+                  onDelta({ usage:{
+                    prompt: u.prompt_tokens ?? u.input_tokens ?? null,
+                    completion: u.completion_tokens ?? u.output_tokens ?? null,
+                    reasoning: det.reasoning_tokens ?? u.reasoning_tokens ?? u.completion_tokens_reasoning ?? null,
+                    total: u.total_tokens ?? null,
+                  } }); }
                 const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
                 const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
                 if(fr && onDelta) onDelta({finish_reason:fr});
@@ -353,6 +363,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
           if(d && d.error) return { res, text:'', ok:false, errText:d.error };
           const txt = (d && d.text) || '';
           if(d && d.model && onDelta) onDelta({model:d.model});
+          if(d && d.usage && onDelta){ const u=d.usage;
+            const det=u.completion_tokens_details||u.output_tokens_details||{};
+            onDelta({ usage:{
+              prompt: u.prompt_tokens ?? u.input_tokens ?? null,
+              completion: u.completion_tokens ?? u.output_tokens ?? null,
+              reasoning: det.reasoning_tokens ?? u.reasoning_tokens ?? null,
+              total: u.total_tokens ?? null,
+            } }); }
           if(txt && onDelta) onDelta({text:txt, acc:txt, full:true});
           return { res, text:txt, ok:true };
         }catch(e){

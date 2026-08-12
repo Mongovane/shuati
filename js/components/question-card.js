@@ -6,7 +6,7 @@ const normAns=(v)=>String(v==null?'':v)
 
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
+  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiUsage:{type:Object,default:null}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop','ai-clear-chat'],
   // 这里原来有两个 watch:{}（一个在 computed 前、一个在 mounted 前），
   // 后者把前者整个覆盖掉，aiReasoning / aiText / aiChat / aiBusy 四个监听全部不生效：
@@ -37,6 +37,23 @@ const QuestionCard={
       const cjk=(p.match(/[\u4e00-\u9fa5]/g)||[]).length; return cjk / p.length < 0.15; },
     passageWords(){ const p=String((this.q&&this.q.passage)||'');
       return this.passageEnglish ? ((p.match(/[A-Za-z][A-Za-z'-]*/g)||[]).length + ' words') : (p.length + ' 字'); },
+    // token 用量：把「谁吃掉了输出预算」摆出来。以前完全没读 usage，
+    // 所以「推理占满了预算」只能靠猜；现在有数字，一眼能分辨是模型思考太久
+    // 还是中转站截流。
+    usageText(){ const u=this.aiUsage; if(!u||!u.completion)return '';
+      const k=(n)=>n>=1000?((n/1000).toFixed(1)+'k'):String(n);
+      let t='输出 '+k(u.completion);
+      if(u.reasoning)t+='（推理 '+k(u.reasoning)+'）';
+      if(u.rounds>1)t+=' · '+u.rounds+' 轮';
+      return t; },
+    usageTitle(){ const u=this.aiUsage; if(!u)return '';
+      const parts=[];
+      if(u.prompt)parts.push('输入 '+u.prompt+' token');
+      if(u.completion)parts.push('输出 '+u.completion+' token');
+      if(u.reasoning)parts.push('其中推理 '+u.reasoning+' token');
+      if(u.rounds>1)parts.push('含 '+u.rounds+' 轮请求（首轮 + 自动续写）');
+      parts.push('推理 token 是否计入输出上限取决于服务商/中转站实现');
+      return parts.join('\n'); },
     // 追问按视图分线程。带上原始下标 i —— ai-retry / ai-stop 要按 aiChat 的真实位置
     // 操作，如果直接用 v-for 过滤后的序号，删错条目是必然的。
     chatRounds(){ const kind=(this.aiKind==='concept')?'concept':'explain';
@@ -242,7 +259,7 @@ const QuestionCard={
         <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单</button>
       </div>
             <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
-        <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
+        <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span><span v-if="usageText" class="muted usage-chip" :title="usageTitle">{{ usageText }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <div v-if="aiReasoning" class="reason-box">
           <button class="reason-head" @click.stop="localReasonOpen=!localReasonOpen" :title="localReasonOpen?'收起推理过程':'展开推理过程'">
             <icon name="brain" :size="13" />
