@@ -7,10 +7,10 @@ index 0000000..2752eb9
 +node_modules/
 +.DS_Store
 diff --git a/css/style.css b/css/style.css
-index 7ac1fe1..9a083ff 100644
+index 7ac1fe1..0aa0da2 100644
 --- a/css/style.css
 +++ b/css/style.css
-@@ -1246,3 +1246,49 @@ h2{margin:.2em 0 .6em}
+@@ -1246,3 +1246,71 @@ h2{margin:.2em 0 .6em}
    text-align:center;vertical-align:baseline}
  .passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
    color:var(--accent);font-weight:600}
@@ -60,6 +60,28 @@ index 7ac1fe1..9a083ff 100644
 +  overflow-wrap:anywhere;opacity:1}
 +.kcard-lg-front .kcard-formula.is-text{background:rgba(255,255,255,.25);font-size:15px}
 +[data-theme=dark] .kcard-lg-front .kcard-formula.is-text{background:rgba(0,0,0,.25)}
++
++/* ===================== 追问：推理过程 + 回到底部 ===================== */
++/* 追问以前既不流式也没有思维链，现在两者都补上，样式跟主解析的推理区保持一路 */
++.chat-reason{margin:6px 0 8px}
++.chat-reason-h{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
++  background:var(--surface);color:var(--ink-soft);font:inherit;font-size:12px;font-weight:600;
++  padding:4px 10px;border-radius:999px;cursor:pointer;transition:border-color .15s,color .15s}
++.chat-reason-h:hover{border-color:var(--accent);color:var(--accent)}
++.chat-reason-h:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
++.chat-reason-b{margin-top:6px;max-height:220px;overflow:auto;white-space:pre-wrap;
++  font-size:12.5px;line-height:1.7;color:var(--ink-soft);
++  background:var(--surface-2);border-radius:10px;padding:10px 12px}
++
++/* 生成中用户往上滑了，就不再强行拽回底部，改成给一个可点的回去入口 */
++.back-bottom{position:sticky;bottom:14px;left:50%;transform:translateX(-50%);
++  display:inline-flex;align-items:center;gap:5px;z-index:5;
++  border:1px solid var(--line);background:var(--surface);color:var(--ink);
++  font:inherit;font-size:12.5px;font-weight:600;padding:6px 14px;border-radius:999px;
++  box-shadow:var(--shadow);cursor:pointer}
++.back-bottom:hover{border-color:var(--accent);color:var(--accent)}
++.back-bottom:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
++@media(prefers-reduced-motion:reduce){.chat-reason-h,.back-bottom{transition:none}}
 diff --git a/fixes.patch b/fixes.patch
 deleted file mode 100644
 index 37440a4..0000000
@@ -531,6 +553,52 @@ index 0000000..de183b2
 +  if (concept) return isEnglish(subject) ? EN_CONCEPT : GEN_CONCEPT;
 +  return isEnglish(subject) ? EN_EXPLAIN : GEN_EXPLAIN;
 +}
+diff --git a/functions/api/_utils.js b/functions/api/_utils.js
+index 697edbb..328149a 100644
+--- a/functions/api/_utils.js
++++ b/functions/api/_utils.js
+@@ -177,10 +177,38 @@ export function ftsQuote(kw) {
+ 
+ // —— 大批量语句分块提交：D1 单次 batch 语句数有限，超大导入/恢复按块跑 ——
+ // 注意：跨块不再是单事务；调用方需保证语句幂等（UPSERT / OR REPLACE）
+-export async function batchChunked(env, stmts, size = 80) {
+-  for (let i = 0; i < stmts.length; i += size) {
+-    await env.DB.batch(stmts.slice(i, i + size));
++//
++// 只按条数分块是不够的：D1 还有「序列化后的 RPC 参数不得超过 32MiB」这条限制。
++// 一本教材抽出 138 道题、每题都带一份很长的 passage 时，80 条一批就能到 90MB，
++// 报错是 `D1_ERROR: Serialized RPC arguments ... limited to 32MiB, but the size of
++// this value was: 95036377 bytes` —— 整次导入全废，而且用户完全无从下手。
++// 所以再加一层字节预算：调用方给出每条语句的大致体积，超预算就提前切块。
++// 预算取 16MiB（限制的一半），给 SQL 文本、协议开销和多字节字符留足余量。
++export const D1_BATCH_BYTES = 16 * 1024 * 1024;
++
++export async function batchChunked(env, stmts, size = 80, weights = null, maxBytes = D1_BATCH_BYTES) {
++  if (!stmts || !stmts.length) return;
++  let batch = [], bytes = 0;
++  const flush = async () => { if (batch.length) { await env.DB.batch(batch); batch = []; bytes = 0; } };
++  for (let i = 0; i < stmts.length; i++) {
++    const w = weights ? (Number(weights[i]) || 0) : 0;
++    // 单条就超预算：让它独自成批。再大也只能交给 D1 判死刑，但不会连累同批的其它题。
++    if (batch.length && (batch.length >= size || bytes + w > maxBytes)) await flush();
++    batch.push(stmts[i]); bytes += w;
++  }
++  await flush();
++}
++
++// 估算一条记录序列化后的字节数（UTF-8）。只要量级对就够用，不必精确。
++export function rowBytes(...vals) {
++  let n = 64;                                  // SQL 文本与协议开销的粗略常数
++  for (const v of vals) {
++    if (v == null) { n += 4; continue; }
++    const s = typeof v === 'string' ? v : String(v);
++    // 中文按 3 字节算：不预先编码，避免为了估体积把整本书再拷一遍
++    n += s.length * 3 + 8;
+   }
++  return n;
+ }
+ 
+ // 把数据库行还原成前端可用的题目对象
 diff --git a/functions/api/explain.js b/functions/api/explain.js
 index 536fd4a..dec1a49 100644
 --- a/functions/api/explain.js
@@ -561,16 +629,142 @@ index 536fd4a..dec1a49 100644
  
    const base = effBase;
    // reading 模式：用「材料 + 选段」的自然表述做上下文，不套题目/选项/参考答案模板（否则模型误以为在解题而非阅读辅导）
+diff --git a/functions/api/process.js b/functions/api/process.js
+index f360f8d..737d183 100644
+--- a/functions/api/process.js
++++ b/functions/api/process.js
+@@ -1,4 +1,4 @@
+-import { json, checkAuth, batchChunked, checkStorage } from './_utils.js';
++import { json, checkAuth, batchChunked, checkStorage, rowBytes } from './_utils.js';
+ 
+ const MAX_IMPORT = 2000; // 单次直接导入 JSON 的题目上限（超过请分批，防单请求撑爆内存/超时）
+ 
+@@ -282,24 +282,26 @@ export async function onRequestPost({ request, env }) {
+           stem=excluded.stem, options=excluded.options, answer=excluded.answer,
+           analysis=excluded.analysis, tags=excluded.tags, page=excluded.page,
+           status=excluded.status, shape_key=excluded.shape_key`;
++      // 带上每条的体积估算：passage/stem 很长的书按条数分块会撞 D1 的 32MiB RPC 上限
+       await batchChunked(env, cleanedQ.map((q) =>
+         env.DB.prepare(sql).bind(
+           q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
+           q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.page, q.status, q.shape_key
+         )
+-      ), 80);
++      ), 80, cleanedQ.map((q) => rowBytes(q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.chapter, q.source)));
+     }
+     if (cleanedM.length) {
+       await ensureMaterialsTable(env);
+       const sqlM = `INSERT OR REPLACE INTO materials
+         (id, subject, title, source, page, page_image, content_md, summary, tags)
+         VALUES (?,?,?,?,?,?,?,?,?)`;
++      // 教材页更容易超标：page_image 是 data URL，content_md 是整页 Markdown
+       await batchChunked(env, cleanedM.map((m) =>
+         env.DB.prepare(sqlM).bind(
+           m.id, m.subject, m.title, m.source, m.page,
+           m.page_image, m.content_md, m.summary, m.tags
+         )
+-      ), 80);
++      ), 80, cleanedM.map((m) => rowBytes(m.page_image, m.content_md, m.summary, m.tags, m.title, m.source)));
+     }
+   } catch (e) {
+     return json({ error: '写入数据库失败：' + e.message }, 500);
+diff --git a/functions/api/questions.js b/functions/api/questions.js
+index 84cdf6f..da8fce7 100644
+--- a/functions/api/questions.js
++++ b/functions/api/questions.js
+@@ -189,10 +189,76 @@ export async function onRequestPatch({ request, env }) {
+   if (!auth.ok) return auth.resp;
+   let body;
+   try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
+-  const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
+-  if (!ids.length) return json({ error: '缺少题目 id' }, 400);
+   const ALLOWED = ['subject', 'chapter', 'type', 'difficulty', 'stem', 'passage', 'analysis', 'options', 'answer', 'tags', 'status', 'ai_cards'];
+   const JSON_FIELDS = new Set(['options', 'answer', 'tags', 'ai_cards']);
++
++  // —— 逐题不同值的批量更新：body.items = [{id, ...字段}] ——
++  //
++  // 原有的 {ids, 字段} 是「给所有 id 设同一个值」，AI 补答案这种每题答案都不一样的场景用不上，
++  // 前端只能一题发一个 PATCH —— 100 题就是 100 个往返，而且中间失败会留下补了一半的状态。
++  // 这里补一条按 id 分别赋值的入口，一次请求搞定，D1 侧走 batch（同一事务）。
++  //
++  // 只开放 answer / analysis / status / difficulty 四个字段：这是「补答案」「批量订正」真正需要的，
++  // 题干、选项、科目这些结构性字段仍然只能走单值路径，避免一个接口能改一切。
++  if (Array.isArray(body && body.items)) {
++    const PER_ITEM = new Set(['answer', 'analysis', 'status', 'difficulty']);
++    const MAX = 200;
++    const raw = body.items.filter((it) => it && it.id).slice(0, MAX);
++    if (!raw.length) return json({ error: 'items 里没有可更新的条目' }, 400);
++    if (body.items.length > MAX) return json({ error: `items 一次最多 ${MAX} 条` }, 400);
++
++    // 先确认哪些 id 真的存在，不存在的如实报出来而不是当成成功
++    const idList = [...new Set(raw.map((it) => String(it.id)))];
++    const exist = new Set();
++    try {
++      for (let i = 0; i < idList.length; i += 80) {
++        const part = idList.slice(i, i + 80);
++        const rs = await env.DB.prepare(
++          `SELECT id FROM questions WHERE id IN (${part.map(() => '?').join(',')})`
++        ).bind(...part).all();
++        for (const r of (rs && rs.results) || []) exist.add(String(r.id));
++      }
++    } catch (e) {
++      return json({ error: '校验题目 id 失败：' + e.message }, 500);
++    }
++
++    const stmts = [];
++    const skipped = [];
++    for (const it of raw) {
++      const id = String(it.id);
++      if (!exist.has(id)) continue;                    // 不存在 → 落到 missing
++      const sets2 = [], vals2 = [];
++      for (const k of ALLOWED) {
++        if (!PER_ITEM.has(k)) continue;
++        if (it[k] === undefined || it[k] === null) continue;   // 与单值路径一致：不传就不动
++        if (k === 'status') {
++          const v = String(it[k]); if (v !== 'draft' && v !== 'ok') continue;
++          sets2.push('status = ?'); vals2.push(v); continue;
++        }
++        sets2.push(`${k} = ?`);
++        if (k === 'difficulty') vals2.push(Number(it[k]) || 3);
++        else if (JSON_FIELDS.has(k)) vals2.push(JSON.stringify(Array.isArray(it[k]) ? it[k] : (it[k] === '' ? [] : [it[k]])));
++        else vals2.push(String(it[k]));
++      }
++      if (!sets2.length) { skipped.push(id); continue; }        // 一个可写字段都没带
++      stmts.push(env.DB.prepare(`UPDATE questions SET ${sets2.join(', ')} WHERE id = ?`).bind(...vals2, id));
++    }
++    if (!stmts.length) {
++      return json({ ok: true, updated: 0, matched: 0, missing: idList.filter((x) => !exist.has(x)), skipped });
++    }
++    try {
++      await batchChunked(env, stmts, 80);
++    } catch (e) {
++      return json({ error: '批量更新失败：' + e.message }, 500);
++    }
++    return json({
++      ok: true, updated: stmts.length, matched: stmts.length,
++      missing: idList.filter((x) => !exist.has(x)), skipped,
++    });
++  }
++
++  const ids = Array.isArray(body && body.ids) ? body.ids.filter(Boolean) : (body && body.id ? [body.id] : []);
++  if (!ids.length) return json({ error: '缺少题目 id' }, 400);
+   const sets = [], vals = [];
+   for (const k of ALLOWED) {
+     if (body[k] !== undefined && body[k] !== null) {
 diff --git a/js/components/question-card.js b/js/components/question-card.js
-index 87b62bc..e3e4d90 100644
+index 87b62bc..465588e 100644
 --- a/js/components/question-card.js
 +++ b/js/components/question-card.js
-@@ -21,8 +21,21 @@ const QuestionCard={
+@@ -19,10 +19,29 @@ const QuestionCard={
+     aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
+     aiText(v){ if(this.aiBusy) this._chatScroll(); if(v && this.localReasonOpen && this.aiReasoning && !this._reasonAutoCollapsed){ this.localReasonOpen=false; this._reasonAutoCollapsed=true; } },
      aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
-     aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } },
+-    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; } },
++    aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; this.stickBottom=true; } },
++    aiAsking(v){ if(v)this.stickBottom=true; },
    },
 -  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false }; },
-+  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false, passageOpen:false }; },
++  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false, passageOpen:false, chatReasonOpen:{}, stickBottom:true }; },
    computed:{
 +    // 阅读材料很长时（截图里那篇 side jobs 有 1600+ 字符）整屏都被材料占满，
 +    // 题干和选项被顶到折叠线以下，必须先滚很久才能看到在问什么。
@@ -585,10 +779,52 @@ index 87b62bc..e3e4d90 100644
 +      const cjk=(p.match(/[\u4e00-\u9fa5]/g)||[]).length; return cjk / p.length < 0.15; },
 +    passageWords(){ const p=String((this.q&&this.q.passage)||'');
 +      return this.passageEnglish ? ((p.match(/[A-Za-z][A-Za-z'-]*/g)||[]).length + ' words') : (p.length + ' 字'); },
++    // 追问按视图分线程。带上原始下标 i —— ai-retry / ai-stop 要按 aiChat 的真实位置
++    // 操作，如果直接用 v-for 过滤后的序号，删错条目是必然的。
++    chatRounds(){ const kind=(this.aiKind==='concept')?'concept':'explain';
++      const out=[]; (this.aiChat||[]).forEach((c,i)=>{ if((c.kind||'explain')===kind)out.push({ c, i }); });
++      return out; },
      // 完形填空：当前这道题问的是第几个空（题干形如「（完形填空 第 21 空）」）
      clozeNo(){ const m=String((this.q&&this.q.stem)||'').match(/第\s*([0-9]{1,3})\s*空/); return m?parseInt(m[1],10):0; },
      // 短文里的空由抽题阶段标成「＿＿21＿＿」。这里再套一层 span：
-@@ -102,7 +115,10 @@ const QuestionCard={
+@@ -63,8 +82,15 @@ const QuestionCard={
+     finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
+     graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
+   },
+-  mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); } },
+-  beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){} },
++  mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); }
++    this._userScroll=this._onUserScroll.bind(this); this._scroll=this._onScroll.bind(this);
++    for(const ev of ['wheel','touchmove','keydown'])window.addEventListener(ev,this._userScroll,{passive:true});
++    window.addEventListener('scroll',this._scroll,{passive:true});
++  },
++  beforeUnmount(){ try{ this.$emit('save-state', { id:this.q&&this.q.id, state:this.snapState() }); }catch(_){}
++    for(const ev of ['wheel','touchmove','keydown'])window.removeEventListener(ev,this._userScroll);
++    window.removeEventListener('scroll',this._scroll);
++  },
+   methods:{
+     taGrow(e){ const el=e&&e.target; if(!el)return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight+2, Math.round(window.innerHeight*0.5))+'px'; },
+     segToggle(){ this.segMode=!this.segMode; if(!this.segMode)this._segClear(); },
+@@ -98,11 +124,28 @@ const QuestionCard={
+         this.copied=key; setTimeout(()=>{ if(this.copied===key)this.copied=''; },1500);
+       }catch(_){} },
+     doAsk(){ const t=this.askInput.trim(); if(!t||this.aiAsking)return; this.$emit('ai-ask',t); this.askInput=''; this.$nextTick(()=>this._chatScroll()); },
+-    _chatScroll(){ this.$nextTick(()=>{ this.$nextTick(()=>{
++    // 生成过程中默认贴底跟随，但一旦用户自己往上滑就撒手 —— 不能强按着人看完。
++    // 判定只认「明确的用户手势」（滚轮 / 触摸拖动 / 翻页键），不认 scroll 事件，
++    // 因为我们自己的 smooth 滚动同样会触发 scroll，用它判断会自己把自己关掉。
++    _nearBottom(gap){ const d=document.documentElement;
++      return (d.scrollHeight - window.scrollY - window.innerHeight) <= (gap==null?90:gap); },
++    _onUserScroll(e){
++      const up = e.type==='wheel' ? e.deltaY<0
++        : e.type==='keydown' ? ['PageUp','ArrowUp','Home'].includes(e.key)
++        : true;                       // touchmove：方向拿不准，一律当成用户接管
++      if(up && this.stickBottom)this.stickBottom=false;
++    },
++    _onScroll(){ if(!this.stickBottom && this._nearBottom())this.stickBottom=true; },
++    backToBottom(){ this.stickBottom=true; this._chatScroll(); },
++    _chatScroll(force){ if(!force && !this.stickBottom)return;
++      this.$nextTick(()=>{ this.$nextTick(()=>{
        // 双 nextTick：第一层等 Vue 更新 DOM，第二层等浏览器布局完成
        try{ window.scrollTo({top:document.documentElement.scrollHeight,behavior:'smooth'}); }catch(_){}
      }); }); },
@@ -596,11 +832,11 @@ index 87b62bc..e3e4d90 100644
 +    // 英语卡片的 formula 放的是句型结构（not only ... but also ...），不是 LaTeX，
 +    // 拿不到 .kcard-formula .katex 那个高亮胶囊，单独标一下好上样式
 +    isTextFormula(f){ return !!String(f||'').trim() && !/\$/.test(f); },
-+    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; if(this.segMode){ this.segMode=false; this.segCount=0; } },
++    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; this.stickBottom=true; this.chatReasonOpen={}; if(this.segMode){ this.segMode=false; this.segCount=0; } },
      // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
      snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
      restoreState(s){ if(!s||typeof s!=='object')return;
-@@ -152,7 +168,13 @@ const QuestionCard={
+@@ -152,7 +195,13 @@ const QuestionCard={
        <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
        <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
      </div>
@@ -615,7 +851,7 @@ index 87b62bc..e3e4d90 100644
      <div class="stem"><rich-text :content="q.stem" /></div>
      <template v-if="isChoice">
        <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
-@@ -216,7 +238,7 @@ const QuestionCard={
+@@ -216,7 +265,7 @@ const QuestionCard={
                <div class="kcard-face kcard-front">
                  <div class="kcard-idx">{{ i+1 }}/{{ aiCards.length }}</div>
                  <div class="kcard-term"><rich-text :content="c.term" /></div>
@@ -624,7 +860,7 @@ index 87b62bc..e3e4d90 100644
                  <div class="kcard-hint">点击查看讲解 <icon name="rotate-cw" :size="15" /></div>
                </div>
                <div class="kcard-face kcard-back">
-@@ -232,7 +254,7 @@ const QuestionCard={
+@@ -232,7 +281,7 @@ const QuestionCard={
              <div v-if="!aiFlip[kcardIdx]" class="kcard-lg-face kcard-lg-front" @click="kcardTap">
                <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
                <div class="kcard-term" style="font-size:22px"><rich-text :content="aiCards[kcardIdx].term" /></div>
@@ -633,13 +869,219 @@ index 87b62bc..e3e4d90 100644
                <div class="kcard-hint">点击翻面看讲解</div>
              </div>
              <div v-else class="kcard-lg-face kcard-lg-back" @click="kcardTap">
+@@ -266,27 +315,38 @@ const QuestionCard={
+           </div>
+         </div>
+         <template v-if="(aiText || (aiKind==='concept' && aiCards.length)) && !aiBusy">
+-          <div v-for="(c,i) in aiChat" :key="'aq'+i" class="chat-round">
++          <div v-for="r in chatRounds" :key="'aq'+r.i" class="chat-round">
+             <div class="chat-bub chat-q">
+               <div class="chat-tag"><icon name="user" :size="13" /> 你</div>
+-              <rich-text :content="c.q" />
++              <rich-text :content="r.c.q" />
+               <div class="chat-q-acts">
+-                <button v-if="aiAsking && i===aiChat.length-1" class="chat-icon-btn" @click="$emit('ai-stop')" title="停止生成"><icon name="square" :size="14" /></button>
+-                <button v-if="!aiAsking && c.a" class="chat-icon-btn" @click="$emit('ai-retry',i)" title="重新生成这条回答"><icon name="rotate-cw" :size="14" /></button>
++                <button v-if="aiAsking && r.i===aiChat.length-1" class="chat-icon-btn" @click="$emit('ai-stop')" title="停止生成"><icon name="square" :size="14" /></button>
++                <button v-if="!aiAsking && r.c.a" class="chat-icon-btn" @click="$emit('ai-retry',r.i)" title="重新生成这条回答"><icon name="rotate-cw" :size="14" /></button>
+               </div>
+             </div>
+-            <div v-if="c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="c.a" />
+-              <div v-if="!aiAsking && !c.err" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
++            <div v-if="r.c.r" class="chat-reason">
++              <button class="chat-reason-h" @click="chatReasonOpen[r.i]=!chatReasonOpen[r.i]">
++                <icon name="brain" :size="13" /> 推理过程
++                <span v-if="aiAsking && r.i===aiChat.length-1 && !r.c.a" class="spin"></span>
++                <icon :name="chatReasonOpen[r.i]?'chevron-up':'chevron-down'" :size="12" />
++              </button>
++              <div v-show="chatReasonOpen[r.i]" class="chat-reason-b">{{ r.c.r }}</div>
++            </div>
++            <div v-if="r.c.a" class="chat-bub chat-a"><div class="chat-tag"><icon name="sparkles" :size="13" /> AI</div><rich-text :content="r.c.a" />
++              <div v-if="!aiAsking && !r.c.err" style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+                 <button class="btn subtle" style="padding:2px 10px;font-size:11px" :style="segMode?'border-color:var(--accent,#4f46e5);color:var(--accent,#4f46e5)':''" @click="segToggle" title="选段模式"><icon :name="segMode?'x':'text-cursor-input'" :size="12" />{{ segMode?'退出':'选段' }}</button>
+-                <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:c.q,a:c.a})" title="把这一轮问答追加到本题笔记"><icon name="notebook-pen" :size="12" />存为笔记</button>
++                <button class="btn subtle" style="padding:2px 10px;font-size:11px" @click="$emit('ai-note',{q:r.c.q,a:r.c.a})" title="把这一轮问答追加到本题笔记"><icon name="notebook-pen" :size="12" />存为笔记</button>
+               </div>
+             </div>
+             <div v-else class="chat-bub chat-a"><span class="spin"></span></div>
+           </div>
++          <button v-if="(aiBusy||aiAsking) && !stickBottom" class="back-bottom" @click="backToBottom">
++            <icon name="chevron-down" :size="14" /> 回到底部
++          </button>
+           <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+             <input ref="askInp" v-model="askInput" :disabled="aiAsking" :placeholder="aiKind==='concept' ? '对知识点卡片有疑问？追问…' : '对解析有疑问？追问…'" style="flex:1;min-width:0" @keyup.enter="doAsk" />
+             <button class="btn subtle" :disabled="aiAsking || !askInput.trim()" @click="doAsk"><span v-if="aiAsking" class="spin"></span>{{ aiAsking?'回答中':'追问' }}</button>
+-            <button v-if="aiChat.length && !aiAsking" class="chat-icon-btn" @click="$emit('ai-clear-chat')" title="清空追问记录" style="opacity:.6"><icon name="trash-2" :size="15" /></button>
++            <button v-if="chatRounds.length && !aiAsking" class="chat-icon-btn" @click="$emit('ai-clear-chat')" title="清空追问记录" style="opacity:.6"><icon name="trash-2" :size="15" /></button>
+           </div>
+         </template>
+         <div v-if="segMode" class="seg-bar">
+diff --git a/js/tpl/view-bank.js b/js/tpl/view-bank.js
+index c70ddef..7012870 100644
+--- a/js/tpl/view-bank.js
++++ b/js/tpl/view-bank.js
+@@ -33,6 +33,7 @@ const TPL_VIEW_BANK = `
+         <div class="tb-right">
+           <button class="btn subtle" v-if="bank.items.length" :disabled="bankAiFill.busy" @click="bankAiFillAnswers" title="给本页（或勾选中）缺答案的题用 AI 补参考答案，结果标为待审草稿"><span v-if="bankAiFill.busy" class="spin"></span><icon name="wand-sparkles" :size="15" /> AI 补答案</button>
+               <span v-if="bankAiFill.busy && bankAiFill.prog" class="muted" style="font-size:12px">{{ bankAiFill.prog }}</span>
++          <button class="btn subtle" v-if="bankAiFill.busy" @click="bankAiFillStop" title="停止后已经补好的题会保留">停止</button>
+               <button class="btn subtle" v-if="bank.items.length" :disabled="busyOps.bankAutoClassify" @click="bankAutoClassify" title="按题干内容自动纠正科目（仅强特征命中）"><icon name="wand-sparkles" :size="15" /> 智能归类(本页)</button>
+           <button class="btn subtle" @click="loadBank(true)" :disabled="bank.loading" title="重新从服务器拉取题库列表"><icon name="refresh-cw" :size="15" /> 刷新</button>
+           <button class="btn subtle" v-if="bank.total" @click="bankDupScan" :disabled="dup.busy" title="simhash 相似度扫描：找出题干高度相似或完全相同的重复题，人工确认后删除"><span v-if="dup.busy" class="spin"></span><icon name="search" :size="15" /> 查重</button>
+diff --git a/js/views/bank.js b/js/views/bank.js
+index a007d78..b1e2929 100644
+--- a/js/views/bank.js
++++ b/js/views/bank.js
+@@ -71,40 +71,90 @@ async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fl
+ async bankAiFillAnswers(){
+       if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+       if(this.offline){ this.flash('离线状态下无法调用 AI',true); return; }
+-      const sel=new Set(this.bank.sel||[]);
+-      const pool=(this.bank.items||[]).filter(q=>(sel.size?sel.has(q.id):true))
+-        .filter(q=>!(Array.isArray(q.answer)&&q.answer.length));
+-      if(!pool.length){ this.flash(sel.size?'勾选的题都已经有答案了':'本页没有缺答案的题',true); return; }
+-      if(!confirm('给 '+pool.length+' 道缺答案的题用 AI 补参考答案？\n\n· 会消耗 AI 额度（每 6 题一次请求）\n· 补出来的一律标成「待审」草稿，需要你在题库里筛出来逐条过一遍再发布\n· 依赖插图的题 AI 会跳过，不会硬编\n\n继续？'))return;
+-      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0 };
++      const sel=[...(this.bank.sel||[])];
++      let pool;
++      if(sel.length){
++        // 跨页勾选：sel 里的 id 不一定都在本页 items 里。原来 pool 直接从 bank.items 过滤，
++        // 不在本页的勾选会被静默丢掉——连 skipped 都不计，提示还说「已补 N 题」。
++        // 批量加标签那条链路早就修过同样的问题（见 questions.js PATCH 的注释），这里漏了。
++        const have=new Map((this.bank.items||[]).map(q=>[q.id,q]));
++        const miss=sel.filter(id=>!have.has(id));
++        const fetched=[];
++        if(miss.length){
++          try{
++            for(let i=0;i<miss.length;i+=200){
++              const chunk=miss.slice(i,i+200);
++              const d=await this.api('/api/questions?ids='+encodeURIComponent(chunk.join(','))+'&limit=200&order=seq');
++              for(const q of (d.items||[]))fetched.push(q);
++            }
++          }catch(e){ if(e.message==='unauth')throw e;
++            this.flash('拉取跨页勾选的题目失败，已中止：'+e.message,true); return; }
++        }
++        pool=[...sel.map(id=>have.get(id)).filter(Boolean), ...fetched];
++      } else {
++        pool=(this.bank.items||[]).slice();
++      }
++      pool=pool.filter(q=>!(Array.isArray(q.answer)&&q.answer.length));
++      if(!pool.length){ this.flash(sel.length?'勾选的题都已经有答案了':'本页没有缺答案的题',true); return; }
++      const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
++      if(!confirm('给 '+pool.length+' 道缺答案的题用 AI 补参考答案？\n\n· 会消耗 AI 额度（每 '+CH+' 题一次请求，共约 '+Math.ceil(pool.length/CH)+' 次）\n· 补出来的一律标成「待审」草稿，需要你在题库里筛出来逐条过一遍再发布\n· 依赖插图的题 AI 会跳过，不会硬编\n· 生成中可以点「停止」中断\n\n继续？'))return;
++      const ctrl=new AbortController(); this._aiFillCtrl=ctrl;
++      this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0, canceled:false };
+       try{
+-        const CH=6;   // 一次 6 题：再多提示词会长到影响答案质量，单次失败的代价也太大
+         for(let i=0;i<pool.length;i+=CH){
++          if(ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
+           const part=pool.slice(i,i+CH);
+           this.bankAiFill.prog='正在生成 '+Math.min(i+CH,pool.length)+' / '+pool.length+'…';
+           let d=null;
+           try{
+-            d=await this.api('/api/answerfill',{method:'POST',body:JSON.stringify(Object.assign({
++            d=await this.api('/api/answerfill',{method:'POST',signal:ctrl.signal,body:JSON.stringify(Object.assign({
+               questions: part.map(q=>({ id:q.id, type:q.type, stem:q.stem, options:q.options, passage:q.passage, subject:q.subject })),
+             }, this.aiOv()))});
+-          }catch(e){ if(e.message==='unauth')throw e; this.bankAiFill.failed+=part.length; continue; }
++          }catch(e){ if(e.message==='unauth')throw e;
++            if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
++            this.bankAiFill.failed+=part.length; continue; }
++          // 攒成一个 items 批量 PATCH。原来是每题一个请求，6 题一组也就 6 次往返，
++          // 200 题下来 200 次；中途失败还会留下「补了一半」的状态。
++          // 服务端新增的 items 路径按 id 分别赋值，一次请求一个 D1 事务。
++          const patch=[];
+           for(const it of (d.items||[])){
+             if(!it || !Array.isArray(it.answer) || !it.answer.length){ this.bankAiFill.skipped++; continue; }
++            // analysis 只在非空时才带。PATCH 的判定是 `!== undefined && !== null`，
++            // 空字符串照样会写库——原来无条件发 `analysis: it.analysis||''`，
++            // 会把题目原有的解析（比如从真题答案区抽出来的【精析】）直接抹掉。
++            const row={ id:it.id, answer:it.answer, status:'draft' };
++            if(String(it.analysis||'').trim())row.analysis=it.analysis;
++            patch.push(row);
++          }
++          if(patch.length){
+             try{
+-              await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({
+-                ids:[it.id], answer:it.answer, analysis:it.analysis||'', status:'draft' })});
+-              const q=(this.bank.items||[]).find(x=>x.id===it.id);
+-              if(q){ q.answer=it.answer; if(it.analysis)q.analysis=it.analysis; q.status='draft'; }
+-              this.bankAiFill.filled++;
+-            }catch(e){ if(e.message==='unauth')throw e; this.bankAiFill.failed++; }
++              const r=await this.api('/api/questions',{method:'PATCH',signal:ctrl.signal,body:JSON.stringify({items:patch})});
++              const missIds=new Set(((r&&r.missing)||[]).map(String));
++              const byId=new Map((this.bank.items||[]).map(x=>[x.id,x]));
++              for(const row of patch){
++                if(missIds.has(String(row.id))){ this.bankAiFill.failed++; continue; }
++                const q=byId.get(row.id);
++                if(q){ q.answer=row.answer; if(row.analysis)q.analysis=row.analysis; q.status='draft'; }
++                this.bankAiFill.filled++;
++              }
++            }catch(e){ if(e.message==='unauth')throw e;
++              if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
++              this.bankAiFill.failed+=patch.length; }
+           }
+           this.bankAiFill.skipped+=((d&&d.missing)||[]).length;
+         }
+         const f=this.bankAiFill;
+-        this.flash('已补 '+f.filled+' 题'+(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')+(f.failed?('；失败 '+f.failed+' 题'):'')+'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
++        const done=f.filled+f.skipped+f.failed;
++        this.flash((f.canceled?'已停止（处理了 '+done+' / '+f.total+' 题）：':'')
++          +'已补 '+f.filled+' 题'
++          +(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')
++          +(f.failed?('；失败 '+f.failed+' 题'):'')
++          +'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
+         this.bankDirty=true; this.statsDirty=true;
+       }catch(e){ if(e.message!=='unauth')this.flash('AI 补答案失败：'+e.message,true); }
++      if(this._aiFillCtrl===ctrl)this._aiFillCtrl=null;
+       this.bankAiFill.busy=false; this.bankAiFill.prog=''; },
++bankAiFillStop(){ if(this._aiFillCtrl){ try{ this._aiFillCtrl.abort(); }catch(_){} this.bankAiFill.prog='正在停止…'; } },
+ async bankBatchTag(){ const ids=[...this.bank.sel]; if(!ids.length){ this.flash('请先勾选题目',true); return; } const t=prompt('给选中 '+ids.length+' 题添加标签（逗号分隔；会与原标签合并去重）：'); if(t===null)return; const add=t.split(/[,，、]/).map(s=>s.trim()).filter(Boolean); if(!add.length){ this.flash('未输入标签',true); return; } try{
+         // 合并交给服务端（addTags）：一个请求搞定任意条数，
+         // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。
 diff --git a/js/views/ingest.js b/js/views/ingest.js
-index 209d29a..7e29918 100644
+index 209d29a..20ba6c3 100644
 --- a/js/views/ingest.js
 +++ b/js/views/ingest.js
-@@ -217,7 +217,13 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+@@ -205,19 +205,48 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+       let curAns=null; let answerMarkerStreak=0;   // 连续答案标记计数(无标题切区用)
+       let answerMissStreak=0;                      // 中间夹了几行"不像答案"的噪声(水印/页码)
+       let inEx=false, exLabel='';
++      // 教材正文里的小节标题会被 numRe 当成编号题吃进来（实测「4.4 算法的空间复杂度」
++      // 「5 小结」都变成了题目）。但试卷是整篇都是题、根本没有「习题」标题的，
++      // 所以不能无条件要求 inEx。做法：先扫一遍全文——
++      //   · 文档里存在习题/思考题这类分区标题 → 只在分区内抽题（教材）
++      //   · 完全没有 → 保持原行为，全文抽（试卷、小红本）
++      const hasExSections=/(^|\n)\s*#{0,6}\s*\**\s*(习\s*题|思\s*考\s*题|练\s*习(?!册)|复\s*习\s*题|自\s*测\s*题|课后练习|单元测试)/.test(text);
++      const mineHere=()=>!hasExSections || inEx;
+       // —— 阅读材料关联 ——
+       // 英语/语文真题结构:一段短文(A/B/C 标记 或 "阅读下面短文")后跟若干题,这些题共享短文。
+       // 累积「非题目、非选项、非标记」的连续文本行作为 passage;遇到新题号就把它关联进去。
+       let curPassage='', passageBuf=[];
++      // 材料长度硬上限。真实阅读短文再长也就两三千字；教材正文却能一路涨到几万字，
++      // 而 passage 是「每道题都带一份」的字段——138 题 × 几十 KB 直接把 D1 的 32MiB
++      // RPC 上限撑爆（线上实测：the size of this value was: 95036377 bytes）。
++      const PASSAGE_MAX=2400;
++      // 是否正处在「阅读材料区」：由 A/B/C、Passage N、「阅读下列短文」这类标记开启，
++      // 由章节 / 习题标题关闭。只有在区内，短小标题（Spain / Greece）才算材料的一部分；
++      // 区外的小标题（教材的「基本概念和术语」）必须重置材料，否则正文会跨节无限累积。
++      let inReading=false;
+       const isProseLine=(s)=>{ const t=s.trim(); if(t.length<25)return false;
++        // MinerU 把插图输出成 <figure><img src="data:image/png;base64,…"> 内联在正文里。
++        // 单行能有 7 万字符（实测数据结构 p29 一行 69905 字），而 base64 全是字母，
++        // 下面的 enWords>=6 必然成立 —— 于是整块 base64 被当成散文塞进 passage，
++        // 而 passage 是每道题都带一份的字段，138 道题就是几十 MB，直接把 D1 的
++        // 32MiB RPC 上限撑爆。这类行根本不是正文，先挡掉。
++        if(/^[<|]/.test(t))return false;                       // HTML 块 / 表格行
++        if(/data:[a-z]+\/[a-z0-9.+-]+;base64,/i.test(t))return false;
++        if(t.length>1500)return false;                          // 正文段落不会这么长，是 blob
+         if(numRe.test(t)||braRe.test(t))return false;
+         if(/^\s*[（(]?[A-EＡ-Ｅ][）).．、]/.test(t))return false;
+         if(answerBody.test(t))return false;
+         const enWords=(t.match(/[A-Za-z]{2,}/g)||[]).length;
          return enWords>=6 || t.length>=40; };
-       const flushPassage=()=>{ const p=passageBuf.join(' ').replace(/\s+/g,' ').trim(); if(p.length>=40)curPassage=p; passageBuf=[]; };
+-      const flushPassage=()=>{ const p=passageBuf.join(' ').replace(/\s+/g,' ').trim(); if(p.length>=40)curPassage=p; passageBuf=[]; };
++      const flushPassage=()=>{ const p=passageBuf.join(' ').replace(/\s+/g,' ').trim(); if(p.length>=40)curPassage=p.slice(0,PASSAGE_MAX); passageBuf=[]; };
        const flush=()=>{ if(cur&&cur.lines.join('').trim()&&!this._isSectionLabel(cur.lines.join('\n'))){ if(curPassage&&!cur.passage)cur.passage=curPassage; items.push(cur); } cur=null; };
 -      const flushAns=()=>{ if(curAns&&curAns.num){ const body=curAns.lines.join('\n').trim(); if(body){ const km=body.match(/(?:答案|正确答案|应?选|故选)\s*[是为：:]?\s*([A-EＡ-Ｅ](?:\s*[,，、和]\s*[A-EＡ-Ｅ])*)/); answerMap[curAns.num]={ keys: km?this._fullToHalf(km[1]).split(/[,，、和\s]+/).filter(Boolean):[], analysis: body }; } } curAns=null; };
 +      // 答案字母优先从「故选 X / 答案为 X」里取；有些条目没有这句收尾，
@@ -652,7 +1094,7 @@ index 209d29a..7e29918 100644
        for(const raw of lines){ let head=null; const h=raw.match(headRe); if(h)head=h[1]; else { const b=raw.match(boldRe); if(b)head=b[1]; }
          // 进入答案区检测 —— 标题命中最可靠,立刻切。
          // MinerU 经常把「参考答案与名家精析」输出成普通正文行(没有 # 也没有 **),
-@@ -229,14 +235,14 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+@@ -229,14 +258,14 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
               && (head!=null || ht.length<=24)){ flush(); inAnswer=true; continue; } }
          // 无标题兜底:必须连续 2 条以上「N.【精析】」才切,防止教材里偶发一条【精析】把后面真题全吞掉
          if(!inAnswer){
@@ -670,7 +1112,7 @@ index 209d29a..7e29918 100644
                continue;
              }
            }
-@@ -247,7 +253,11 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+@@ -247,13 +276,23 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
              if(++answerMissStreak>=3){ answerMarkerStreak=0; answerMissStreak=0; } }
          }
          if(inAnswer){
@@ -683,6 +1125,644 @@ index 209d29a..7e29918 100644
            if(anm){ flushAns(); curAns={ num:anm[1], lines:[anm[2]] }; }
            else if(curAns){ curAns.lines.push(raw); }
            continue;
+         }
+         if(head){ const t=head.replace(/\*\*/g,'').trim();
+-          if(xitiHead.test(t)){ inEx=true; exLabel=''; } else if(zhang.test(t)){ inEx=false; exLabel=''; }
++          if(xitiHead.test(t)){ inEx=true; exLabel=''; }
++          else if(zhang.test(t)){ inEx=false; exLabel=''; }
++          // 习题区的退出条件：任何「既不是习题标题、也不是小节标签」的标题都算离开。
++          // 少了这条，inEx 被「# 习题」打开后就再也关不掉，后面整本正文的小节标题
++          // 都会被 numRe 当成编号题抽进来（实测「4.4 算法的空间复杂度」「5 小结」）。
++          // 只在 hasExSections 为真时生效，试卷（没有习题分区）完全不受影响。
++          else if(inEx && hasExSections && !this._isChoiceLabel(t) && !this._isSectionLabel(t)){ inEx=false; exLabel=''; }
+           if(this._isChoiceLabel(t))exLabel='choice'; else if(this._isSectionLabel(t))exLabel='other';
+           // 阅读段落标记(单个 A/B/C/D 或 Spain/Denmark 这类小标题)后面跟的是新短文 → 清空旧材料重新累积。
+           // 关键顺序:必须先 flush(关闭并 push 当前挂起的题,让它保住当前 passage),再清空 passage,
+@@ -265,13 +304,21 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+             || /^(Passage|Text|Part)\s*[A-E0-9]/i.test(t)
+             || /阅读下(列|面)/.test(t)
+             || /^第\s*[一二三四五六七八九十0-9０-９]+\s*[节部]/.test(t);
+-          if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; continue; }
+-          if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; }
+-          // 短文中间的小标题是材料的一部分,不能丢——丢了就看不出哪段讲哪个国家
+-          else if(!cur && !this._isSectionLabel(t) && t.length<=40 && !/^\$/.test(t))passageBuf.push(t);
++          if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; inReading=false; continue; }
++          if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; inReading=true; }
++          // 短文中间的小标题是材料的一部分,不能丢——丢了就看不出哪段讲哪个国家。
++          // 但这只在阅读区内成立：区外（教材正文）的标题必须像 9eaa3fb 那样重置材料，
++          // 上一轮我把重置一并去掉了，教材的 passage 于是跨节累积直到把写库撑爆。
++          else if(inReading && !cur && !this._isSectionLabel(t) && t.length<=40 && !/^\$/.test(t))passageBuf.push(t);
++          else if(!inReading){ flush(); flushPassage(); curPassage=''; passageBuf=[]; }
+           if(h){ flush(); continue; } }
+-        const nm=raw.match(numRe); if(nm){ flushPassage(); flush();
++        const nm=raw.match(numRe); if(nm && mineHere()){ flushPassage(); flush();
+           if(this._isChoiceLabel(nm[2]))exLabel='choice'; else if(this._isSectionLabel(nm[2]))exLabel='other';
++          // 既不是「选择题」也不是别的小节标签 → 这是一道真题目，不是小节表头。
++          // 必须清掉 exLabel：否则「5．选择题」留下的 choice 会一直生效，
++          // 让「6．试分析下列各算法的时间复杂度。」下面的 (1)…(6) 代码段
++          // 全被当成独立题目抽出来，父题干丢失，抽出一堆没头没尾的代码片段。
++          else exLabel='';
+           cur={ num:nm[1], chapter, lines:[nm[2]], bra:false }; continue; }
+         const bm=raw.match(braRe);
+         // 「（1）」是独立题还是子项？
+@@ -281,10 +328,12 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
+         //    都靠这一条保持原样，不会被拆散、不会和后面的「解」失联。
+         const standalone = inEx && exLabel==='choice';
+         const sibling = !!(cur && cur.bra);
+-        if(bm && (standalone || sibling)){
++        if(bm && mineHere() && (standalone || sibling)){
+           flush(); cur={ num:bm[1], chapter, lines:[bm[2]], bra:true }; continue; }
+         if(cur)cur.lines.push(raw);
+-        else if(isProseLine(raw))passageBuf.push(raw.trim()); }   // 题目之外的散文行 → 累积为阅读材料
++        else if(isProseLine(raw)){   // 题目之外的散文行 → 累积为阅读材料（到上限就停，不再无限吃）
++          let used=0; for(const x of passageBuf)used+=x.length+1;
++          if(used<PASSAGE_MAX)passageBuf.push(raw.trim()); } }
+       flushPassage(); flush(); flushAns();
+       const out=[]; let qnum=0; for(const it of items){ const q=this._buildQuestionFromItem(it, ctx); if(!q)continue;
+         if(this._isRefEntry(q.stem))continue;      // 参考书目条目，不是题
+@@ -333,6 +382,24 @@ _isSectionLabel(t){ const s=String(t||'').replace(/[\s*#]/g,'').replace(/^[（(]
+ // 同一行里的 A. / B. / C. / D. 选项拆出来。
+ // MinerU 常把整道选择题压成一行：「…分成（）。A. 甲 B. 乙 C. 丙 D. 丁」，
+ // 原来的 optRe 只认独占一行的选项，所以这类题全都退化成简答。
++// 选项行整体拆分。教材里选项常常一行放两个（或四个）：
++//   A．动态结构和静态结构            B．紧凑结构和非紧凑结构
++//   C．线性结构和非线性结构           D．内部结构和外部结构
++// 逐行的 optRe 是 `^…([A-D])…(.+)$`，那个 (.+)$ 会把整行剩余全吃进第一个选项，
++// 于是 B 被塞进 A 的文本里、D 被塞进 C 里 —— 只剩 2 个选项且内容是错的，
++// 比干脆丢掉更难发现。所以先把所有选项行拼起来，再按 A→B→C→D 严格递进切。
++// 这里已经确认每行都以选项标记开头，所以 2 个就够（不像正文里要求 3 个防误判）。
++_optionsFromLines(lines){ const t=(lines||[]).join(' ');
++      const re=/([A-EＡ-Ｅ])\s*[）).．、]\s*/g; const found=[]; let m;
++      while((m=re.exec(t)))found.push({ key:this._fullToHalf(m[1]), at:m.index, end:m.index+m[0].length });
++      const want=['A','B','C','D','E']; const seq=[];
++      for(const f of found){ if(f.key===want[seq.length])seq.push(f); }
++      if(seq.length<2)return null;
++      const out=[];
++      for(let i=0;i<seq.length;i++){ const e=(i+1<seq.length)?seq[i+1].at:t.length;
++        const txt=t.slice(seq[i].end,e).replace(/\s+/g,' ').trim();
++        if(!txt)return null; out.push({ key:seq[i].key, text:txt }); }
++      return out; },
+ _splitInlineOptions(text){ const t=String(text||''); const re=/([A-DＡ-Ｄ])\s*[.．、]\s*/g; const found=[]; let m;
+       while((m=re.exec(t))){ found.push({ key:this._fullToHalf(m[1]), at:m.index, end:m.index+m[0].length }); }
+       // 必须是 A,B,C[,D] 严格递进且至少三个，否则正文里偶然出现的「A.」会被误判
+@@ -368,8 +435,24 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
+       if(m && m.index!=null){ const cut=m.index+(m[1]?m[1].length:0); const head=body.slice(0,cut).trim(); if(head){ stemPart=head; solPart=body.slice(cut).trim(); } else { stemPart=body; } }
+       else { stemPart=body; }
+       const optRe=/^\s*[（(]?\s*([A-DＡ-Ｄ])\s*[）).．、]\s*(.+)$/; const sl=stemPart.split('\n'); const opts=[]; const keep=[];
+-      for(const ln of sl){ const om=ln.match(optRe); if(om){ opts.push({ key:this._fullToHalf(om[1]), text:om[2].trim() }); } else keep.push(ln); }
++      const optLines=[];
++      for(const ln of sl){ if(optRe.test(ln))optLines.push(ln); else keep.push(ln); }
++      if(optLines.length){
++        const merged=this._optionsFromLines(optLines);
++        if(merged){ for(const o of merged)opts.push(o); }
++        // 拆不出严格递进的序列（选项残缺、跨页断了）就退回逐行，至少别丢内容
++        else for(const ln of optLines){ const om=ln.match(optRe); if(om)opts.push({ key:this._fullToHalf(om[1]), text:om[2].trim() }); }
++      }
+       let type='short_answer', options=[], answer=[], analysis='';
++      // 选项行拆出来了、但一个题干字都没剩 = 完形填空的孤儿选项行
++      //（「21. A. cooking B. cleaning C. jobs D. exercise」，空在上面的短文里）。
++      // 以前这条靠 opts.length<2 落到下面的 _splitInlineOptions 去识别 orphan；
++      // 现在 _optionsFromLines 会直接把 4 个选项拆出来，绕过了那条路，
++      // 于是完形填空全变成没有题干的空题。所以这里要单独接住。
++      if(opts.length>=2 && !keep.join('').trim()){
++        if(!(it.passage&&it.passage.length>=40))return null;   // 没短文可挂 → 永远做不了，丢掉
++        keep.push('（完形填空 第 '+(it.num||'?')+' 空）');
++      }
+       // 独占一行的选项没找到时，再试同一行内的 A./B./C./D.
+       if(opts.length<2){ const inl=this._splitInlineOptions(keep.join('\n').trim()||stemPart);
+         if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0;
+@@ -414,17 +497,34 @@ _stripPageFurniture(texts){ const arr=(texts||[]).map(t=>String(t||''));
+       const norm=(s)=>s.replace(/[#*>`\s]/g,'').trim();
+       if(arr.filter(t=>t.trim()).length<4)return arr;
+       const freq=new Map(); let pageCount=0;
++      // 原来只统计每页首尾 3 行。但纸质书的书脊竖排标题（「数据结构（ 语」「C言版）（第 版」
++      // 「双色版」）被 PDF 抽取时会落在页面中部，混进题干里 —— 实测 88 题里 49 题带这种杂物。
++      // 所以改成全页扫。为了不误删正文，跳过看起来像题目内容的行：选项行、编号题行。
++      const looksContent=(x)=>/^[（(]?\s*[A-EＡ-Ｅ]\s*[）).．、]/.test(x) || /^\s*[0-9０-９]{1,3}\s*[.．、)）]\s*\S/.test(x);
+       for(const t of arr){ const ls=t.split('\n').map(x=>x.trim()).filter(Boolean); if(!ls.length)continue; pageCount++;
+-        const edge=new Set([...ls.slice(0,3), ...ls.slice(-3)]);
+-        for(const ln of edge){ const k=norm(ln); if(!k||k.length>120)continue; freq.set(k,(freq.get(k)||0)+1); } }
++        const seen=new Set();
++        for(const ln of ls){ if(looksContent(ln))continue; const k=norm(ln);
++          // 上限保持 120：页眉页脚水印本来就长（「广东专插本考试信息网…电话: 153…」），
++          // 卡到 40 会把它排除在统计之外，等于把原来能剥的水印又漏回去。
++          if(!k||k.length>120)continue;
++          if(/^[A-EＡ-Ｅ]$/.test(k))continue;          // 阅读分篇标记「A」「B」，不是杂物
++          if(seen.has(k))continue; seen.add(k);
++          freq.set(k,(freq.get(k)||0)+1); } }
+       if(!pageCount)return arr;
+-      const junk=new Set(); for(const [k,n] of freq)if(n/pageCount>=0.6)junk.add(k);
++      // 阈值按行长分档：书脊竖排标题只印在单侧页面（recto/verso 交替），
++      // 频次天然只有 ~50%，用 60% 会正好卡在门外（实测「双色版」「C言版）（第 版」都是这样）。
++      // 短行本来就不可能是题目内容，放宽到 40%；长行保持 60% 以免误删正文。
++      const junk=new Set(); for(const [k,n] of freq){ const r=n/pageCount;
++        if(r >= (k.length<=12 ? 0.4 : 0.6))junk.add(k); }
+       return arr.map(t=>{ if(!t.trim())return t;
+         const ls=t.split('\n'); const out=[];
+         for(let i=0;i<ls.length;i++){ const s=ls[i].trim(); const k=norm(s);
+           if(k && junk.has(k))continue;
+-          // 孤零零一行纯数字的页码,只在页首/页尾时删
+-          if(/^[0-9０-９]{1,4}$/.test(s) && (i<2||i>=ls.length-2))continue;
++          // 孤立的纯数字行（页码）和孤立的单个汉字行（竖排文字被逐字切开：「第」「1」「章」）
++          // 在正文里不可能是内容，整页范围内都删。两字以上的（「绪论」）留给频次判定去处理。
++          if(/^[0-9０-９]{1,4}$/.test(s))continue;
++          if(/^[\u4e00-\u9fa5]$/.test(s))continue;
++          if(/^[—–\-—]{2,}$/.test(s))continue;
+           out.push(ls[i]); }
+         return out.join('\n').replace(/\n{3,}/g,'\n\n').trim(); }); },
+ _extractWholeBook(book){
+@@ -461,7 +561,9 @@ _extractWholeBook(book){
+ // 转存同样能省体积（一条短链 ~40 字节 vs 几百 KB base64），而且图还在。
+ _collectDataImages(q){ const out=[];
+       const scan=(t)=>{ const s=String(t||''); const re=/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g; let m; while((m=re.exec(s)))out.push(m[0]); };
+-      scan(q&&q.stem); scan(q&&q.analysis);
++      // passage 以前漏了。它同样会带 base64（MinerU 的插图内联在正文里），
++      // 而且是「每道题一份」，不转存的话比 stem 更容易把写库撑爆。
++      scan(q&&q.stem); scan(q&&q.analysis); scan(q&&q.passage);
+       if(q&&Array.isArray(q.options))for(const o of q.options)scan(o&&o.text);
+       if(q&&Array.isArray(q.answer))for(const a of q.answer)if(typeof a==='string')scan(a);
+       return out; },
+@@ -494,6 +596,7 @@ async _hoistImages(arr){
+       if(map.size){
+         const swap=(t)=>{ let s=String(t||''); for(const [k,v] of map)s=s.split(k).join(v); return s; };
+         for(const q of arr){ q.stem=swap(q.stem); if(q.analysis)q.analysis=swap(q.analysis);
++          if(q.passage)q.passage=swap(q.passage);
+           if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:swap(o.text)}));
+           if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
+       }
+diff --git a/js/views/practice.js b/js/views/practice.js
+index 905810d..51bde13 100644
+--- a/js/views/practice.js
++++ b/js/views/practice.js
+@@ -298,16 +298,32 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
+   if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
+   const ctrl=new AbortController(); this._aiCtrl=ctrl;
+   if(!Array.isArray(this.aiX.chat))this.aiX.chat=[];
+-  const entry={ q:text, a:'' }; this.aiX.chat.push(entry); this.aiX.asking=true;
++  // Vue 3 的坑：push 进响应式数组的是「原始对象」，数组下标读出来的才是代理。
++  // 原来这里一直在改 push 之前的那个原始引用（entry.a=d.acc），改的是代理背后的
++  // target，绕开了 setter，依赖收集完全不触发 —— 所以追问看不到流式，
++  // 只有最后 asking=false 触发整体重渲染时文字才「啪」地一次性出现。
++  // 必须拿 push 之后的代理来改。
++  // 追问归属哪个视图：解题解析和知识点卡片是两条独立的线程。
++  // 以前 chat 是一条共享数组，在解析里追问完切到卡片，那些问答照样显示在卡片下面，
++  // 而输入框的占位符写着「对知识点卡片有疑问？」—— 上下文和界面在自相矛盾。
++  const kind=(this.aiX.view==='concept')?'concept':'explain';
++  this.aiX.chat.push({ q:text, a:'', r:'', kind });
++  const entry=this.aiX.chat[this.aiX.chat.length-1];
++  this.aiX.asking=true;
+   // 方案 A：历史放宽到最近 10 条（5 轮），单条轻度截断防爆炸，不做总量一刀切
+-  const history=[]; for(const c of this.aiX.chat.slice(0,-1).slice(-5)){
++  // 历史只带同一视图的轮次，否则卡片的追问会把解析的问答当上下文
++  const sameKind=this.aiX.chat.slice(0,-1).filter(c=>((c.kind||'explain')===kind));
++  const history=[]; for(const c of sameKind.slice(-5)){
+     history.push({role:'user',content:String(c.q||'').slice(0,3000)});
+     if(c.a&&!c.err)history.push({role:'assistant',content:String(c.a).slice(0,4000)});
+   }
+   const ov={ ...( (this.explainCfg&&this.explainCfg.base)?{base_url:this.explainCfg.base,api_key:this.explainCfg.key}:{} ), ...( (this.explainCfg&&this.explainCfg.model)?{model:this.explainCfg.model}:{} ) };
+   // 构建上下文：explain 用 aiX.text，concept 用卡片序列化
+-  let analysisCtx=this.aiX.text||'';
+-  if(!analysisCtx && this.aiX.cards && this.aiX.cards.length){ analysisCtx=this.aiX.cards.map((c,i)=>'【'+(i+1)+'】'+c.term+(c.formula?' '+c.formula:'')+'：'+c.plain+(c.example?' 例：'+c.example:'')).join('\n'); }
++  // 上下文必须跟着当前视图走。原来是 `aiX.text || cards`，只要生成过解析就永远优先用解析——
++  // 于是在卡片视图里问「这张卡片的 not only 倒装怎么用」，模型收到的其实是解题解析，
++  // 卡片内容它压根没看见。
++  const cardsCtx=()=>(this.aiX.cards||[]).map((c,i)=>'【'+(i+1)+'】'+c.term+(c.formula?' '+c.formula:'')+'：'+c.plain+(c.example?' 例：'+c.example:'')).join('\n');
++  let analysisCtx = kind==='concept' ? (cardsCtx() || this.aiX.text || '') : (this.aiX.text || cardsCtx());
+   const isCtxErr=(m)=>/context[_\s-]*length|context window|maximum context|max(?:imum)?[_\s-]*tokens|too many tokens|reduce the length|too long|上下文|请求(?:体|内容)?过长|token\s*数(?:超|过)/i.test(m||'');
+   // 方案 B：上下文超限时递增 trim_level 自动缩减历史重试（最多 2 次）
+   let done=false;
+@@ -315,7 +331,15 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
+     try{
+       if(trimLevel>0){ entry.a=''; this.flash('上下文较长，正在精简后重试…'); }
+       const r=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject }, analysis:analysisCtx.slice(0,6000), history, ask:text, trim_level:trimLevel }, ctrl.signal,
+-        (d)=>{ if(d.reset)entry.a=''; if(d.text)entry.a=d.acc; });
++        (d)=>{
++          if(d.reset){ entry.a=''; entry.r=''; }
++          // 追问以前整个丢掉了 d.reasoning，所以有推理能力的模型在追问里看不到思维链
++          if(d.reasoning)entry.r=(entry.r||'')+d.reasoning;
++          if(d.text)entry.a=d.acc;
++          if(d.fallback)this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型'));
++          if(d.streamFallback)this.flash('流式中断，已切换为一次性返回');
++          if(d.finish_reason==='length')this.flash('⚠ 回答被截断（token 上限），可追问「请继续」');
++        });
+       if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
+       if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } }
+         if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试
+@@ -341,7 +365,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
+ 
+ ,
+ aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
+-aiClearChat(){ if(!this.aiX.chat.length)return; if(!confirm('清空全部追问记录？（不影响解析和卡片）'))return; this.aiX.chat=[]; const st=this.aiStates[this.aiX.id]; if(st)st.chat=[]; this.flash('追问记录已清空'); },
++aiClearChat(){ const kind=(this.aiX.view==='concept')?'concept':'explain';
++  const mine=(this.aiX.chat||[]).filter(c=>((c.kind||'explain')===kind));
++  if(!mine.length)return;
++  const label=kind==='concept'?'知识点卡片':'解题解析';
++  if(!confirm('清空「'+label+'」下的 '+mine.length+' 条追问记录？（另一个视图的追问和解析本身都不受影响）'))return;
++  const keep=(this.aiX.chat||[]).filter(c=>((c.kind||'explain')!==kind));
++  this.aiX.chat=keep; const st=this.aiStates[this.aiX.id]; if(st)st.chat=keep.slice();
++  this.flash(label+'的追问记录已清空'); },
+ aiRetryAsk(i){ const list=this.aiX.chat||[]; const c=list[i];
+   if(!c || this.aiX.asking) return;
+   const q=c.q; list.splice(i,1);
+diff --git a/package-lock.json b/package-lock.json
+index 4c140ba..63f9c97 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -10,6 +10,7 @@
+       "devDependencies": {
+         "@eslint/js": "^10.0.1",
+         "@vue/compiler-dom": "^3.5.39",
++        "@vue/reactivity": "^3.4.21",
+         "eslint": "^10.7.0",
+         "globals": "^17.7.0",
+         "vitest": "^1.6.0"
+@@ -1154,6 +1155,23 @@
+         "@vue/shared": "3.5.39"
+       }
+     },
++    "node_modules/@vue/reactivity": {
++      "version": "3.4.21",
++      "resolved": "https://registry.npmjs.org/@vue/reactivity/-/reactivity-3.4.21.tgz",
++      "integrity": "sha512-UhenImdc0L0/4ahGCyEzc/pZNwVgcglGy9HVzJ1Bq2Mm9qXOpP8RyNTjookw/gOCUlXSEtuZ2fUg5nrHcoqJcw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@vue/shared": "3.4.21"
++      }
++    },
++    "node_modules/@vue/reactivity/node_modules/@vue/shared": {
++      "version": "3.4.21",
++      "resolved": "https://registry.npmjs.org/@vue/shared/-/shared-3.4.21.tgz",
++      "integrity": "sha512-PuJe7vDIi6VYSinuEbUIQgMIRZGgM8e4R+G+/dQTk0X1NEdvgvvgv7m+rfmDH1gZzyA1OjjoWskvHlfRNfQf3g==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@vue/shared": {
+       "version": "3.5.39",
+       "resolved": "https://registry.npmjs.org/@vue/shared/-/shared-3.5.39.tgz",
+diff --git a/package.json b/package.json
+index e73c766..5f8d281 100644
+--- a/package.json
++++ b/package.json
+@@ -13,6 +13,7 @@
+   "devDependencies": {
+     "@eslint/js": "^10.0.1",
+     "@vue/compiler-dom": "^3.5.39",
++    "@vue/reactivity": "^3.4.21",
+     "eslint": "^10.7.0",
+     "globals": "^17.7.0",
+     "vitest": "^1.6.0"
+diff --git a/tests/answerfill.test.mjs b/tests/answerfill.test.mjs
+index df32d38..2cb7a56 100644
+--- a/tests/answerfill.test.mjs
++++ b/tests/answerfill.test.mjs
+@@ -159,19 +159,62 @@ describe('前端：落库标草稿、跳过不落库', () => {
+     });
+   }
+ 
++  // 契约变更：落库从「每题一个 {ids:[id],...}」改成「一个 {items:[{id,...},...]}」。
++  // 每题答案都不一样，单值路径用不上，200 题就是 200 次往返且中途失败会补一半。
+   it('有答案的落库时带 status=draft，并就地更新本页', async () => {
+     global.confirm = () => true;
+     const items = [{ id: 'q1', type: 'short_answer', stem: 's', answer: [] }];
+     const c = ctx(items, { items: [{ id: 'q1', answer: ['A1'], analysis: '思路' }] });
+     await Bank.methods.bankAiFillAnswers.call(c);
+     const patch = c.calls.find((x) => x.p === '/api/questions');
+-    expect(patch.body).toMatchObject({ ids: ['q1'], answer: ['A1'], analysis: '思路', status: 'draft' });
++    expect(patch.body.items).toHaveLength(1);
++    expect(patch.body.items[0]).toMatchObject({ id: 'q1', answer: ['A1'], analysis: '思路', status: 'draft' });
+     expect(items[0].answer).toEqual(['A1']);
+     expect(items[0].status).toBe('draft');
+     expect(c.flashes[0][0]).toMatch(/已补 1 题/);
+     expect(c.flashes[0][0]).toMatch(/待审/);
+   });
+ 
++  it('一组多题只发一个 PATCH，不再每题一个请求', async () => {
++    global.confirm = () => true;
++    const items = [
++      { id: 'q1', type: 'short_answer', stem: 's1', answer: [] },
++      { id: 'q2', type: 'short_answer', stem: 's2', answer: [] },
++      { id: 'q3', type: 'short_answer', stem: 's3', answer: [] },
++    ];
++    const c = ctx(items, { items: [
++      { id: 'q1', answer: ['A'], analysis: '甲' },
++      { id: 'q2', answer: ['B'], analysis: '' },
++      { id: 'q3', answer: ['C'], analysis: '丙' },
++    ] });
++    await Bank.methods.bankAiFillAnswers.call(c);
++    const patches = c.calls.filter((x) => x.p === '/api/questions');
++    expect(patches).toHaveLength(1);
++    expect(patches[0].body.items.map((x) => x.id)).toEqual(['q1', 'q2', 'q3']);
++    // 空 analysis 的那条不带 analysis 字段，避免抹掉原有解析
++    expect(patches[0].body.items[1]).not.toHaveProperty('analysis');
++    expect(items.map((q) => q.answer)).toEqual([['A'], ['B'], ['C']]);
++  });
++
++  it('服务端报 missing 的算失败，不冒充已补', async () => {
++    global.confirm = () => true;
++    const items = [
++      { id: 'q1', type: 'short_answer', stem: 's1', answer: [] },
++      { id: 'q2', type: 'short_answer', stem: 's2', answer: [] },
++    ];
++    const c = Object.assign(ctx(items, { items: [
++      { id: 'q1', answer: ['A'] }, { id: 'q2', answer: ['B'] },
++    ] }), {});
++    const origApi = c.api;
++    c.api = async function (p, o) {
++      const r = await origApi.call(this, p, o);
++      return p === '/api/questions' ? { ok: true, missing: ['q2'] } : r;
++    };
++    await Bank.methods.bankAiFillAnswers.call(c);
++    expect(c.bankAiFill.filled).toBe(1);
++    expect(c.bankAiFill.failed).toBe(1);
++  });
++
+   it('被跳过的题不发 PATCH，计入 skipped 并在提示里说明', async () => {
+     global.confirm = () => true;
+     const items = [{ id: 'q1', type: 'short_answer', stem: 's', answer: [] }];
+diff --git a/tests/chat-scope-bankfill.test.mjs b/tests/chat-scope-bankfill.test.mjs
+new file mode 100644
+index 0000000..dbe410b
+--- /dev/null
++++ b/tests/chat-scope-bankfill.test.mjs
+@@ -0,0 +1,120 @@
++// 两组问题：
++//  A. 解题解析下的追问会显示在知识点卡片视图里，而且卡片视图的追问拿到的上下文其实是解析。
++//  B. Bank 的「AI 补答案」：跨页勾选被静默丢弃、空 analysis 会抹掉题目原有解析、不能中止。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const QC = new Function('RichText', read('js/constants.js') + '\n' + read('js/components/question-card.js') + '\nreturn QuestionCard;')({});
++
++const rounds = (aiKind, aiChat) => QC.computed.chatRounds.call({ aiKind, aiChat });
++
++describe('追问按视图分线程', () => {
++  const chat = [
++    { q: '解析问题1', a: 'a1', kind: 'explain' },
++    { q: '卡片问题1', a: 'b1', kind: 'concept' },
++    { q: '解析问题2', a: 'a2', kind: 'explain' },
++  ];
++  it('解析视图只看到解析的追问', () => {
++    expect(rounds('', chat).map((r) => r.c.q)).toEqual(['解析问题1', '解析问题2']);
++  });
++  it('卡片视图只看到卡片的追问', () => {
++    expect(rounds('concept', chat).map((r) => r.c.q)).toEqual(['卡片问题1']);
++  });
++  it('保留在 aiChat 里的真实下标 —— 否则 ai-retry 会删错条目', () => {
++    expect(rounds('', chat).map((r) => r.i)).toEqual([0, 2]);
++    expect(rounds('concept', chat).map((r) => r.i)).toEqual([1]);
++  });
++  it('没有 kind 的旧记录按解析处理（向后兼容已存的追问）', () => {
++    const legacy = [{ q: '老记录', a: 'x' }];
++    expect(rounds('', legacy)).toHaveLength(1);
++    expect(rounds('concept', legacy)).toHaveLength(0);
++  });
++  it('空输入不炸', () => {
++    expect(rounds('', undefined)).toEqual([]);
++    expect(rounds('concept', [])).toEqual([]);
++  });
++});
++
++describe('模板用 chatRounds 而不是 aiChat', () => {
++  const tpl = QC.template;
++  it('v-for 走过滤后的 chatRounds', () => {
++    expect(tpl).toContain('v-for="r in chatRounds"');
++    expect(tpl).not.toContain('v-for="(c,i) in aiChat"');
++  });
++  it('retry 传真实下标 r.i', () => {
++    expect(tpl).toContain("$emit('ai-retry',r.i)");
++  });
++  it('清空按钮按当前视图的条数显隐', () => {
++    expect(tpl).toContain('chatRounds.length && !aiAsking');
++  });
++});
++
++describe('practice.js：上下文与归属', () => {
++  const src = read('js/views/practice.js');
++  it('追问条目打上归属视图', () => {
++    expect(src).toContain("const kind=(this.aiX.view==='concept')?'concept':'explain';");
++    expect(src).toContain("this.aiX.chat.push({ q:text, a:'', r:'', kind });");
++  });
++  it('历史只带同一视图的轮次', () => {
++    expect(src).toContain("filter(c=>((c.kind||'explain')===kind))");
++  });
++  it('上下文跟着视图走，不再无条件优先用解析', () => {
++    expect(src).toContain("kind==='concept' ? (cardsCtx() || this.aiX.text");
++    expect(src).not.toMatch(/let analysisCtx=this\.aiX\.text\|\|'';/);
++  });
++  it('清空只清当前视图', () => {
++    expect(src).toContain("const keep=(this.aiX.chat||[]).filter(c=>((c.kind||'explain')!==kind));");
++  });
++});
++
++describe('Bank AI 补答案', () => {
++  const src = read('js/views/bank.js');
++  it('跨页勾选要回服务端补齐，不能只从本页 items 过滤', () => {
++    expect(src).toContain("const miss=sel.filter(id=>!have.has(id));");
++    expect(src).toContain("'/api/questions?ids='");
++  });
++  it('拉取失败就中止，不能装作没这回事继续', () => {
++    expect(src).toContain('拉取跨页勾选的题目失败，已中止');
++  });
++  it('analysis 只在非空时才发 —— 否则会抹掉题目原有的【精析】', () => {
++    expect(src).toContain("if(String(it.analysis||'').trim())row.analysis=it.analysis;");
++    expect(src).not.toContain("analysis:it.analysis||''");
++  });
++  it('支持中止，且已补好的保留', () => {
++    expect(src).toContain('AbortController');
++    expect(src).toContain('bankAiFillStop()');
++    expect(src).toContain("if(e.name==='AbortError'||ctrl.signal.aborted)");
++  });
++  it('中止后的提示要说清处理到哪儿了', () => {
++    expect(src).toContain("f.canceled?'已停止（处理了 '");
++  });
++  it('确认框告知请求次数，别让人蒙着点', () => {
++    expect(src).toContain("Math.ceil(pool.length/CH)");
++  });
++  it('停止按钮挂上去了', () => {
++    expect(read('js/tpl/view-bank.js')).toContain('bankAiFillStop');
++  });
++});
++
++describe('落库改成一次批量 PATCH', () => {
++  const src = read('js/views/bank.js');
++  it('走服务端新增的 items 路径', () => {
++    expect(src).toContain("body:JSON.stringify({items:patch})");
++  });
++  it('不再每题一个 {ids:[it.id]}', () => {
++    expect(src).not.toContain("ids:[it.id]");
++  });
++  it('批量 PATCH 也要能被中止', () => {
++    expect(src).toMatch(/method:'PATCH',signal:ctrl\.signal/);
++  });
++});
++
++describe('PATCH 语义（说明这个坑为什么存在）', () => {
++  it('空字符串会被写库，所以前端必须自己判空', () => {
++    const api = read('functions/api/questions.js');
++    expect(api).toContain("body[k] !== undefined && body[k] !== null");
++  });
++});
+diff --git a/tests/chat-stream-scroll.test.mjs b/tests/chat-stream-scroll.test.mjs
+new file mode 100644
+index 0000000..a15485d
+--- /dev/null
++++ b/tests/chat-stream-scroll.test.mjs
+@@ -0,0 +1,151 @@
++// 追问的两个问题：
++//  ① 没有流式、没有推理过程
++//     —— push 进响应式数组的是原始对象，代码一直在改 push 之前那个原始引用，
++//        绕开了 Proxy 的 setter，依赖不触发。最后 asking=false 整体重渲染时文字才一次性出现。
++//  ② 生成时强制贴底，用户往上翻会被一直拽回去。
++import { describe, it, expect, beforeEach, vi } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { reactive, effect } from '@vue/reactivity';
++import { ROOT } from './helpers.mjs';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const QC = new Function('RichText', read('js/constants.js') + '\n' + read('js/components/question-card.js') + '\nreturn QuestionCard;')({});
++
++describe('Vue 响应式：改原始对象 vs 改代理', () => {
++  const run = (mutate) => {
++    const aiX = reactive({ chat: [] });
++    let renders = 0;
++    effect(() => { aiX.chat.forEach((c) => { void c.a; void c.r; }); renders++; });
++    const before = { q: 'why', a: '', r: '' };
++    aiX.chat.push(before);
++    const base = renders;
++    mutate(before, aiX.chat[aiX.chat.length - 1]);
++    return renders - base;
++  };
++  it('改 push 之前的原始引用不会触发重渲染（这就是旧代码的写法）', () => {
++    expect(run((raw) => { raw.a = 'chunk1'; raw.a = 'chunk1chunk2'; })).toBe(0);
++  });
++  it('改 push 之后的代理才会逐块触发', () => {
++    expect(run((raw, live) => { live.a = 'chunk1'; live.a = 'chunk1chunk2'; })).toBe(2);
++  });
++});
++
++describe('practice.js 必须取代理来改', () => {
++  const src = read('js/views/practice.js');
++  it('push 之后立刻按下标取回代理', () => {
++    expect(src).toContain('const entry=this.aiX.chat[this.aiX.chat.length-1];');
++  });
++  it('不再 push 一个之后还要改的局部变量', () => {
++    expect(src).not.toMatch(/const entry=\{[^}]*\};\s*this\.aiX\.chat\.push\(entry\)/);
++  });
++  it('追问的回调不再丢掉 reasoning', () => {
++    expect(src).toContain("if(d.reasoning)entry.r=(entry.r||'')+d.reasoning;");
++  });
++  it('reset 同时清空正文和思维链', () => {
++    expect(src).toContain("if(d.reset){ entry.a=''; entry.r=''; }");
++  });
++  it('追问也上报降级 / 截断，和主解析一致', () => {
++    expect(src).toContain('d.streamFallback');
++    expect(src).toContain("d.finish_reason==='length'");
++  });
++});
++
++describe('贴底跟随：用户一接管就撒手', () => {
++  let self;
++  beforeEach(() => {
++    self = { stickBottom: true, $nextTick: (f) => f() };
++    for (const k of Object.keys(QC.methods)) self[k] = QC.methods[k].bind(self);
++    global.document = { documentElement: { scrollHeight: 2000 } };
++    global.window = { scrollY: 0, innerHeight: 800, scrollTo: vi.fn() };
++  });
++
++  it('滚轮向上 → 停止贴底', () => {
++    self._onUserScroll({ type: 'wheel', deltaY: -120 });
++    expect(self.stickBottom).toBe(false);
++  });
++  it('滚轮向下 → 保持贴底（用户只是想看得更快）', () => {
++    self._onUserScroll({ type: 'wheel', deltaY: 120 });
++    expect(self.stickBottom).toBe(true);
++  });
++  it('PageUp / ArrowUp / Home 都算接管', () => {
++    for (const key of ['PageUp', 'ArrowUp', 'Home']) {
++      self.stickBottom = true;
++      self._onUserScroll({ type: 'keydown', key });
++      expect(self.stickBottom).toBe(false);
++    }
++  });
++  it('向下的按键不算接管', () => {
++    self._onUserScroll({ type: 'keydown', key: 'ArrowDown' });
++    expect(self.stickBottom).toBe(true);
++  });
++  it('触摸拖动方向拿不准，一律当成用户接管', () => {
++    self._onUserScroll({ type: 'touchmove' });
++    expect(self.stickBottom).toBe(false);
++  });
++
++  it('撒手之后不再自动滚动', () => {
++    self.stickBottom = false;
++    self._chatScroll();
++    expect(globalThis.window.scrollTo).not.toHaveBeenCalled();
++  });
++  it('贴底状态下照常自动滚动', () => {
++    self._chatScroll();
++    expect(globalThis.window.scrollTo).toHaveBeenCalled();
++  });
++  it('force=true 时无视撒手（用于「回到底部」按钮）', () => {
++    self.stickBottom = false;
++    self._chatScroll(true);
++    expect(globalThis.window.scrollTo).toHaveBeenCalled();
++  });
++
++  it('用户自己滑回底部 → 重新贴底', () => {
++    self.stickBottom = false;
++    globalThis.window.scrollY = 1200;   // 1200 + 800 = 2000，正好到底
++    self._onScroll();
++    expect(self.stickBottom).toBe(true);
++  });
++  it('还在半路时不重新贴底', () => {
++    self.stickBottom = false;
++    globalThis.window.scrollY = 300;
++    self._onScroll();
++    expect(self.stickBottom).toBe(false);
++  });
++  it('阈值内（90px）算到底，不必像素级精确', () => {
++    expect(self._nearBottom()).toBe(false);
++    globalThis.window.scrollY = 1150;   // 距底 50px
++    expect(self._nearBottom()).toBe(true);
++  });
++  it('backToBottom 复位并滚动', () => {
++    self.stickBottom = false;
++    self.backToBottom();
++    expect(self.stickBottom).toBe(true);
++    expect(globalThis.window.scrollTo).toHaveBeenCalled();
++  });
++});
++
++describe('新一轮生成 / 切题要复位', () => {
++  const src = read('js/components/question-card.js');
++  it('开始追问时恢复贴底', () => {
++    expect(src).toContain('aiAsking(v){ if(v)this.stickBottom=true; }');
++  });
++  it('开始生成解析时恢复贴底', () => {
++    expect(src).toMatch(/aiBusy\(v\)\{ if\(v\)\{[^}]*this\.stickBottom=true;/);
++  });
++  it('切题时复位贴底并清空每轮折叠状态', () => {
++    expect(src).toContain('this.stickBottom=true; this.chatReasonOpen={};');
++  });
++});
++
++describe('模板', () => {
++  const tpl = QC.template;
++  it('每轮追问渲染可折叠的推理过程', () => {
++    expect(tpl).toContain('chat-reason');
++    expect(tpl).toContain('推理过程');
++    expect(tpl).toContain('chatReasonOpen[r.i]');
++  });
++  it('撒手且仍在生成时给「回到底部」入口', () => {
++    expect(tpl).toContain('(aiBusy||aiAsking) && !stickBottom');
++    expect(tpl).toContain('回到底部');
++  });
++});
 diff --git a/tests/extract-mineru-junk.test.mjs b/tests/extract-mineru-junk.test.mjs
 index e1b2c11..ca979bf 100644
 --- a/tests/extract-mineru-junk.test.mjs
@@ -747,6 +1827,316 @@ index e1b2c11..ca979bf 100644
  describe('完形填空空位标记', () => {
    const U = '\uFF3F';
    it('短文里属于空的数字被标出来，正文里的真实数字不动', () => {
+diff --git a/tests/helpers.mjs b/tests/helpers.mjs
+index c3d813b..adc6543 100644
+--- a/tests/helpers.mjs
++++ b/tests/helpers.mjs
+@@ -68,3 +68,6 @@ export function authedReq(url, opts = {}) {
+   return new Request(url, { ...opts, headers: { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json', ...(opts.headers || {}) } });
+ }
+ export function makeEnv(db) { return { DB: db, APP_TOKEN: TOKEN }; }
++
++// 转出给测试用（_utils.js 是标准 ESM，直接 re-export）
++export { batchChunked, rowBytes, D1_BATCH_BYTES } from '../functions/api/_utils.js';
+diff --git a/tests/import-size-limits.test.mjs b/tests/import-size-limits.test.mjs
+new file mode 100644
+index 0000000..49be2d6
+--- /dev/null
++++ b/tests/import-size-limits.test.mjs
+@@ -0,0 +1,137 @@
++// 线上报错：导入 138 题时 `D1_ERROR: Serialized RPC arguments or return values are
++// limited to 32MiB, but the size of this value was: 95036377 bytes`。
++//
++// 两层原因，两层都要修：
++//  ① passage 被无限累积。上一轮我把「区外标题重置材料」的行为一并去掉了，
++//     教材正文于是跨节累积；而 passage 是每道题都带一份的字段，138 份就是 95MB。
++//  ② batchChunked 只按条数分块。80 条一批，每条几百 KB 就能到 90MB —— 就算 passage
++//     合理，一本带整页 data URL 截图的教材照样能撞上限。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { batchChunked, rowBytes, D1_BATCH_BYTES, ROOT } from './helpers.mjs';
++
++// —— ① 材料长度有界 ——
++const M = new Function(fs.readFileSync(path.join(ROOT, 'js/views/ingest.js'), 'utf8') + ';return IngestMixin;')().methods;
++const ctx = () => Object.assign(Object.create(M), { extractPreview: {}, extractSkippedToc: 0, flash() {} });
++
++const para = (tag, n) => Array.from({ length: n }, (_, i) =>
++  `早期的计算机主要用于数值计算，而现在的计算机主要用于非数值计算，包括对字符、表格和图像等具有一定结构的数据进行处理，只有分清楚数据的内在联系才能有效处理。${tag}-${i}。`
++).join('\n\n');
++
++// 教材形态：章内多个不带编号的小标题 + 章末习题
++const textbook = () => {
++  const pages = [];
++  for (let ch = 1; ch <= 10; ch++) {
++    pages.push(`# 第${ch}章 绪论\n\n## 数据结构的研究内容\n\n${para('A' + ch, 30)}`);
++    pages.push(`## 基本概念和术语\n\n${para('B' + ch, 30)}\n\n## 抽象数据类型\n\n${para('C' + ch, 30)}`);
++    pages.push(`# 习题\n\n1. 简述下列概念：数据、数据元素、数据项、数据对象。\n\n2. 试举一个数据结构的例子。`);
++  }
++  return { subject: 'computer', title: '数据结构', pages: pages.map((content_md, i) => ({ page: i + 1, content_md })) };
++};
++
++describe('教材：材料不再跨节无限累积', () => {
++  const qs = M._extractWholeBook.call(ctx(), textbook());
++  it('抽到题了（前提没被改坏）', () => {
++    expect(qs.length).toBe(20);
++  });
++  it('每道题的材料都在硬上限内', () => {
++    for (const q of qs) expect((q.passage || '').length).toBeLessThanOrEqual(2400);
++  });
++  it('整批序列化后的体积回到正常量级（原来是这里炸的）', () => {
++    const kb = new TextEncoder().encode(JSON.stringify(qs)).length / 1024;
++    expect(kb).toBeLessThan(200);
++  });
++  it('教材习题不该硬塞一份整章正文当「阅读材料」', () => {
++    // 章内小标题会重置材料，习题段本身没有散文行，所以这里应当没有材料
++    expect(qs.every((q) => !(q.passage || '').includes('数值计算'))).toBe(true);
++  });
++});
++
++describe('英语真题：阅读材料照旧关联', () => {
++  const md = `# 第一节\n\n阅读下列短文，从每题所给的四个选项中选出最佳选项。\n\n# A\n\n`
++    + `If you are conducting businesses in foreign markets, it is necessary to know the customs and traditions of the locals when it comes to New Year celebrations.\n\n`
++    + `# Greece\n\nPeople in Greece bake a special cake with a coin hidden inside it, and whoever finds it will be lucky.\n\n`
++    + `1. What might Greeks find in the cake?\nA. A grape.\nB. A ring.\nC. A coin.\nD. A tooth.\n`;
++  const qs = M.mdToQuestions.call(ctx(), md, { subject: 'english', source: 'x', page: 1 });
++  it('题目挂上了短文', () => {
++    expect(qs).toHaveLength(1);
++    expect(qs[0].passage).toContain('coin hidden inside');
++  });
++  it('短文里的国家小标题仍然保留（阅读区内才追加）', () => {
++    expect(qs[0].passage).toContain('Greece');
++  });
++});
++
++// —— ② 批量提交按字节预算切块 ——
++class FakeBatchDB {
++  constructor() { this.batches = []; }
++  prepare() { return { bind: () => ({ _s: 1 }) }; }
++  async batch(list) { this.batches.push(list.length); return list.map(() => ({})); }
++}
++const stmts = (n) => Array.from({ length: n }, (_, i) => ({ _s: i }));
++
++describe('batchChunked：条数与字节双重上限', () => {
++  it('没有 weights 时保持原行为，只按条数切', async () => {
++    const db = new FakeBatchDB();
++    await batchChunked({ DB: db }, stmts(170), 80);
++    expect(db.batches).toEqual([80, 80, 10]);
++  });
++  it('空数组直接返回，不发空 batch', async () => {
++    const db = new FakeBatchDB();
++    await batchChunked({ DB: db }, [], 80);
++    expect(db.batches).toEqual([]);
++  });
++  it('体积超预算时提前切块', async () => {
++    const db = new FakeBatchDB();
++    const n = 10;
++    const per = D1_BATCH_BYTES / 4;              // 每 4 条就到预算
++    await batchChunked({ DB: db }, stmts(n), 80, Array(n).fill(per));
++    expect(db.batches).toEqual([4, 4, 2]);
++  });
++  it('单条就超预算 → 独自成批，不连累同批其它题', async () => {
++    const db = new FakeBatchDB();
++    const w = [10, D1_BATCH_BYTES * 3, 10];
++    await batchChunked({ DB: db }, stmts(3), 80, w);
++    expect(db.batches).toEqual([1, 1, 1]);
++  });
++  it('条数上限仍然生效（体积很小也不会超过 size）', async () => {
++    const db = new FakeBatchDB();
++    await batchChunked({ DB: db }, stmts(5), 2, Array(5).fill(1));
++    expect(db.batches).toEqual([2, 2, 1]);
++  });
++  it('所有语句都发出去了，一条不漏', async () => {
++    const db = new FakeBatchDB();
++    const n = 37;
++    await batchChunked({ DB: db }, stmts(n), 8, Array(n).fill(D1_BATCH_BYTES / 3));
++    expect(db.batches.reduce((a, b) => a + b, 0)).toBe(n);
++  });
++});
++
++describe('rowBytes：量级对就够用', () => {
++  it('中文按 3 字节估，不会低估', () => {
++    const s = '数据结构'.repeat(1000);           // 4000 个汉字 = UTF-8 12000 字节
++    expect(rowBytes(s)).toBeGreaterThanOrEqual(new TextEncoder().encode(s).length);
++  });
++  it('null / undefined 不炸', () => {
++    expect(rowBytes(null, undefined, '')).toBeGreaterThan(0);
++  });
++  it('非字符串也能算', () => {
++    expect(rowBytes(123, true)).toBeGreaterThan(0);
++  });
++  it('真实一题的量级：几 KB，不是几百 KB', () => {
++    const n = rowBytes('材料'.repeat(600), '题干'.repeat(50), '[]', '["A"]', '解析'.repeat(100), '[]', '第1章', 'src');
++    expect(n).toBeGreaterThan(4000);
++    expect(n).toBeLessThan(20000);
++  });
++});
++
++describe('导入链路确实带上了体积估算', () => {
++  const src = fs.readFileSync(path.join(ROOT, 'functions/api/process.js'), 'utf8');
++  it('questions 批量传了 weights', () => {
++    expect(src).toMatch(/80, cleanedQ\.map\(\(q\) => rowBytes\(/);
++  });
++  it('materials 批量也传了（page_image 是 data URL，更容易超标）', () => {
++    expect(src).toMatch(/80, cleanedM\.map\(\(m\) => rowBytes\(/);
++  });
++});
+diff --git a/tests/mineru-inline-images.test.mjs b/tests/mineru-inline-images.test.mjs
+new file mode 100644
+index 0000000..8657c59
+--- /dev/null
++++ b/tests/mineru-inline-images.test.mjs
+@@ -0,0 +1,150 @@
++// 95MB 写库失败的真凶，数据来自线上实际导入的教材（数据结构 严蔚敏 第2版，273 页）。
++//
++// 实测（通过 /api/materials 读 content_md 统计）：
++//   · 整本 content_md 共 6.76 MB
++//   · 其中 343 行是 <figure><img src="data:image/...;base64,..."> 内联插图，合计 6.51 MB
++//   · 也就是说 96% 的正文体积是 base64 图片
++//   · 这 343 行【全部】通过原版 isProseLine 的判定
++//
++// isProseLine 为什么会认？base64 里全是字母，`(t.match(/[A-Za-z]{2,}/g)||[]).length >= 6`
++// 必然成立。于是整块 base64 被当成散文累积进 passageBuf。而 passage 是「每道题都带一份」
++// 的字段，138 道题各带一份几 MB 的材料 → 写库时 80 条一批就是 95,036,377 字节，
++// 撞上 D1 的「Serialized RPC arguments limited to 32MiB」。
++//
++// 配套漏洞：_collectDataImages（把 base64 转存 R2、正文里换成短链）扫的是
++// stem / analysis / options / answer，唯独漏了 passage —— 所以转存这条路救不了材料字段。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const SRC = fs.readFileSync(path.join(ROOT, 'js/views/ingest.js'), 'utf8');
++const M = new Function(SRC + ';return IngestMixin;')().methods;
++const ctx = () => Object.assign(Object.create(M), { extractPreview: {}, extractSkippedToc: 0, flash() {} });
++
++// 复刻线上那种插图行：<figure><img src="data:image/png;base64,……"></figure>
++const imgBlob = (bytes) => '<figure class="fig"><img src="data:image/png;base64,'
++  + 'iVBORw0KGgoAAAANSUhEUg'.repeat(Math.ceil(bytes / 22)).slice(0, bytes) + '"></figure>';
++const cjk = (n) => '数据结构逻辑存储线性表算法复杂度分析元素节点指针操作'.repeat(Math.ceil(n / 26)).slice(0, n);
++
++describe('base64 插图不能进材料', () => {
++  // 线上最大的一行是 69905 字符（p29）；这里用 8000 足够体现问题又不拖慢测试
++  const page = (i) => `## 小节 ${i}\n\n${cjk(120)}\n\n${imgBlob(8000)}\n\n${cjk(90)}`;
++  const pages = [page(1), page(2), page(3), `# 习题\n\n1. 简述下列概念：数据、数据元素、数据项。\n2. 试举一个数据结构的例子。`];
++  const qs = M._extractWholeBook.call(ctx(), { subject: 'computer', title: '数据结构', pages: pages.map((content_md, i) => ({ page: i + 1, content_md })) });
++
++  it('抽到题了', () => {
++    expect(qs.length).toBeGreaterThanOrEqual(2);
++  });
++  it('没有任何一道题的材料或题干里带 base64', () => {
++    for (const q of qs) {
++      expect(q.passage || '').not.toContain(';base64,');
++      expect(q.stem || '').not.toContain(';base64,');
++    }
++  });
++  it('整批体积回到 KB 量级（原来是 MB 起步）', () => {
++    const kb = new TextEncoder().encode(JSON.stringify(qs)).length / 1024;
++    expect(kb).toBeLessThan(50);
++  });
++});
++
++describe('isProseLine 的三条前置拦截', () => {
++  // 注意：必须让材料【真的会累积】，否则「材料是空的」这个结果对拦截规则毫无说服力
++  //（第一版我用 `## 节 x` 起页，标题本身就会重置材料，四条断言全是假阳性）。
++  // 用「阅读下列短文」开启阅读区，散文才会真正进 passageBuf。
++  const asPassage = (line) => {
++    const md = `阅读下列短文，回答下列问题。\n\n${cjk(120)}\n\n${line}\n\n${cjk(80)}\n\n1. 这是承接材料的题目。\n`;
++    const qs = M.mdToQuestions.call(ctx(), md, { subject: 'computer', source: 't', page: 1 });
++    return qs.map((q) => q.passage || '').join('');
++  };
++  it('先确认这个夹具真的会产生材料（防止后面几条是假阳性）', () => {
++    expect(asPassage(cjk(300)).length).toBeGreaterThan(200);
++  });
++  it('HTML 块（<figure> / <img>）不算正文', () => {
++    const p = asPassage(imgBlob(4000));
++    expect(p.length).toBeGreaterThan(100);      // 正常段落还在
++    expect(p).not.toContain('base64');          // 但 blob 没进来
++  });
++  it('表格行（| … |）不算正文', () => {
++    expect(asPassage('| ' + cjk(200) + ' |')).not.toContain('|');
++  });
++  it('data URI 即使不在行首也要挡', () => {
++    expect(asPassage('见下图 data:image/png;base64,' + 'AAAA'.repeat(500))).not.toContain('base64');
++  });
++  it('超长单行（>1500 字）不算段落，是 blob', () => {
++    const marker = '超长行专用标记';
++    expect(asPassage(marker + cjk(3000))).not.toContain(marker);
++  });
++});
++
++describe('材料长度硬上限', () => {
++  it('再怎么累积也不超过 2400 字', () => {
++    const pages = Array.from({ length: 6 }, (_, i) => `${cjk(900)}\n\n${cjk(900)}`);
++    pages.push('# 习题\n\n1. 承接材料的题目。');
++    const qs = M._extractWholeBook.call(ctx(), { subject: 'computer', title: 't', pages: pages.map((content_md, i) => ({ page: i + 1, content_md })) });
++    for (const q of qs) expect((q.passage || '').length).toBeLessThanOrEqual(2400);
++  });
++});
++
++describe('图片转存 R2 的扫描范围要含 passage', () => {
++  it('_collectDataImages 扫 stem / analysis / options / answer / passage 五处', () => {
++    const found = M._collectDataImages.call(ctx(), {
++      stem: 'S ' + imgBlob(100),
++      analysis: 'A ' + imgBlob(100),
++      passage: 'P ' + imgBlob(100),
++      options: [{ key: 'A', text: 'O ' + imgBlob(100) }],
++      answer: ['R ' + imgBlob(100)],
++    });
++    expect(found).toHaveLength(5);
++  });
++  it('源码里替换环节也覆盖了 passage', () => {
++    expect(SRC).toContain('if(q.passage)q.passage=swap(q.passage);');
++  });
++  it('没有 base64 时返回空，不做无用功', () => {
++    expect(M._collectDataImages.call(ctx(), { stem: '纯文字题干', passage: '纯文字材料' })).toEqual([]);
++  });
++});
++
++// —— 真实 MinerU 输出的形态（数据结构 p25 逐行读取所得）——
++// 与 pdftotext 抽取的关键差异：
++//   · 「## 习题」是真的 markdown H2 标题（所以习题分区门控能生效）
++//   · 页边竖排书脊文字被 MinerU 的版面分析丢掉了，一行都没有
++//   · 编号是半角「1. 」，子题括号全角半角混用（（1）和 (3) 同页并存）
++//   · 双列选项已被 MinerU 合并：要么和题干同在一行，要么一个选项独占一行
++describe('真实 MinerU 输出（数据结构 p25）', () => {
++  const md = `## 习题
++
++1. 简述下列概念：数据、数据元素、数据项、数据对象、数据结构、逻辑结构、存储结构、抽象数据类型。
++2. 试举一个数据结构的例子，叙述其逻辑结构和存储结构两个层次的含义及相互关系。
++3. 简述逻辑结构的4种基本结构并画出它们的关系图。
++4. 存储结构由哪两种基本的存储方法实现?
++5. 选择题
++（1）在数据结构中，从逻辑上可以把数据结构分成（）。A. 动态结构和静态结构 B. 紧凑结构和非紧凑结构 C. 线性结构和非线性结构 D. 内部结构和外部结构
++(3) 通常要求同一逻辑结构中的所有数据元素具有相同的特性, 这意味着（）。
++A. 数据具有同一特点
++B. 不仅数据元素所包含的数据项的个数要相同, 而且对应数据项的类型要一致
++C. 每个数据元素都一样
++D. 数据元素所包含的数据项的个数要相等
++`;
++  const qs = M.mdToQuestions.call(ctx(), md, { subject: 'computer', source: 'ds', page: 25 });
++  it('4 道简答 + 2 道选择', () => {
++    expect(qs).toHaveLength(6);
++    expect(qs.filter((q) => q.type === 'single_choice')).toHaveLength(2);
++  });
++  it('题干和选项同在一行的，选项要拆出四个', () => {
++    const q = qs.find((x) => /从逻辑上可以把数据结构分成/.test(x.stem));
++    expect(q.options.map((o) => o.key)).toEqual(['A', 'B', 'C', 'D']);
++    expect(q.options[3].text).toBe('内部结构和外部结构');
++    expect(q.stem).not.toContain('A.');
++  });
++  it('选项一个独占一行的，同样四个', () => {
++    const q = qs.find((x) => /具有相同的特性/.test(x.stem));
++    expect(q.options.map((o) => o.key)).toEqual(['A', 'B', 'C', 'D']);
++  });
++  it('半角编号「1. 」认得出来', () => {
++    expect(qs[0].stem.startsWith('简述下列概念')).toBe(true);
++  });
++  it('全角（1）和半角 (3) 混用都当成独立选择题', () => {
++    expect(qs.filter((q) => q.type === 'single_choice').length).toBe(2);
++  });
++});
 diff --git a/tests/passage-fold.test.mjs b/tests/passage-fold.test.mjs
 new file mode 100644
 index 0000000..ccd08e5
@@ -957,5 +2347,362 @@ index 0000000..1464e1e
 +    const b = systemPrompt({ subject: 'math', ask: '这段讲什么', reading: true });
 +    expect(a).toBe(b);
 +    expect(a).toContain('阅读教材/资料');
++  });
++});
+diff --git a/tests/questions-batch-patch.test.mjs b/tests/questions-batch-patch.test.mjs
+new file mode 100644
+index 0000000..cc8ee25
+--- /dev/null
++++ b/tests/questions-batch-patch.test.mjs
+@@ -0,0 +1,155 @@
++// PATCH /api/questions 的 items 路径：按 id 分别赋值。
++// 为什么要有这条：原来的 {ids, 字段} 是「给所有 id 设同一个值」，AI 补答案这种
++// 每题答案都不一样的场景用不上，前端只能一题一个请求 —— 200 题 200 次往返，
++// 中途失败还会留下补了一半的状态。
++import { describe, it, expect } from 'vitest';
++import { FakeDB, authedReq, makeEnv } from './helpers.mjs';
++import { onRequestPatch as patchQ } from '../functions/api/questions.js';
++
++// SELECT id 校验存在性：默认把绑进来的 id 全部当成存在
++const dbWith = (existing) => new FakeDB([
++  { match: /SELECT id FROM questions/i, value: (binds) => binds.filter((b) => existing.includes(b)).map((id) => ({ id })) },
++]);
++const call = (body, db) => patchQ({
++  request: authedReq('http://x/api/questions', { method: 'PATCH', body: JSON.stringify(body) }),
++  env: Object.assign(makeEnv(db), { DB: db }),
++});
++const updates = (db) => db.log.filter((r) => /^UPDATE questions SET/.test(r.sql));
++
++describe('逐题不同值', () => {
++  it('每题各写自己的答案', async () => {
++    const db = dbWith(['a', 'b']);
++    const res = await call({ items: [
++      { id: 'a', answer: ['A'], status: 'draft' },
++      { id: 'b', answer: ['B', 'C'], analysis: '乙的解析' },
++    ] }, db);
++    const body = await res.json();
++    expect(res.status).toBe(200);
++    expect(body).toMatchObject({ ok: true, updated: 2, missing: [] });
++    const ups = updates(db);
++    expect(ups).toHaveLength(2);
++    // 绑定顺序按服务端 ALLOWED 数组走（analysis 在 answer 之前），
++    // 与入参 key 的书写顺序无关 —— 这是个好性质，顺手钉住
++    expect(ups[0].binds).toEqual([JSON.stringify(['A']), 'draft', 'a']);
++    expect(ups[1].binds).toEqual(['乙的解析', JSON.stringify(['B', 'C']), 'b']);
++  });
++
++  it('走 D1 batch（同一事务），不是一条条 run', async () => {
++    const db = dbWith(['a', 'b', 'c']);
++    await call({ items: [{ id: 'a', answer: ['A'] }, { id: 'b', answer: ['B'] }, { id: 'c', answer: ['C'] }] }, db);
++    expect(db.batches).toHaveLength(1);
++    expect(db.batches[0]).toHaveLength(3);
++  });
++
++  it('不传的字段就不动 —— 空 analysis 不该被写进去', async () => {
++    const db = dbWith(['a']);
++    await call({ items: [{ id: 'a', answer: ['A'] }] }, db);
++    expect(updates(db)[0].sql).not.toMatch(/analysis/);
++  });
++
++  it('显式传空字符串 analysis 仍然会写（与单值路径语义一致，判空是调用方的责任）', async () => {
++    const db = dbWith(['a']);
++    await call({ items: [{ id: 'a', answer: ['A'], analysis: '' }] }, db);
++    expect(updates(db)[0].sql).toMatch(/analysis = \?/);
++  });
++});
++
++describe('绑定顺序与入参 key 顺序无关', () => {
++  it('两种书写顺序生成同样的 SQL 和绑定', async () => {
++    const a = dbWith(['x']); const b = dbWith(['x']);
++    await call({ items: [{ id: 'x', answer: ['A'], analysis: 'm', status: 'draft' }] }, a);
++    await call({ items: [{ id: 'x', status: 'draft', analysis: 'm', answer: ['A'] }] }, b);
++    const ua = updates(a)[0], ub = updates(b)[0];
++    expect(ua.sql).toBe(ub.sql);
++    expect(ua.binds).toEqual(ub.binds);
++  });
++});
++
++describe('白名单：只开放补答案真正需要的字段', () => {
++  it('answer / analysis / status / difficulty 放行', async () => {
++    const db = dbWith(['a']);
++    await call({ items: [{ id: 'a', answer: ['A'], analysis: 'x', status: 'ok', difficulty: 5 }] }, db);
++    const sql = updates(db)[0].sql;
++    for (const f of ['answer', 'analysis', 'status', 'difficulty']) expect(sql).toMatch(new RegExp(f + ' = \\?'));
++  });
++  it('题干 / 选项 / 科目这些结构性字段一律不认', async () => {
++    const db = dbWith(['a']);
++    const res = await call({ items: [{ id: 'a', stem: '改题干', options: [], subject: 'math', chapter: 'c' }] }, db);
++    const body = await res.json();
++    expect(body.updated).toBe(0);
++    expect(body.skipped).toEqual(['a']);      // 一个可写字段都没带
++    expect(updates(db)).toHaveLength(0);
++  });
++  it('非法 status 被丢掉而不是写进去', async () => {
++    const db = dbWith(['a']);
++    const res = await call({ items: [{ id: 'a', status: 'published' }] }, db);
++    expect((await res.json()).skipped).toEqual(['a']);
++  });
++  it('difficulty 非数字回落到 3', async () => {
++    const db = dbWith(['a']);
++    await call({ items: [{ id: 'a', difficulty: '不是数字' }] }, db);
++    expect(updates(db)[0].binds).toEqual([3, 'a']);
++  });
++});
++
++describe('不存在的 id 如实报出来', () => {
++  it('missing 列出来，不冒充成功', async () => {
++    const db = dbWith(['a']);
++    const body = await (await call({ items: [{ id: 'a', answer: ['A'] }, { id: 'ghost', answer: ['X'] }] }, db)).json();
++    expect(body.updated).toBe(1);
++    expect(body.missing).toEqual(['ghost']);
++    expect(updates(db)).toHaveLength(1);
++  });
++  it('全都不存在时不报 500，如实返回 0', async () => {
++    const db = dbWith([]);
++    const body = await (await call({ items: [{ id: 'ghost', answer: ['X'] }] }, db)).json();
++    expect(body).toMatchObject({ ok: true, updated: 0, missing: ['ghost'] });
++  });
++});
++
++describe('入参校验与规模上限', () => {
++  it('items 为空 → 400', async () => {
++    const res = await call({ items: [] }, dbWith([]));
++    expect(res.status).toBe(400);
++  });
++  it('条目缺 id 会被过滤掉', async () => {
++    const res = await call({ items: [{ answer: ['A'] }] }, dbWith([]));
++    expect(res.status).toBe(400);
++  });
++  it('超过 200 条直接拒绝，而不是悄悄截断', async () => {
++    const items = Array.from({ length: 201 }, (_, i) => ({ id: 'q' + i, answer: ['A'] }));
++    const res = await call({ items }, dbWith([]));
++    expect(res.status).toBe(400);
++    expect((await res.json()).error).toMatch(/最多 200/);
++  });
++  it('存在性校验按 80 个一组分块，不撞 D1 的变量上限', async () => {
++    const ids = Array.from({ length: 170 }, (_, i) => 'q' + i);
++    const db = dbWith(ids);
++    await call({ items: ids.map((id) => ({ id, answer: ['A'] })) }, db);
++    const sels = db.log.filter((r) => /SELECT id FROM questions/.test(r.sql));
++    expect(sels).toHaveLength(3);                       // 80 + 80 + 10
++    expect(sels.every((s) => s.binds.length <= 80)).toBe(true);
++  });
++  it('重复 id 只校验一次', async () => {
++    const db = dbWith(['a']);
++    await call({ items: [{ id: 'a', answer: ['A'] }, { id: 'a', answer: ['B'] }] }, db);
++    const sels = db.log.filter((r) => /SELECT id FROM questions/.test(r.sql));
++    expect(sels[0].binds).toEqual(['a']);
++  });
++});
++
++describe('不影响原有的单值路径', () => {
++  it('{ids, 字段} 仍然是给所有 id 设同一个值', async () => {
++    const db = new FakeDB([]);
++    const body = await (await call({ ids: ['a', 'b'], chapter: '第三章' }, db)).json();
++    expect(body).toMatchObject({ ok: true });
++    const up = db.log.find((r) => /^UPDATE questions SET/.test(r.sql));
++    expect(up.sql).toMatch(/WHERE id IN \(\?,\?\)/);
++    expect(up.binds).toEqual(['第三章', 'a', 'b']);
++  });
++  it('既没有 items 也没有 ids → 400', async () => {
++    const res = await call({ chapter: 'x' }, new FakeDB([]));
++    expect(res.status).toBe(400);
++    expect((await res.json()).error).toMatch(/缺少题目 id/);
++  });
++});
+diff --git a/tests/real-textbook-formats.test.mjs b/tests/real-textbook-formats.test.mjs
+new file mode 100644
+index 0000000..b0988bd
+--- /dev/null
++++ b/tests/real-textbook-formats.test.mjs
+@@ -0,0 +1,190 @@
++// 真实教材格式的门禁。片段取自三本实际 PDF（数据结构 严蔚敏 / C程序设计 谭浩强 /
++// 毛概 2023 版）的 pdftotext 抽取结果，只保留结构特征，不含成段正文。
++//
++// 这些格式踩到的坑：
++//  1. 选项一行放两个（A 和 B 同行，C 和 D 同行）。逐行的 optRe 用 `(.+)$` 收尾，
++//     会把 B 整个塞进 A 的文本里 —— 只剩 2 个选项且内容是错的，比丢掉更难发现。
++//  2. 「5．选择题」把 exLabel 置成 choice 之后没人复位，于是「6．试分析…」下面的
++//     (1)…(6) 代码段全被当成独立题目，父题干丢失。
++//  3. 书脊竖排标题（「双色版」「C言版）（第 版」）在 PDF 里落在页面中部，混进题干。
++//     它们只印在单侧页面，频次天然只有 ~50%。
++//  4. 教材正文的小节标题会被 numRe 当成编号题（「4.4 算法的空间复杂度」「5 小结」）。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const M = new Function(fs.readFileSync(path.join(ROOT, 'js/views/ingest.js'), 'utf8') + ';return IngestMixin;')().methods;
++const ctx = () => Object.assign(Object.create(M), { extractPreview: {}, extractSkippedToc: 0, flash() {} });
++const parse = (md, over) => M.mdToQuestions.call(ctx(), md, Object.assign({ subject: 'computer', source: 't', page: 1 }, over));
++const book = (pages, over) => M._extractWholeBook.call(ctx(), Object.assign({ subject: 'computer', title: 't' }, over, {
++  pages: pages.map((content_md, i) => ({ page: i + 1, content_md })),
++}));
++
++// —— 数据结构 p25 的选择题：选项双列 ——
++const DS_CHOICE = `# 习题
++
++5．选择题
++（1）在数据结构中，从逻辑上可以把数据结构分成（        ）。
++A．动态结构和静态结构                 B．紧凑结构和非紧凑结构
++C．线性结构和非线性结构                D．内部结构和外部结构
++（2）与数据元素本身的形式、内容、相对位置、个数无关的是数据的（      ）。
++A．存储结构                      B．存储实现
++C．逻辑结构                      D．运算实现
++`;
++
++describe('选项一行放两个（数据结构 p25 实测格式）', () => {
++  const qs = parse(DS_CHOICE);
++  it('两道题都抽出来了', () => {
++    expect(qs).toHaveLength(2);
++  });
++  it('四个选项齐全，不是只剩 A 和 C', () => {
++    for (const q of qs) expect(q.options.map((o) => o.key)).toEqual(['A', 'B', 'C', 'D']);
++  });
++  it('B 的内容不能被塞进 A 里', () => {
++    expect(qs[0].options[0].text).toBe('动态结构和静态结构');
++    expect(qs[0].options[1].text).toBe('紧凑结构和非紧凑结构');
++    expect(qs[0].options[0].text).not.toContain('紧凑');
++  });
++  it('行内的大段空白被压掉', () => {
++    for (const q of qs) for (const o of q.options) expect(o.text).not.toMatch(/\s{2,}/);
++  });
++  it('题型判成单选', () => {
++    for (const q of qs) expect(q.type).toBe('single_choice');
++  });
++});
++
++describe('四个选项挤在同一行', () => {
++  const qs = parse(`# 习题\n\n5．选择题\n（6）以下数据结构中，（   ）是非线性数据结构。\nA．树           B．字符串         C．队列          D．栈\n`);
++  it('照样拆成四个', () => {
++    expect(qs[0].options.map((o) => o.text)).toEqual(['树', '字符串', '队列', '栈']);
++  });
++});
++
++describe('选项残缺时退回逐行，不能整题丢内容', () => {
++  const qs = parse(`# 习题\n\n5．选择题\n（1）以下说法正确的是（   ）。\nB．只有 B 和 D\nD．跨页断了\n`);
++  it('拆不出 A→B→C 的严格序列，但内容还在', () => {
++    const all = JSON.stringify(qs);
++    expect(all).toContain('只有 B 和 D');
++    expect(all).toContain('跨页断了');
++  });
++});
++
++describe('「5．选择题」之后的编号题要复位 exLabel', () => {
++  const qs = parse(`# 习题
++
++5．选择题
++（1）在数据结构中，从逻辑上可以把数据结构分成（    ）。
++A．动态结构和静态结构                 B．紧凑结构和非紧凑结构
++C．线性结构和非线性结构                D．内部结构和外部结构
++6．试分析下列各算法的时间复杂度。
++（1）x=90; y=100;
++while(y>0)
++（2）for(i=0; i<n; i++)
++a[i][j]=0;
++`);
++  it('选择题的 (1) 是独立题，代码题的 (1)(2) 是子项', () => {
++    expect(qs).toHaveLength(2);
++    expect(qs[0].type).toBe('single_choice');
++  });
++  it('代码子项保住了父题干，不是一堆没头没尾的片段', () => {
++    const code = qs[1];
++    expect(code.stem).toContain('试分析下列各算法的时间复杂度');
++    expect(code.stem).toContain('x=90');
++    expect(code.stem).toContain('for(i=0');
++  });
++});
++
++// —— 书脊竖排标题：只印单侧页面，频次 ~50% ——
++describe('页面中部的书脊竖排文字', () => {
++  const spine = '双色版';
++  const pages = [];
++  for (let i = 0; i < 10; i++) {
++    const body = `## 小节 ${i}\n\n这是一段足够长的正文，用来占位并确保这一页有实际内容参与频次统计，不至于被当成空页跳过。`;
++    // 只在偶数页出现，模拟 recto/verso 交替
++    pages.push(i % 2 === 0 ? `${body}\n${spine}\n` : body);
++  }
++  pages.push(`# 习题\n\n1．简述下列概念：数据、数据元素、数据项、数据对象、数据结构、逻辑结构、存储结\n${spine}\n构、抽象数据类型。\n`);
++  const qs = book(pages);
++  it('频次只有一半也要剥掉（短行阈值放宽到 40%）', () => {
++    expect(qs.length).toBeGreaterThanOrEqual(1);
++    expect(qs.some((q) => q.stem.includes(spine))).toBe(false);
++  });
++  it('被竖排文字截断的句子重新接上', () => {
++    expect(qs[0].stem.replace(/\s+/g, '')).toContain('存储结构、抽象数据类型');
++  });
++});
++
++describe('孤立的页码 / 单字 / 破折号行', () => {
++  // 这类剥离在 _stripPageFurniture 里，是「整本」路径的页级预处理，
++  // 直接调 mdToQuestions 不经过它 —— 所以必须走 book()，且页数要够（<4 页不做剥离）
++  const filler = (i) => `## 小节 ${i}\n\n这是一段足够长的正文，用来让这一页有实际内容参与统计，不至于被当成空页跳过。`;
++  const qs = book([
++    filler(1), filler(2), filler(3),
++    `# 习题\n\n1．试分析下列算法的时间复杂度。\nx=90; y=100;\n17\nwhile(y>0)\n第\n1\n章\n——\nx++;\n`,
++  ]);
++  it('全都不进题干', () => {
++    const s = qs[0].stem;
++    expect(s).toContain('x=90');
++    expect(s).toContain('x++');
++    expect(s.split('\n').map((x) => x.trim())).not.toContain('17');
++    expect(s.split('\n').map((x) => x.trim())).not.toContain('第');
++    expect(s.split('\n').map((x) => x.trim())).not.toContain('——');
++  });
++});
++
++// —— 教材：只在习题区抽题；试卷不受影响 ——
++describe('习题分区约束', () => {
++  const textbook = `# 第1章 绪论
++
++## 数据结构的研究内容
++
++1.1 这里是正文的小节编号，不该被当成题目
++4.4 算法的空间复杂度
++5 小结
++
++# 习题
++
++1．简述下列概念：数据、数据元素。
++2．试举一个数据结构的例子。
++`;
++  it('正文小节标题不再被当成编号题', () => {
++    const qs = parse(textbook);
++    expect(qs).toHaveLength(2);
++    expect(qs.map((q) => q.stem)).toEqual(['简述下列概念：数据、数据元素。', '试举一个数据结构的例子。']);
++  });
++  it('习题区被非习题标题关闭，后面的正文不再算题', () => {
++    const qs = parse(textbook + '\n## 下一节的标题\n\n7.2 又是一个小节编号\n8 又一个小结\n');
++    expect(qs).toHaveLength(2);
++  });
++  it('习题区内的「选择题」这类小节标签不会误关闭分区', () => {
++    const qs = parse('# 习题\n\n1．简述概念。\n\n## 选择题\n\n（1）以下正确的是（  ）。\nA．甲   B．乙\nC．丙   D．丁\n');
++    expect(qs).toHaveLength(2);
++    expect(qs[1].options).toHaveLength(4);
++  });
++  it('试卷（全篇是题、没有习题分区）保持原行为：全文抽', () => {
++    const paper = `# 广东省 2022 年普通高等学校专升本考试\n\n# 第一部分\n\n1. What might Greeks find in the cake?\nA. A grape.\nB. A ring.\nC. A coin.\nD. A tooth.\n\n2. 下列说法正确的是（  ）。\nA．甲   B．乙\nC．丙   D．丁\n`;
++    const qs = parse(paper, { subject: 'english' });
++    expect(qs).toHaveLength(2);
++    expect(qs.every((q) => q.options.length === 4)).toBe(true);
++  });
++});
++
++// —— 毛概 / C程序设计的编号形态 ——
++describe('其它两本的编号形态', () => {
++  it('毛概：「1   .题干」——数字、空格、句点、紧跟文字', () => {
++    const qs = parse('# 思考题\n1   .毛泽东思想形成和发展的社会历史条件是什么？\n2   .如何把握毛泽东思想的主要内容和活的灵魂？\n', { subject: 'politics' });
++    expect(qs).toHaveLength(2);
++    expect(qs[0].stem).toBe('毛泽东思想形成和发展的社会历史条件是什么？');
++  });
++  it('毛概：思考题后面的「阅读书目」条目不算题', () => {
++    const qs = parse('# 思考题\n1   .如何科学认识毛泽东思想的历史地位？\n\n阅读书目\n1．毛泽东：《论人民民主专政》，《毛泽东选集》第四卷，人民出版社 1991 年版。\n', { subject: 'politics' });
++    expect(qs).toHaveLength(1);
++  });
++  it('C程序设计：OCR 把 (1) 认成 Cl) 也不影响父题成立', () => {
++    const qs = parse('# 习题\n3. 正确理解以下名词及其含义：\nCl) 源程序，目标程序，可执行程序。\n(2) 程序编辑，程序编译，程序连接。\n');
++    expect(qs).toHaveLength(1);
++    expect(qs[0].stem).toContain('正确理解以下名词');
++    expect(qs[0].stem).toContain('程序编辑');
 +  });
 +});

@@ -1,4 +1,4 @@
-import { json, checkAuth, batchChunked, checkStorage } from './_utils.js';
+import { json, checkAuth, batchChunked, checkStorage, rowBytes } from './_utils.js';
 
 const MAX_IMPORT = 2000; // 单次直接导入 JSON 的题目上限（超过请分批，防单请求撑爆内存/超时）
 
@@ -282,24 +282,26 @@ export async function onRequestPost({ request, env }) {
           stem=excluded.stem, options=excluded.options, answer=excluded.answer,
           analysis=excluded.analysis, tags=excluded.tags, page=excluded.page,
           status=excluded.status, shape_key=excluded.shape_key`;
+      // 带上每条的体积估算：passage/stem 很长的书按条数分块会撞 D1 的 32MiB RPC 上限
       await batchChunked(env, cleanedQ.map((q) =>
         env.DB.prepare(sql).bind(
           q.id, q.subject, q.chapter, q.type, q.difficulty, q.source,
           q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.page, q.status, q.shape_key
         )
-      ), 80);
+      ), 80, cleanedQ.map((q) => rowBytes(q.passage, q.stem, q.options, q.answer, q.analysis, q.tags, q.chapter, q.source)));
     }
     if (cleanedM.length) {
       await ensureMaterialsTable(env);
       const sqlM = `INSERT OR REPLACE INTO materials
         (id, subject, title, source, page, page_image, content_md, summary, tags)
         VALUES (?,?,?,?,?,?,?,?,?)`;
+      // 教材页更容易超标：page_image 是 data URL，content_md 是整页 Markdown
       await batchChunked(env, cleanedM.map((m) =>
         env.DB.prepare(sqlM).bind(
           m.id, m.subject, m.title, m.source, m.page,
           m.page_image, m.content_md, m.summary, m.tags
         )
-      ), 80);
+      ), 80, cleanedM.map((m) => rowBytes(m.page_image, m.content_md, m.summary, m.tags, m.title, m.source)));
     }
   } catch (e) {
     return json({ error: '写入数据库失败：' + e.message }, 500);

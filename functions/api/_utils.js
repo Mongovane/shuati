@@ -177,10 +177,38 @@ export function ftsQuote(kw) {
 
 // —— 大批量语句分块提交：D1 单次 batch 语句数有限，超大导入/恢复按块跑 ——
 // 注意：跨块不再是单事务；调用方需保证语句幂等（UPSERT / OR REPLACE）
-export async function batchChunked(env, stmts, size = 80) {
-  for (let i = 0; i < stmts.length; i += size) {
-    await env.DB.batch(stmts.slice(i, i + size));
+//
+// 只按条数分块是不够的：D1 还有「序列化后的 RPC 参数不得超过 32MiB」这条限制。
+// 一本教材抽出 138 道题、每题都带一份很长的 passage 时，80 条一批就能到 90MB，
+// 报错是 `D1_ERROR: Serialized RPC arguments ... limited to 32MiB, but the size of
+// this value was: 95036377 bytes` —— 整次导入全废，而且用户完全无从下手。
+// 所以再加一层字节预算：调用方给出每条语句的大致体积，超预算就提前切块。
+// 预算取 16MiB（限制的一半），给 SQL 文本、协议开销和多字节字符留足余量。
+export const D1_BATCH_BYTES = 16 * 1024 * 1024;
+
+export async function batchChunked(env, stmts, size = 80, weights = null, maxBytes = D1_BATCH_BYTES) {
+  if (!stmts || !stmts.length) return;
+  let batch = [], bytes = 0;
+  const flush = async () => { if (batch.length) { await env.DB.batch(batch); batch = []; bytes = 0; } };
+  for (let i = 0; i < stmts.length; i++) {
+    const w = weights ? (Number(weights[i]) || 0) : 0;
+    // 单条就超预算：让它独自成批。再大也只能交给 D1 判死刑，但不会连累同批的其它题。
+    if (batch.length && (batch.length >= size || bytes + w > maxBytes)) await flush();
+    batch.push(stmts[i]); bytes += w;
   }
+  await flush();
+}
+
+// 估算一条记录序列化后的字节数（UTF-8）。只要量级对就够用，不必精确。
+export function rowBytes(...vals) {
+  let n = 64;                                  // SQL 文本与协议开销的粗略常数
+  for (const v of vals) {
+    if (v == null) { n += 4; continue; }
+    const s = typeof v === 'string' ? v : String(v);
+    // 中文按 3 字节算：不预先编码，避免为了估体积把整本书再拷一遍
+    n += s.length * 3 + 8;
+  }
+  return n;
 }
 
 // 把数据库行还原成前端可用的题目对象
