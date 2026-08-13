@@ -103,7 +103,18 @@ async bankAiFillAnswers(){
       // 以前前端全丢了，只剩一个「6 / 50」的计数 —— 跑完也不知道哪些题被跳过、为什么。
       this.bankAiFill={ busy:true, prog:'', total:pool.length, filled:0, skipped:0, failed:0, canceled:false,
         log:[], panel:true };
-      const stemOf=new Map(pool.map(q=>[q.id, String(q.stem||'').replace(/\s+/g,' ').slice(0,60)]));
+      // 日志里显示的题干要先洗掉插图 HTML / markdown 图片 / 公式定界符，
+      // 否则会看到「…如图 4.18 所示。 <figure class="fig"><」这种被截断的标签。
+      const cleanStem=(t)=>String(t||'')
+        .replace(/<figure[\s\S]*?<\/figure>/gi,'［图］')
+        .replace(/<figure[^>]*>/gi,'［图］')
+        .replace(/!\[[^\]]*\]\([^)]*\)/g,'［图］')
+        .replace(/<img[^>]*>/gi,'［图］')
+        .replace(/<img\b[\s\S]*$/i, "［图］")   // 跨页截断：<img 开了头但没收尾
+        .replace(/<[^>]+>/g,' ')
+        .replace(/\$\$?/g,'')
+        .replace(/\s+/g,' ').trim().slice(0,60);
+      const stemOf=new Map(pool.map(q=>[q.id, cleanStem(q.stem)]));
       // 只记 log，不单独维护 done —— done 由 filled+skipped+failed 推导。
       // 各自计数容易和 log 条数对不上：服务端若在多个分块里重复报同一个 missing，
       // 单独自增就会出现「16 / 14」这种超出总数的进度（模拟时实测到了）。
@@ -114,14 +125,29 @@ async bankAiFillAnswers(){
           if(ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
           const part=pool.slice(i,i+CH);
           this.bankAiFill.prog='正在生成 '+Math.min(i+CH,pool.length)+' / '+pool.length+'…';
-          let d=null;
-          try{
-            d=await this.api('/api/answerfill',{method:'POST',signal:ctrl.signal,body:JSON.stringify(Object.assign({
-              questions: part.map(q=>({ id:q.id, type:q.type, stem:q.stem, options:q.options, passage:q.passage, subject:q.subject })),
-            }, this.aiOv()))});
-          }catch(e){ if(e.message==='unauth')throw e;
-            if(e.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
-            for(const q of part)note(q.id,'fail','请求失败：'+(e.message||'未知错误'));
+          let d=null, lastErr=null;
+          // 429 是中转站限流，退避后重试就能救回来（实测 49 题里 6 题栽在这上面）。
+          // 只对限流 / 网关 / 超时重试；参数错、鉴权错重试多少次都一样。
+          for(let attempt=0; attempt<3; attempt++){
+            if(ctrl.signal.aborted)break;
+            try{
+              d=await this.api('/api/answerfill',{method:'POST',signal:ctrl.signal,body:JSON.stringify(Object.assign({
+                questions: part.map(q=>({ id:q.id, type:q.type, stem:q.stem, options:q.options, passage:q.passage, subject:q.subject })),
+              }, this.aiOv()))});
+              lastErr=null; break;
+            }catch(e){ if(e.message==='unauth')throw e;
+              lastErr=e;
+              if(e.name==='AbortError'||ctrl.signal.aborted)break;
+              const retryable=/429|限流|rate.?limit|50[234]|timeout|超时|网关/i.test(String(e.message||''));
+              if(!retryable || attempt===2)break;
+              const wait=[1500,4000][attempt];
+              this.bankAiFill.prog='被限流，'+(wait/1000)+' 秒后重试（第 '+(attempt+2)+' 次）…';
+              await new Promise(r=>setTimeout(r,wait));
+            }
+          }
+          if(lastErr){
+            if(lastErr.name==='AbortError'||ctrl.signal.aborted){ this.bankAiFill.canceled=true; break; }
+            for(const q of part)note(q.id,'fail','请求失败：'+(lastErr.message||'未知错误'));
             this.bankAiFill.failed+=part.length; continue; }
           // 攒成一个 items 批量 PATCH。原来是每题一个请求，6 题一组也就 6 次往返，
           // 200 题下来 200 次；中途失败还会留下「补了一半」的状态。

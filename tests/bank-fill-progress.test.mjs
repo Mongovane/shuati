@@ -2,7 +2,7 @@
 // 改造前只有一个「6 / 50」的计数：跑完既不知道哪些题被跳过，也不知道为什么 ——
 // 而后端每条本来就带 skip 原因和 warn（answerfill.js 里 items.push({id,answer,analysis,skip/warn})），
 // 前端把它们全丢了。现在逐题记进 log，面板实时显示。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './helpers.mjs';
@@ -67,11 +67,49 @@ describe('逐题记录结果', () => {
     expect(c.bankAiFill.log.some((r) => r.state === 'skip' && /没有返回/.test(r.text))).toBe(true);
   });
   it('请求整块失败时每道题都留痕，不是静默丢掉', async () => {
-    const c = makeCtx(qs(3), () => { throw new Error('502 网关错误'); });
+    // 用不可重试的错误，避免真的等满退避（限流重试另有用例覆盖）
+    const c = makeCtx(qs(3), () => { throw new Error('400 参数错误'); });
     await run(c);
     expect(c.bankAiFill.log).toHaveLength(3);
     expect(c.bankAiFill.log.every((r) => r.state === 'fail')).toBe(true);
-    expect(c.bankAiFill.log[0].text).toContain('502');
+    expect(c.bankAiFill.log[0].text).toContain('400');
+  });
+
+  it('限流（429）自动退避重试，救回本来会失败的那批', async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const c = makeCtx(qs(2), (b) => {
+        if (++n === 1) throw new Error('AI 中转站返回 429');
+        return { items: b.questions.map((q) => ({ id: q.id, answer: ['A'] })) };
+      });
+      const p = run(c);
+      await vi.runAllTimersAsync();
+      await p;
+      expect(n).toBe(2);
+      expect(c.bankAiFill.filled).toBe(2);
+      expect(c.bankAiFill.failed).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('不可重试的错误不浪费退避时间', async () => {
+    let n = 0;
+    const c = makeCtx(qs(2), () => { n++; throw new Error('400 参数错误'); });
+    await run(c);
+    expect(n).toBe(1);
+  });
+
+  it('最多重试 3 次就放弃，不会无限重试', async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const c = makeCtx(qs(2), () => { n++; throw new Error('429 too many requests'); });
+      const p = run(c);
+      await vi.runAllTimersAsync();
+      await p;
+      expect(n).toBe(3);
+      expect(c.bankAiFill.failed).toBe(2);
+    } finally { vi.useRealTimers(); }
   });
   it('写库失败也逐题留痕', async () => {
     const c = makeCtx(qs(2), (b) => ({ items: b.questions.map((q) => ({ id: q.id, answer: ['A'] })) }),
@@ -141,5 +179,38 @@ describe('面板本身', () => {
   it('样式里四种状态各有颜色', () => {
     const css = read('css/style.css');
     for (const k of ['.fill-row.ok', '.fill-row.warn', '.fill-row.fail', '.fill-row.skip']) expect(css).toContain(k);
+  });
+});
+
+describe('选中态的视觉引导', () => {
+  const tpl = read('js/tpl/view-bank.js');
+  const css = read('css/style.css');
+  it('「取消选择」不再是一颗和别人一样的 subtle 按钮', () => {
+    expect(tpl).toContain('class="btn sel-clear"');
+    expect(tpl).toContain('取消选择');
+    expect(css).toContain('.btn.sel-clear');
+  });
+  it('已选数量选中时高亮成实心标签', () => {
+    expect(tpl).toContain('class="sel-count" :class="{on:bank.sel.length}"');
+    expect(css).toContain('.sel-count.on{background:var(--accent)');
+  });
+  it('整条工具栏在有选中时带强调边', () => {
+    expect(tpl).toContain(":class=\"{'has-sel':bank.sel.length}\"");
+    expect(css).toContain('.bank-toolbar.has-sel');
+  });
+});
+
+describe('面板位置', () => {
+  const tpl = read('js/tpl/view-bank.js');
+  it('面板在工具栏之外，不会把「智能归类/刷新/查重」挤到自己里面', () => {
+    const tb = tpl.indexOf('bankDupScan');
+    const panel = tpl.indexOf('class="fill-panel"');
+    expect(tb).toBeGreaterThan(0);
+    expect(panel).toBeGreaterThan(tb);        // 查重按钮在前，面板在后
+  });
+  it('移动端把进度条换行、日志允许折行', () => {
+    const css = read('css/style.css');
+    expect(css).toContain('.fill-bar{order:5;flex-basis:100%');
+    expect(css).toContain('.fill-stem{flex-basis:100%;white-space:normal');
   });
 });

@@ -51,9 +51,13 @@ const TPL_VIEW_PRACTICE = `
       <template v-if="view==='favorite' && fav.listMode">
         <div v-if="fav.loading && !fav.items.length" class="skel-wrap"><div class="skel skel-row" v-for="n in 5" :key="'fsk'+n"></div></div>
         <template v-else-if="fav.items.length">
-          <div class="bank-toolbar">
+          <div class="bank-toolbar" :class="{'has-sel':fav.sel.length}">
             <label class="bank-check"><input type="checkbox" :checked="fav.items.length && fav.items.every(q=>fav.sel.includes(q.id))" @change="favAllOnPage" /> 全选本页</label>
-            <span class="muted">已选 {{ fav.sel.length }} · 共 {{ fav.total }} 收藏(已加载 {{ fav.items.length }})</span>
+            <button class="btn sel-clear" v-if="fav.sel.length" @click="fav.sel=[]" title="取消所有已选收藏">
+              <icon name="x" :size="14" /> 取消选择
+            </button>
+            <span class="sel-count" :class="{on:fav.sel.length}">已选 {{ fav.sel.length }}</span>
+            <span class="muted" style="font-size:12px">共 {{ fav.total }} 收藏（已加载 {{ fav.items.length }}）</span>
             <button class="btn subtle" @click="favPractice" :title="fav.sel.length ? '只刷勾选的 '+fav.sel.length+' 道收藏题' : '把全部收藏题作为一轮练习'">▶ {{ fav.sel.length ? '刷选中 '+fav.sel.length+' 题' : '刷全部收藏' }}</button>
             <button class="btn subtle" v-if="!fav.sel.length" :disabled="busyOps.favExportSel" @click="favExportSel" title="导出当前收藏为 JSON"><icon name="download" :size="15" /> 导出本页</button>
             <template v-if="fav.sel.length">
