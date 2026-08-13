@@ -235,7 +235,29 @@ const TPL_VIEW_BOOKS = `
             <span v-if="bookExtract.total" class="bk-extract-bar"><i :style="{width: Math.min(100, Math.round(100*(bookExtract.done||0)/Math.max(1,bookExtract.total)))+'%'}"></i></span>
             <span v-else-if="matProg.total" class="bk-extract-bar"><i :style="{width: matProg.pct+'%'}"></i></span>
           </span>
-              <div class="bk-nav">
+              <div v-if="extractPanelOpen()" class="exdlg-mask">
+          <div class="exdlg" role="dialog" aria-modal="true" aria-label="整本抽题进度">
+            <div class="exdlg-h">
+              <span class="spin"></span>
+              <span class="exdlg-title">整本抽题入库</span>
+              <button class="exdlg-x" @click="extractPanelHide" title="收起面板，抽题继续在后台跑">收起</button>
+            </div>
+            <div class="exdlg-b">
+              <div v-for="(s,i) in extractSteps()" :key="s.k" class="exstep" :class="s.state">
+                <i class="exstep-dot">{{ s.state==='done' ? '✓' : (i+1) }}</i>
+                <span class="exstep-t">{{ s.t }}</span>
+                <span class="exstep-d">{{ s.d }}</span>
+              </div>
+              <div class="exdlg-now">{{ bookExtract.prog || '正在准备…' }}</div>
+              <div v-if="bookExtract.total" class="exdlg-bar">
+                <i :style="{width: Math.min(100, Math.round(100*(bookExtract.done||0)/Math.max(1,bookExtract.total)))+'%'}"></i>
+              </div>
+              <div v-else class="exdlg-bar indet"><i></i></div>
+            </div>
+            <div class="exdlg-f">整本书页数多、插图多时会跑几分钟。可以点「收起」去做别的，完成后会自动弹出预览。</div>
+          </div>
+        </div>
+        <div class="bk-nav">
                 <button :disabled="bookIdx<=0" @click="bookPrev"><icon name="arrow-left" :size="15" /> 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 <icon name="arrow-right" :size="15" /></button>
               </div>

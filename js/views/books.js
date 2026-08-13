@@ -34,11 +34,16 @@ async deleteBook(b){ if(!b){ this.flash('请先选择书籍',true); return; } if
 // 数字进度：total>0 时前端进度条走确定进度并显示 百分比 · cur/total
 _setProg(cur,total,unit){ const t=Math.max(0,total|0), c=Math.min(Math.max(0,cur|0),t||Infinity);
       this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' };
-      // 整本抽题正在跑时，把同一份进度镜像到底栏那句提示上。
+      // 整本抽题的载入阶段，把同一份进度镜像到底栏那句提示上。
       // matProg 的进度条渲染在书架顶部，而「整本抽题入库」按钮在页面底栏 ——
-      // 点完按钮往往已经滚不到顶部了，底栏又只显示一句静态的「正在载入正文 273 页…」，
-      // 于是看起来像卡死。
-      if(this.bookExtract&&this.bookExtract.busy&&t){
+      // 点完按钮往往已经滚不到顶部了，只显示一句静态提示就像卡死。
+      //
+      // 必须用 phase 精确门控，不能只看 busy：_setProg 还被书架加载（loadMaterials）
+      // 和任意翻页取正文（_runMatFill）调用。只看 busy 的话——
+      //   · 「本页抽题」也会被贴上「①/④ 正在载入正文」这种整本流程的标签
+      //   · 抽题途中切到别的书，新书的正文加载会继续往底栏写抽题进度，
+      //     于是每本书底下都显示同一句、看着像卡住（v- 这一版实测到了）
+      if(this.bookExtract&&this.bookExtract.phase==='load'&&t){
         this.bookExtract.prog='①/④ 正在载入正文 '+c+' / '+t+' 页（'+this.matProg.pct+'%）…';
         this.bookExtract.done=c; this.bookExtract.total=t;
       } },
@@ -75,6 +80,16 @@ async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } th
 // matFilling 是 id -> 正在拉这一页的 Promise。关键点：撞上在途必须 **await 同一个 Promise**，
 // 不能「看到在途就直接 return」——那样 ensureBookContent 根本没"确保"到任何事，
 // 整本抽题会在正文只载入一半时开跑，静默少掉几百道题（线上实测 665 → 430）。
+// 只补齐指定的几页正文。本页抽题只用到当前页，没必要为了一页去载入整本
+// （388 页那本要等十几秒，用户看到的就是按钮一直转）。
+async ensurePagesContent(mats){
+      const list=(Array.isArray(mats)?mats:[mats]).filter(m=>m&&m.content_md===undefined&&m.id);
+      if(!list.length)return;
+      const ids=list.map(m=>m.id);
+      const waiting=[]; const todo=[];
+      for(const id of ids){ const p=matFilling.get(id); if(p)waiting.push(p); else todo.push(id); }
+      if(todo.length)await this._fillMatContent(todo, (this.currentBook&&this.currentBook.title)||'');
+      if(waiting.length)await Promise.allSettled(waiting); },
 async ensureBookContent(book){
       book=book||this.currentBook; if(!book||!book.pages||!book.pages.length)return;
       for(let round=0;round<3;round++){          // 拉完自己那批，再回头确认没有别人漏下的

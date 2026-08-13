@@ -22,7 +22,14 @@ const mkDb = ({ subjects = [], q = [], m = [] }) => new FakeDB([
   { match: /FROM questions WHERE subject IS NOT NULL/i, value: q },
   { match: /FROM materials WHERE subject IS NOT NULL/i, value: m },
 ]);
-const get = async (db) => (await getSubjects({ request: authedReq('http://x/api/subjects'), env: Object.assign(makeEnv(db), { DB: db }) })).json();
+// 孤儿扫描要在 questions/materials 上各跑一次 GROUP BY 全表扫描，
+// 而 loadSubjects() 前端有 13 处调用（每次保存科目/调顺序/补关键词后都会重拉）。
+// 所以改成显式 ?orphans=1 才扫 —— 上一版无条件扫，把这条接口拖成几百毫秒，
+// 用户点「补回关键词」半天没反应就连点好几次。
+const get = async (db, withOrphans = true) => (await getSubjects({
+  request: authedReq('http://x/api/subjects' + (withOrphans ? '?orphans=1' : '')),
+  env: Object.assign(makeEnv(db), { DB: db }),
+})).json();
 const post = async (db, body) => postSubject({
   request: authedReq('http://x/api/subjects', { method: 'POST', body: JSON.stringify(body) }),
   env: Object.assign(makeEnv(db), { DB: db }),
@@ -60,6 +67,14 @@ describe('孤儿科目检测', () => {
   it('items 照常返回，不受影响', async () => {
     const d = await get(mkDb({ subjects: SUBJ, m: [{ s: 'politics', n: 278 }] }));
     expect(d.items.map((x) => x.v)).toEqual(['english', 'math', '2']);
+  });
+  it('不带 orphans=1 时跳过扫描（这是热路径，13 处调用都走这条）', async () => {
+    const db = mkDb({ subjects: SUBJ, m: [{ s: 'politics', n: 278 }] });
+    const d = await get(db, false);
+    expect(d.orphans).toBeUndefined();
+    expect(db.log.filter((r) => /GROUP BY subject/i.test(r.sql))).toHaveLength(0);
+    expect(d.items).toHaveLength(3);          // 科目列表照常返回
+    expect(d.defaults).toHaveLength(4);       // chip 需要的默认值也照常返回
   });
 });
 
@@ -101,8 +116,13 @@ describe('重建内置科目要补回默认关键词', () => {
 describe('前端：把孤儿摆出来并能一键恢复', () => {
   const settings = read('js/views/settings.js');
   const tpl = read('js/tpl/view-settings.js');
-  it('loadSubjects 保存 orphans', () => {
-    expect(settings).toContain('this.subjOrphans=Array.isArray(d&&d.orphans)?d.orphans:[];');
+  it('loadSubjects 只在带 orphans=1 时更新列表，不覆盖已有结果', () => {
+    expect(settings).toContain("async loadSubjects(withOrphans)");
+    expect(settings).toContain("'/api/subjects'+(withOrphans?'?orphans=1':'')");
+    expect(settings).toContain('if(Array.isArray(d&&d.orphans))this.subjOrphans=d.orphans;');
+  });
+  it('只在进设置页时扫一次', () => {
+    expect(read('js/app.js')).toContain("if(v==='settings' && this.token && !this._orphansScanned){ this._orphansScanned=true; this.loadSubjects(true); }");
   });
   it('有重建入口，且代码用孤儿的原始代码（改一个字就归不了位）', () => {
     expect(settings).toContain('async subjRestoreOrphan(o)');
@@ -175,13 +195,41 @@ describe('内置科目 chip：三态灰点', () => {
     expect(c.calls).toHaveLength(0);
     expect(c.flashes.join('')).toMatch(/已存在且有关键词/);
   });
-  it('两种可点状态都要确认，取消就不动', async () => {
-    global.confirm = () => false;
-    for (const subjects of [[{ v: 'english', t: '英语', keywords: '' }], []]) {
-      const c = mk(subjects);
-      await c.subjRestoreDefault(D.english);
-      expect(c.calls).toHaveLength(0);
-    }
+  it('点击只开弹窗，不直接发请求', () => {
+    const c = mk([{ v: 'english', t: '英语', keywords: '' }]);
+    c.subjChipClick(D.english);
+    expect(c.calls).toHaveLength(0);
+    expect(c.subjChipDlg).toMatchObject({ code: 'english', state: 'nokw' });
+    expect(c.subjChipDlg.kws).toEqual(['阅读理解', '完形', '四级']);
+  });
+  it('正常态点了不开弹窗', () => {
+    const c = mk([{ v: 'english', t: '英语', keywords: '有了' }]);
+    c.subjChipClick(D.english);
+    expect(c.subjChipDlg).toBeFalsy();
+  });
+  it('弹窗里取消就什么都不做', () => {
+    const c = mk([]);
+    c.subjChipClick(D.english);
+    c.subjChipDlgClose();
+    expect(c.subjChipDlg).toBe(null);
+    expect(c.calls).toHaveLength(0);
+  });
+  it('重建态的弹窗要说明会归位多少内容', () => {
+    const c = mk([], [{ code: 'politics', questions: 0, materials: 278 }]);
+    c.subjChipClick(D.politics);
+    expect(c.subjChipDlg.moved).toBe('278 页教材');
+    expect(c.subjChipDlg.desc).toMatch(/自动归位/);
+  });
+  it('防连点：正在处理时再点无效', async () => {
+    const c = mk([{ v: 'english', t: '英语', keywords: '', sort: 10 }]);
+    c.subjChipBusy = 'english';
+    await c.subjRestoreDefault(D.english);
+    expect(c.calls).toHaveLength(0);
+  });
+  it('处理完清掉 busy，允许再次操作', async () => {
+    const c = mk([{ v: 'english', t: '英语', keywords: '', sort: 10 }]);
+    await c.subjRestoreDefault(D.english);
+    expect(c.subjChipBusy).toBe('');
   });
   it('重建时若有孤儿内容，提示要说明会归位多少', async () => {
     global.confirm = () => true;
@@ -191,18 +239,36 @@ describe('内置科目 chip：三态灰点', () => {
   });
 
   it('渲染成小圆点而不是整颗高亮胶囊', () => {
-    expect(tpl).toContain('<i class="def-dot"></i>');
-    expect(tpl).toContain(':class="subjChipState(d)"');
+    expect(tpl).toContain('class="def-dot"');
+    expect(tpl).toContain('subjChipState(d)');
     expect(css).toContain('.def-dot{');
     for (const st of ['.def-chip.nokw .def-dot', '.def-chip.gone .def-dot']) expect(css).toContain(st);
   });
-  it('正常态不可点，另外两态可点', () => {
-    expect(tpl).toContain(":disabled=\"subjChipState(d)==='ok'\"");
+  it('正常态不可点；正在处理时全部不可点（防连点）', () => {
+    expect(tpl).toContain("subjChipState(d)==='ok' || !!subjChipBusy");
     expect(css).toContain('.def-chip.nokw,.def-chip.gone{cursor:pointer');
   });
-  it('每个点都有 title 说明点了会发生什么', () => {
-    expect(tpl).toContain(':title="subjChipTip(d)"');
-    expect(settings).toContain('subjChipTip(d)');
+  it('处理中的那个 chip 显示转圈', () => {
+    expect(tpl).toContain('subjChipBusy===d.code');
+    expect(tpl).toContain('class="spin"');
+  });
+  it('说明改成居中弹窗，不再用浏览器原生 title/confirm', () => {
+    expect(tpl).toContain('chipdlg-mask');
+    expect(tpl).toContain('@click.self="subjChipDlgClose"');
+    expect(tpl).not.toContain(':title="subjChipTip(d)"');
+    expect(settings).not.toContain("confirm('重建内置科目");
+  });
+  it('弹窗把默认关键词逐个列出来给用户过目', () => {
+    expect(tpl).toContain('chipdlg-kwlist');
+    expect(tpl).toContain('v-for="k in subjChipDlg.kws"');
+  });
+  it('弹窗在处理中禁用取消和确定，避免中途关掉', () => {
+    expect(tpl.match(/:disabled="!!subjChipBusy"/g).length).toBeGreaterThanOrEqual(3);
+  });
+  it('居中且移动端贴底', () => {
+    expect(css).toContain('.chipdlg-mask{position:fixed;inset:0');
+    expect(css).toContain('align-items:center;justify-content:center');
+    expect(css).toContain('.chipdlg-mask{padding:12px;align-items:flex-end}');
   });
   it('图例把三种颜色讲清楚', () => {
     expect(tpl).toMatch(/灰点＝正常/);

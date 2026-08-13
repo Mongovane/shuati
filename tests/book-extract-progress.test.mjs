@@ -16,32 +16,81 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const Books = new Function(read('js/views/books.js') + ';return BooksMixin;')();
 
 describe('载入正文的进度镜像到底栏', () => {
-  const mk = (busy) => ({ bookExtract: { busy, prog: '', done: 0, total: 0 }, matProg: {} });
-  it('抽题进行中：底栏显示实时页数和百分比', () => {
-    const c = mk(true);
+  // 门控必须是 phase==='load'，不能只看 busy。
+  // _setProg 还被书架加载（loadMaterials）和任意翻页取正文（_runMatFill）调用，
+  // 只看 busy 会造成两个线上实测到的问题：
+  //   · 「本页抽题」被贴上「①/④ 正在载入正文」这种整本流程的标签
+  //   · 抽题途中切到别的书，新书的正文加载继续往底栏写抽题进度，
+  //     每本书底下都显示同一句，看着像卡住
+  const mk = (phase) => ({ bookExtract: { busy: !!phase, phase: phase || '', prog: '', done: 0, total: 0 }, matProg: {} });
+  it('载入阶段：底栏显示实时页数和百分比', () => {
+    const c = mk('load');
     Books.methods._setProg.call(c, 120, 273, '页');
     expect(c.bookExtract.prog).toBe('①/④ 正在载入正文 120 / 273 页（44%）…');
   });
   it('同时喂给底栏的进度条', () => {
-    const c = mk(true);
+    const c = mk('load');
     Books.methods._setProg.call(c, 120, 273, '页');
     expect(c.bookExtract.done).toBe(120);
     expect(c.bookExtract.total).toBe(273);
   });
+  it('本页抽题（phase=page）不蹭整本的标签', () => {
+    const c = mk('page');
+    c.bookExtract.prog = '正在准备正文…';
+    Books.methods._setProg.call(c, 120, 273, '页');
+    expect(c.bookExtract.prog).toBe('正在准备正文…');
+  });
+  it('解析阶段之后不再被载入进度改写', () => {
+    const c = mk('parse');
+    c.bookExtract.prog = '②/④ 正在解析全书 273 页…';
+    Books.methods._setProg.call(c, 5, 10, '页');
+    expect(c.bookExtract.prog).toBe('②/④ 正在解析全书 273 页…');
+  });
   it('不在抽题时不污染底栏（书架自己加载也会调 _setProg）', () => {
-    const c = mk(false);
+    const c = mk('');
+    Books.methods._setProg.call(c, 50, 100, '页');
+    expect(c.bookExtract.prog).toBe('');
+  });
+  it('busy 为真但 phase 已清空时也不写（切书后的残留场景）', () => {
+    const c = { bookExtract: { busy: true, phase: '', prog: '', done: 0, total: 0 }, matProg: {} };
     Books.methods._setProg.call(c, 50, 100, '页');
     expect(c.bookExtract.prog).toBe('');
   });
   it('总数为 0 时不写（避免出现「0 / 0」）', () => {
-    const c = mk(true);
+    const c = mk('load');
     Books.methods._setProg.call(c, 0, 0, '页');
     expect(c.bookExtract.prog).toBe('');
   });
   it('matProg 本身照常更新，顶部进度条不受影响', () => {
-    const c = mk(true);
+    const c = mk('load');
     Books.methods._setProg.call(c, 120, 273, '页');
     expect(c.matProg).toMatchObject({ cur: 120, total: 273, pct: 44, unit: '页' });
+  });
+});
+
+describe('切书要清掉抽题进度残留', () => {
+  const app = read('js/app.js');
+  const ing = read('js/views/ingest.js');
+  it('currentBookId 的 watcher 里重置（含收起状态）', () => {
+    expect(app).toContain("this.bookExtract.phase=''");
+    expect(app).toContain('this.bookExtract.hidden=false;');
+  });
+  it('phase / hidden 字段都有声明', () => {
+    expect(app).toContain("bookExtract:{ busy:false, prog:'', done:0, total:0, phase:'', hidden:false }");
+  });
+  it('两个抽题入口的 finally 都清 phase 和进度条', () => {
+    const fins = ing.match(/finally \{ this\.bookExtract\.busy=false;[^}]*\}/g) || [];
+    expect(fins).toHaveLength(2);
+    for (const f of fins) {
+      expect(f).toContain("phase=''");
+      expect(f).toContain('done=0');
+      expect(f).toContain('total=0');
+    }
+  });
+  it('整本流程按阶段推进 phase', () => {
+    expect(ing).toContain("this.bookExtract.phase='load';");
+    expect(ing).toContain("this.bookExtract.phase='parse';");
+    expect(ing).toContain("this.bookExtract.phase='page';");
   });
 });
 
@@ -60,7 +109,7 @@ describe('四个阶段都有编号，用户知道还剩几步', () => {
     expect(src).toContain("'③/④ 正在转存插图 '+done+' / '+seen.size+'…'");
   });
   it('进入预览前清掉进度条，避免残留', () => {
-    expect(src).toContain("this.bookExtract.done=0; this.bookExtract.total=0;\n      this.bookExtract.prog='④/④ 正在生成预览…'");
+    expect(src).toContain("this.bookExtract.done=0; this.bookExtract.total=0;\n      this.bookExtract.phase='preview';");
   });
   it('导入阶段的提示带单位', () => {
     expect(src).toMatch(/正在导入 .+ 题…/);
@@ -209,5 +258,121 @@ describe('插图转存：并发但行为不变', () => {
       expect(t).toContain('https://r2/ok.png');
       expect(t).not.toContain('base64');
     }
+  });
+});
+
+// 本页抽题原来调 ensureBookContent()，把整本都拉下来 —— 388 页那本要干等十几秒，
+// 用户看到的就是按钮一直转。它全程只读 currentPageMat.content_md，一页都不需要别的。
+describe('本页抽题只载入当前页', () => {
+  const Books2 = new Function(read('js/views/books.js') + ';return BooksMixin;')();
+  const mk = () => {
+    const filled = [];
+    return Object.assign(Object.create(Books2.methods), {
+      filled,
+      currentBook: { title: '高数上', pages: Array.from({ length: 388 }, (_, i) => ({ id: 'm' + i, page: i + 1 })) },
+      _fillMatContent: async (ids) => { filled.push(...ids); },
+    });
+  };
+  it('只拉当前这一页，不是整本', async () => {
+    const c = mk();
+    await c.ensurePagesContent(c.currentBook.pages[15]);
+    expect(c.filled).toEqual(['m15']);
+  });
+  it('正文已在本地就不发请求', async () => {
+    const c = mk();
+    await c.ensurePagesContent({ id: 'm3', content_md: '已有正文' });
+    expect(c.filled).toEqual([]);
+  });
+  it('空输入 / null 不炸', async () => {
+    const c = mk();
+    await c.ensurePagesContent(null);
+    await c.ensurePagesContent([]);
+    await c.ensurePagesContent([null, undefined]);
+    expect(c.filled).toEqual([]);
+  });
+  it('可以一次补多页（跨页题目将来会用到）', async () => {
+    const c = mk();
+    await c.ensurePagesContent([c.currentBook.pages[0], c.currentBook.pages[1]]);
+    expect(c.filled).toEqual(['m0', 'm1']);
+  });
+  it('localExtractPage 改用 ensurePagesContent，并保留旧方法作兜底', () => {
+    const ing = read('js/views/ingest.js');
+    expect(ing).toContain('if(this.ensurePagesContent)await this.ensurePagesContent(m0);');
+    expect(ing).toContain('else if(this.ensureBookContent)await this.ensureBookContent();');
+  });
+  it('正文没载入成功要报错，不能拿 undefined 去解析', () => {
+    expect(read('js/views/ingest.js')).toContain("if(m.content_md===undefined){ this.flash('这一页正文没载入成功，请重试',true); return; }");
+  });
+  it('整本抽题仍然用 ensureBookContent（它确实需要全书）', () => {
+    expect(read('js/views/ingest.js')).toContain('if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md');
+  });
+});
+
+// 底栏那行文字一滚就看不见了，而整本抽题动辄几分钟（载入 273 页 + 转存 343 张图）。
+// 加一个居中面板，四步进度一目了然，可「收起」去做别的。
+describe('整本抽题的居中进度面板', () => {
+  const Ing = new Function(read('js/views/ingest.js') + ';return IngestMixin;')().methods;
+  const mk = (phase, extra = {}) => Object.assign(Object.create(Ing), {
+    bookExtract: Object.assign({ busy: !!phase, phase: phase || '', prog: '', done: 0, total: 0, hidden: false }, extra),
+  });
+
+  it('四步的顺序和当前步高亮', () => {
+    const steps = mk('img').extractSteps();
+    expect(steps.map((s) => s.k)).toEqual(['load', 'parse', 'img', 'preview']);
+    expect(steps.map((s) => s.state)).toEqual(['done', 'done', 'run', 'wait']);
+  });
+  it('第一步进行中时后面三步都是等待', () => {
+    expect(mk('load').extractSteps().map((s) => s.state)).toEqual(['run', 'wait', 'wait', 'wait']);
+  });
+  it('最后一步进行中时前三步都已完成', () => {
+    expect(mk('preview').extractSteps().map((s) => s.state)).toEqual(['done', 'done', 'done', 'run']);
+  });
+  it('没在跑时全部是等待，不会误标完成', () => {
+    expect(mk('').extractSteps().every((s) => s.state === 'wait')).toBe(true);
+  });
+
+  it('只在整本抽题的四个阶段弹出', () => {
+    for (const p of ['load', 'parse', 'img', 'preview']) expect(mk(p).extractPanelOpen()).toBe(true);
+  });
+  it('本页抽题不弹（现在只拉一页，快得没必要打断视线）', () => {
+    expect(mk('page').extractPanelOpen()).toBe(false);
+  });
+  it('没在跑时不弹', () => {
+    expect(mk('').extractPanelOpen()).toBe(false);
+    expect(mk('load', { busy: false }).extractPanelOpen()).toBe(false);
+  });
+  it('收起后不再弹，但抽题继续（busy 仍为真）', () => {
+    const c = mk('load');
+    c.extractPanelHide();
+    expect(c.bookExtract.hidden).toBe(true);
+    expect(c.bookExtract.busy).toBe(true);
+    expect(c.extractPanelOpen()).toBe(false);
+  });
+  it('每次开始整本抽题都重新展开（上次收起过也不影响）', () => {
+    expect(read('js/views/ingest.js')).toContain('this.bookExtract.busy=true; this.bookExtract.hidden=false;');
+  });
+
+  const tpl = read('js/tpl/view-books.js');
+  const css = read('css/style.css');
+  it('模板渲染四步、当前提示和进度条', () => {
+    expect(tpl).toContain('v-for="(s,i) in extractSteps()"');
+    expect(tpl).toContain('bookExtract.prog');
+    expect(tpl).toContain('exdlg-bar');
+  });
+  it('总数未知的阶段用不定长滑动条，而不是假装 0%', () => {
+    expect(tpl).toContain('exdlg-bar indet');
+    expect(css).toContain('.exdlg-bar.indet i{width:38%;animation:exslide');
+  });
+  it('居中显示', () => {
+    expect(css).toContain('.exdlg-mask{position:fixed;inset:0');
+    expect(css).toContain('align-items:center;justify-content:center');
+  });
+  it('有「收起」而不是「取消」——目前没有中止抽题的能力，不能给假按钮', () => {
+    expect(tpl).toContain('extractPanelHide');
+    expect(tpl).toContain('收起');
+    expect(tpl).not.toMatch(/exdlg[\s\S]{0,400}取消/);
+  });
+  it('减少动效偏好下不跑动画', () => {
+    expect(css).toContain('@media(prefers-reduced-motion:reduce){.exdlg-bar.indet i{animation:none');
   });
 });

@@ -645,11 +645,17 @@ _yieldToPaint(){ return new Promise(r=>{ let done=false;
       try{ requestAnimationFrame(()=>requestAnimationFrame(fin)); }catch(_){ fin(); } }); },
 async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.bookExtract.busy)return;                            // 防重入：慢的时候用户会连点
-      this.bookExtract.busy=true; this.bookExtract.prog='正在准备正文…';
+      this.bookExtract.busy=true; this.bookExtract.phase='page'; this.bookExtract.prog='正在准备正文…';
       try{
         await this._yieldToPaint();
-        if(this.ensureBookContent)await this.ensureBookContent();  // 书架只带元信息，抽题前先确保本书正文已载入
+        // 只补当前这一页的正文。本页抽题全程只读 currentPageMat.content_md，
+        // 原来却调 ensureBookContent() 把整本都拉下来 —— 388 页那本要干等十几秒，
+        // 用户看到的就是按钮一直转（而且中途切书还会串进度）。
+        const m0=this.currentPageMat;
+        if(this.ensurePagesContent)await this.ensurePagesContent(m0);
+        else if(this.ensureBookContent)await this.ensureBookContent();
         const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; }
+        if(m.content_md===undefined){ this.flash('这一页正文没载入成功，请重试',true); return; }
         if(this._looksLikeTocPage(m.content_md)){ this.flash('这一页是书本目录，不是习题页（目录行会被误判成题目，已跳过）',true); return; }
         this.bookExtract.prog='正在解析本页…'; await this._yieldToPaint();
         const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
@@ -660,17 +666,39 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写�
       // 必须有 catch：只有 try/finally 的话异常会变成 unhandled rejection，
       // busy 复位了、界面却一个字都不说 —— 用户看到的就是「点了没反应」。
       } catch(e){ if(e.message!=='unauth')this.flash('本页抽题失败：'+e.message,true); }
-      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
+      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; this.bookExtract.phase=''; this.bookExtract.done=0; this.bookExtract.total=0; } },
+// 整本抽题的居中进度面板要展示的四步。底栏那行文字滚出视野就看不见了，
+// 而整本抽题动辄几分钟（载入 273 页 + 转存 343 张图），必须有个不会跑掉的地方看进度。
+extractSteps(){
+  const cur=(this.bookExtract&&this.bookExtract.phase)||'';
+  const order=['load','parse','img','preview'];
+  const at=order.indexOf(cur);
+  return [
+    { k:'load',    t:'载入正文',   d:'从服务端取每页 Markdown' },
+    { k:'parse',   t:'解析题目',   d:'按规则切分题干、选项、答案' },
+    { k:'img',     t:'转存插图',   d:'内嵌图片上传到 R2，换成短链' },
+    { k:'preview', t:'生成预览',   d:'去重、排序，准备勾选界面' },
+  ].map((x,i)=>Object.assign(x,{
+    state: at<0 ? 'wait' : (i<at ? 'done' : (i===at ? 'run' : 'wait')),
+  }));
+},
+extractPanelOpen(){
+  const b=this.bookExtract||{};
+  // 只在整本抽题时弹（本页抽题现在只拉一页，快得没必要打断视线）
+  return !!(b.busy && !b.hidden && ['load','parse','img','preview'].includes(b.phase));
+},
+extractPanelHide(){ if(this.bookExtract)this.bookExtract.hidden=true; },
 async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       if(this.bookExtract.busy)return;                            // 防重入
-      this.bookExtract.busy=true;
+      this.bookExtract.busy=true; this.bookExtract.hidden=false;
       try{ return await this._localExtractBookInner(); }
       catch(e){ if(e.message!=='unauth')this.flash('整本抽题失败：'+e.message,true); }
-      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
+      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; this.bookExtract.phase=''; this.bookExtract.done=0; this.bookExtract.total=0; } },
 async _localExtractBookInner(){
       const b0=this.currentBook;
       const need=this.matMissingCount?this.matMissingCount(b0):0;
       this.bookExtract.done=0; this.bookExtract.total=0;
+      this.bookExtract.phase='load';        // 只有这一段允许 _setProg 往底栏写进度
       this.bookExtract.prog=need? ('①/④ 正在载入正文 0 / '+need+' 页…') : '①/④ 正文已就绪';
       await this._yieldToPaint();
       if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md
@@ -678,15 +706,18 @@ async _localExtractBookInner(){
       // 兜底自检：正文没补齐就别开跑，宁可报错也别拿半本书静默少抽
       const missing=this.matMissingCount?this.matMissingCount(b):0;
       if(missing){ this.flash('这本书还有 '+missing+' 页正文没载入完，请等进度条走完再抽题',true); return; }
+      this.bookExtract.phase='parse';       // 载入结束，后面的 _setProg 不该再改底栏
       this.bookExtract.prog='②/④ 正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
       const all=this._extractWholeBook(b);
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
       // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目
       const noAns=all.filter(q=>!(q.answer&&q.answer.length)).length;
       if(all.length>800 && !confirm('整本解析出 '+all.length+' 题，其中 '+noAns+' 题没抽到答案。\n\n题量较大，规则抽取可能把页眉/目录行误判成题目，建议在预览里筛一遍再导入（可用「勾选/取消无答案的题」快速排除）。\n\n继续打开预览？'))return;
+      this.bookExtract.phase='img';
       const ist=await this._hoistImages(all);
       if(ist.failed)this.flash(ist.failed+' 张插图没能转存到 R2（已保留内嵌，可能偏大）',true);
       this.bookExtract.done=0; this.bookExtract.total=0;
+      this.bookExtract.phase='preview';
       this.bookExtract.prog='④/④ 正在生成预览…'; await this._yieldToPaint();
       const tocNote=this.extractSkippedToc? '（已跳过 '+this.extractSkippedToc+' 页目录）':'';
       this._openPreview(all, '《'+b.title+'》整本'+tocNote+'（预览）', b.subject, b.title); },

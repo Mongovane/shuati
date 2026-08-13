@@ -74,12 +74,15 @@ const App={
     mineruCfg:{ pageLimit:1000, fileLimit:5000, tokenExp:'', token:'' },  // token：用户自己的 MinerU API Token，留空用服务端
     mineruUsageView:{ date:'', pages:0, files:0 },
     mineruTokenBad:false,
-    bookExtract:{ busy:false, prog:'', done:0, total:0 },
+    // phase: ''|page|load|parse —— 只有 load 阶段允许 _setProg 往底栏写抽题进度
+    bookExtract:{ busy:false, prog:'', done:0, total:0, phase:'', hidden:false },
     busyOps:{},   // 防重入标志，键是方法名；模板可用 :disabled="busyOps.xxx" 拿到反馈
     bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0, canceled:false, log:[], panel:false },   // AI 补答案进度（log 供过程面板逐题显示）
     extractSkippedToc:0,
     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },
+    subjChipDlg:null,  // 内置科目 chip 的居中确认弹窗
+    subjChipBusy:'',   // 正在处理的内置科目 chip 代码（防连点）
     subjDefaults:[],  // 内置科目的默认定义（后端下发），供设置页渲染一键重建的 chip
     subjOrphans:[],   // 题目/教材引用了、但科目表里没有的 subject 代码（科目被误删的痕迹）
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
@@ -234,7 +237,11 @@ const App={
     'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
     view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); this.$nextTick(()=>this._syncTabStrip()); },
     mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
-    currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender();
+    currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ }
+      // 切书要把抽题的进度残留清掉。否则新书的正文加载会沿用上一本的提示，
+      // 每本书底下都显示同一句「①/④ 正在载入正文…」，看着像卡住。
+      if(this.bookExtract){ this.bookExtract.prog=''; this.bookExtract.phase=''; this.bookExtract.done=0; this.bookExtract.total=0; this.bookExtract.hidden=false; }
+      let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender();
       // 书架只载入了元信息，翻到这本书才把它的正文补齐（目录标题/阅读/抽题都依赖 content_md）
       if(v)this.ensureBookContent(); },
     bookIdx(v){ this.genq.result=null; try{ if(this.currentBookId)localStorage.setItem('zb_readpos:'+this.currentBookId, String(v)); }catch(_){ } },
@@ -443,6 +450,8 @@ go(v){
         qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
       }
       this.view=v;
+      // 进设置页时才做一次孤儿扫描（要全表 GROUP BY，不能放在每次 loadSubjects 里）
+      if(v==='settings' && this.token && !this._orphansScanned){ this._orphansScanned=true; this.loadSubjects(true); }
       this._syncHash(v);
       try{ localStorage.setItem('zb_view',v); }catch(_){}
       if(v==='favorite' && this.fav.listMode){

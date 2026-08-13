@@ -8,11 +8,13 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
       if(has('english')&&len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
       for(const sub of this.subjects){ const kws=String(sub.keywords||'').split(/[，,;；\s]+/).map(k=>k.trim()).filter(k=>k.length>=2); for(const k of kws){ if(s.includes(k))return sub.v; } }
       return ''; },
-async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); }
+// withOrphans=true 只在设置页首次进入时用一次：孤儿扫描要全表 GROUP BY，
+// 而这个方法在保存科目/调顺序/补关键词之后都会被调，无条件扫会把每次操作都拖慢。
+async loadSubjects(withOrphans){ if(!this.token)return; try{ const d=await this.api('/api/subjects'+(withOrphans?'?orphans=1':'')); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); }
   // 孤儿科目：题目/教材引用了某个 subject 但科目表里没有这一行。
   // 不显示出来的话，用户只会看到教材列表的分组标题变成原始代码（「politics 1 本」），
   // 完全不知道发生了什么、更不知道重建科目时代码必须一模一样。
-  this.subjOrphans=Array.isArray(d&&d.orphans)?d.orphans:[];
+  if(Array.isArray(d&&d.orphans))this.subjOrphans=d.orphans;   // 不带 orphans=1 的调用不覆盖已有结果
   this.subjDefaults=Array.isArray(d&&d.defaults)?d.defaults:[];
   }catch(e){} },
 // 一键重建某个内置科目（灰色 chip）。代码取内置定义，名称和关键词也一并恢复，
@@ -29,34 +31,62 @@ subjChipTip(d){
   if(st==='nokw')return '「'+d.name+'」没有关键词，点一下补回默认值';
   return '科目「'+d.name+'」不存在，点一下按代码 '+d.code+' 重建';
 },
+// chip 点击 → 打开居中弹窗说明要做什么，由弹窗里的按钮确认。
+// 不用浏览器原生 confirm：它弹在屏幕顶部、样式不可控，而且没法展示关键词列表。
+subjChipClick(d){
+  if(!d || !d.code || this.subjChipBusy)return;
+  const st=this.subjChipState(d);
+  if(st==='ok')return;
+  const cur=(this.subjects||[]).find(x=>x.v===d.code);
+  const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
+  const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
+  const kws=String(d.keywords||'').split(',').map(x=>x.trim()).filter(Boolean);
+  this.subjChipDlg={
+    code:d.code, name:d.name, state:st, def:d,
+    title: st==='nokw' ? ('补回「'+d.name+'」的默认关键词') : ('重建科目「'+d.name+'」'),
+    desc: st==='nokw'
+      ? '这个科目现在没有关键词，导入时无法自动归类。下面是内置的默认关键词，确认后写入。'
+      : (what ? ('目前有 '+what+' 挂在代码 '+d.code+' 下（科目被删过）。按原代码重建后，这些内容会自动归位。')
+              : ('将按代码 '+d.code+' 重建这个科目，并恢复它的默认关键词。')),
+    code_hint:d.code, kws, moved:what,
+  };
+},
+subjChipDlgClose(){ if(!this.subjChipBusy)this.subjChipDlg=null; },
+async subjChipDlgOk(){
+  const dlg=this.subjChipDlg; if(!dlg || this.subjChipBusy)return;
+  await this.subjRestoreDefault(dlg.def);
+  if(!this.subjChipBusy)this.subjChipDlg=null;
+},
+// 实际干活。确认已经在弹窗里做过了，这里不再 confirm。
 async subjRestoreDefault(d){
   if(!d || !d.code)return;
+  // 防连点：一次要等 PATCH/POST + 重新拉科目列表，慢的时候用户会以为没反应而反复按，
+  // 结果同一个科目被重复写好几次（上一版就是这样）。
+  if(this.subjChipBusy)return;
   const cur=(this.subjects||[]).find(x=>x.v===d.code);
   if(cur){
-    // 科目已存在但关键词是空的 —— 这是「先手工重建、后来才有默认回填」留下的状态：
-    // 回填只在 POST 新建时生效，已存在的行不会被动，所以关键词一直空着。
-    // 这种情况点 chip 就是把默认关键词补回去。
     if(String(cur.keywords||'').trim()){ this.flash('科目「'+cur.t+'」已存在且有关键词',true); return; }
-    if(!confirm('把「'+cur.t+'」的默认关键词补回来？\n\n'+(d.keywords||'').split(',').slice(0,6).join('、')+'…（共 '+(d.keywords||'').split(',').filter(Boolean).length+' 个）'))return;
+    this.subjChipBusy=d.code;
     try{
       await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({
         code:cur.v, name:cur.t, sort:Number(cur.sort)||0, keywords:d.keywords||'' })});
       this.flash('已补回「'+cur.t+'」的默认关键词');
       await this.loadSubjects();
     }catch(e){ if(e.message!=='unauth')this.flash('补回失败：'+e.message,true); }
+    finally{ this.subjChipBusy=''; }
     return;
   }
   const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
   const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
-  if(!confirm('重建内置科目「'+d.name+'」（代码 '+d.code+'）？'
-    +(what?('\n\n目前有 '+what+' 挂在这个代码下，重建后会自动归位。'):'\n\n将恢复它的默认关键词。')))return;
+  this.subjChipBusy=d.code;
   try{
     await this.api('/api/subjects',{method:'POST',body:JSON.stringify({
       code:d.code, name:d.name, sort:d.sort||((this.subjects.length+1)*10), keywords:d.keywords||'' })});
     this.flash('已重建科目「'+d.name+'」'+(what?('，'+what+' 已归位'):''));
-    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+    await this.loadSubjects(true); this.loadMeta&&this.loadMeta(true);
     if(what){ this.bankDirty=true; this.statsDirty=true; }
   }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
+  finally{ this.subjChipBusy=''; }
 },
 // 一键重建缺失的科目：代码必须和内容里引用的完全一致，内容才会自动归位
 async subjRestoreOrphan(o){

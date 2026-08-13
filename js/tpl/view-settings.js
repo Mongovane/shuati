@@ -102,13 +102,37 @@ const TPL_VIEW_SETTINGS = `
         <div v-if="subjDefaults && subjDefaults.length" class="def-chips">
           <span class="def-chips-label">内置科目</span>
           <button v-for="d in subjDefaults" :key="d.code"
-                  class="def-chip" :class="subjChipState(d)"
-                  :disabled="subjChipState(d)==='ok'"
-                  @click="subjRestoreDefault(d)"
-                  :title="subjChipTip(d)">
-            <i class="def-dot"></i>{{ d.name }}
+                  class="def-chip" :class="[subjChipState(d), {busy: subjChipBusy===d.code}]"
+                  :disabled="subjChipState(d)==='ok' || !!subjChipBusy"
+                  @click="subjChipClick(d)">
+            <span v-if="subjChipBusy===d.code" class="spin"></span>
+            <i v-else class="def-dot"></i>{{ d.name }}
           </button>
           <span class="def-chips-tip">灰点＝正常；黄点＝缺默认关键词，点一下补回；蓝点＝科目已被删除，点一下按原代码重建（内容自动归位）</span>
+        </div>
+        <div v-if="subjChipDlg" class="chipdlg-mask" @click.self="subjChipDlgClose">
+          <div class="chipdlg" role="dialog" aria-modal="true">
+            <div class="chipdlg-h">
+              <i class="def-dot" :class="subjChipDlg.state"></i>
+              <span>{{ subjChipDlg.title }}</span>
+              <button class="chipdlg-x" :disabled="!!subjChipBusy" @click="subjChipDlgClose">×</button>
+            </div>
+            <div class="chipdlg-b">
+              <p class="chipdlg-desc">{{ subjChipDlg.desc }}</p>
+              <div class="chipdlg-row"><span class="chipdlg-k">科目代码</span><code>{{ subjChipDlg.code_hint }}</code></div>
+              <div v-if="subjChipDlg.moved" class="chipdlg-row"><span class="chipdlg-k">会归位</span><b>{{ subjChipDlg.moved }}</b></div>
+              <div v-if="subjChipDlg.kws.length" class="chipdlg-row chipdlg-kws">
+                <span class="chipdlg-k">默认关键词 <em>{{ subjChipDlg.kws.length }} 个</em></span>
+                <span class="chipdlg-kwlist"><span v-for="k in subjChipDlg.kws" :key="k" class="chipdlg-kw">{{ k }}</span></span>
+              </div>
+            </div>
+            <div class="chipdlg-f">
+              <button class="btn subtle" :disabled="!!subjChipBusy" @click="subjChipDlgClose">取消</button>
+              <button class="btn" :disabled="!!subjChipBusy" @click="subjChipDlgOk">
+                <span v-if="subjChipBusy" class="spin"></span>{{ subjChipDlg.state==='nokw' ? '补回关键词' : '重建科目' }}
+              </button>
+            </div>
+          </div>
         </div>
         <div v-if="subjOrphans && subjOrphans.length" class="orphan-box">
           <div class="orphan-title">⚠ 发现 {{ subjOrphans.length }} 个「无主内容」</div>

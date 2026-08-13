@@ -68,6 +68,7 @@ describe('async 点击处理器必须处理异常', () => {
     pickBookSubject: '_setBookSubjectPages 内部已 try/catch',
     subjMove: 'subjReorder 内部已 try/catch',
     mineruConvert: '无 await，纯同步分发',
+    subjChipDlgOk: 'subjRestoreDefault 内部已 try/catch/finally',
   };
 
   // 位置断言必须在「剥掉注释」的代码上做：注释里出现 finally / catch 这类词会让下标失真
