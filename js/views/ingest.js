@@ -578,21 +578,52 @@ async _hoistImages(arr){
       for(const q of (arr||[]))for(const u of this._collectDataImages(q))seen.add(u);
       const stat={ total:seen.size, uploaded:0, inlined:0, failed:0 };
       if(!seen.size)return stat;
-      const map=new Map(); let i=0;
-      for(const u of seen){ i++;
-        this.bookExtract.prog='正在转存插图 '+i+' / '+seen.size+'…';
-        if(u.length<=INLINE_MAX){ stat.inlined++; continue; }
+      this.bookExtract.done=0; this.bookExtract.total=seen.size;
+      const map=new Map();
+
+      // 先把不用上传的挑出来（小图保持内嵌、拿不到 blob 的直接记失败），
+      // 剩下的才是真正要走网络的任务。这样并发只作用在网络这一段，
+      // 计数逻辑和串行版完全一致。
+      const todo=[]; let done=0;
+      for(const u of seen){
+        if(u.length<=INLINE_MAX){ stat.inlined++; done++; continue; }
         const blob=this._dataUrlToBlob(u);
-        if(!blob){ stat.failed++; continue; }
-        try{
-          const ext=(blob.type.split('/')[1]||'png').replace('jpeg','jpg');
-          const fd=new FormData(); fd.append('file', blob, 'fig.'+ext);
-          const res=await fetch('/api/qimg',{method:'POST',headers:{authorization:'Bearer '+this.token},body:fd});
-          const d=await res.json().catch(()=>({}));
-          if(!res.ok||!d.url)throw new Error(d.error||('HTTP '+res.status));
-          map.set(u,d.url); stat.uploaded++;
-        }catch(_){ stat.failed++; }        // 保留内嵌，图不能丢
+        if(!blob){ stat.failed++; done++; continue; }
+        todo.push({ u, blob });
       }
+      const tick=()=>{ this.bookExtract.done=done; this.bookExtract.total=seen.size;
+        this.bookExtract.prog='③/④ 正在转存插图 '+done+' / '+seen.size+'…'; };
+      tick();
+
+      // 3 路并发。串行时 343 张图要排 343 个来回，整本抽题前干等好几分钟；
+      // 并发数和 _runMatFill 保持一致（3），再高容易被中转/网关限流。
+      // map 以 URL 为键，所以完成顺序不影响结果。
+      const CONC=3;
+      const upload=async (task)=>{
+        const ext=(task.blob.type.split('/')[1]||'png').replace('jpeg','jpg');
+        for(let attempt=0; attempt<2; attempt++){
+          try{
+            const fd=new FormData(); fd.append('file', task.blob, 'fig.'+ext);
+            const res=await fetch('/api/qimg',{method:'POST',headers:{authorization:'Bearer '+this.token},body:fd});
+            const d=await res.json().catch(()=>({}));
+            if(!res.ok||!d.url)throw new Error(d.error||('HTTP '+res.status));
+            map.set(task.u, d.url); stat.uploaded++; return;
+          }catch(e){
+            // 限流/网关/网络抖动重试一次；其余（如 413 图太大）重试也没用
+            const retryable=/429|50[234]|Failed to fetch|NetworkError|timeout|超时/i.test(String((e&&e.message)||''));
+            if(!retryable || attempt===1){ stat.failed++; return; }   // 保留内嵌，图不能丢
+            await new Promise(r=>setTimeout(r,800));
+          }
+        }
+      };
+      let cur=0;
+      await Promise.all(Array.from({length:Math.min(CONC,todo.length)},async()=>{
+        while(cur<todo.length){
+          const task=todo[cur++];
+          await upload(task);
+          done++; tick();
+        }
+      }));
       if(map.size){
         const swap=(t)=>{ let s=String(t||''); for(const [k,v] of map)s=s.split(k).join(v); return s; };
         for(const q of arr){ q.stem=swap(q.stem); if(q.analysis)q.analysis=swap(q.analysis);
@@ -639,14 +670,15 @@ async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写�
 async _localExtractBookInner(){
       const b0=this.currentBook;
       const need=this.matMissingCount?this.matMissingCount(b0):0;
-      this.bookExtract.prog=need? ('正在载入正文 '+need+' 页…') : '正在准备…';
+      this.bookExtract.done=0; this.bookExtract.total=0;
+      this.bookExtract.prog=need? ('①/④ 正在载入正文 0 / '+need+' 页…') : '①/④ 正文已就绪';
       await this._yieldToPaint();
       if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md
       const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; }
       // 兜底自检：正文没补齐就别开跑，宁可报错也别拿半本书静默少抽
       const missing=this.matMissingCount?this.matMissingCount(b):0;
       if(missing){ this.flash('这本书还有 '+missing+' 页正文没载入完，请等进度条走完再抽题',true); return; }
-      this.bookExtract.prog='正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
+      this.bookExtract.prog='②/④ 正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
       const all=this._extractWholeBook(b);
       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
       // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目
@@ -654,11 +686,13 @@ async _localExtractBookInner(){
       if(all.length>800 && !confirm('整本解析出 '+all.length+' 题，其中 '+noAns+' 题没抽到答案。\n\n题量较大，规则抽取可能把页眉/目录行误判成题目，建议在预览里筛一遍再导入（可用「勾选/取消无答案的题」快速排除）。\n\n继续打开预览？'))return;
       const ist=await this._hoistImages(all);
       if(ist.failed)this.flash(ist.failed+' 张插图没能转存到 R2（已保留内嵌，可能偏大）',true);
+      this.bookExtract.done=0; this.bookExtract.total=0;
+      this.bookExtract.prog='④/④ 正在生成预览…'; await this._yieldToPaint();
       const tocNote=this.extractSkippedToc? '（已跳过 '+this.extractSkippedToc+' 页目录）':'';
       this._openPreview(all, '《'+b.title+'》整本'+tocNote+'（预览）', b.subject, b.title); },
 async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
-      try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
+      try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length+' 题…'; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
         this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.extractClose(); }
       catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
 saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },

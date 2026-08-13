@@ -17,9 +17,35 @@ async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/s
   }catch(e){} },
 // 一键重建某个内置科目（灰色 chip）。代码取内置定义，名称和关键词也一并恢复，
 // 所以之前挂在这个代码下的题目/教材会自动归位 —— 这正是误删之后最需要的一步。
+// 内置科目 chip 的三态：ok=正常 / nokw=存在但没关键词 / gone=科目被删了
+subjChipState(d){
+  const cur=(this.subjects||[]).find(x=>x.v===d.code);
+  if(!cur)return 'gone';
+  return String(cur.keywords||'').trim() ? 'ok' : 'nokw';
+},
+subjChipTip(d){
+  const st=this.subjChipState(d);
+  if(st==='ok')return d.name+'（'+d.code+'）正常';
+  if(st==='nokw')return '「'+d.name+'」没有关键词，点一下补回默认值';
+  return '科目「'+d.name+'」不存在，点一下按代码 '+d.code+' 重建';
+},
 async subjRestoreDefault(d){
   if(!d || !d.code)return;
-  if((this.subjects||[]).some(x=>x.v===d.code)){ this.flash('科目「'+d.name+'」已存在',true); return; }
+  const cur=(this.subjects||[]).find(x=>x.v===d.code);
+  if(cur){
+    // 科目已存在但关键词是空的 —— 这是「先手工重建、后来才有默认回填」留下的状态：
+    // 回填只在 POST 新建时生效，已存在的行不会被动，所以关键词一直空着。
+    // 这种情况点 chip 就是把默认关键词补回去。
+    if(String(cur.keywords||'').trim()){ this.flash('科目「'+cur.t+'」已存在且有关键词',true); return; }
+    if(!confirm('把「'+cur.t+'」的默认关键词补回来？\n\n'+(d.keywords||'').split(',').slice(0,6).join('、')+'…（共 '+(d.keywords||'').split(',').filter(Boolean).length+' 个）'))return;
+    try{
+      await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({
+        code:cur.v, name:cur.t, sort:Number(cur.sort)||0, keywords:d.keywords||'' })});
+      this.flash('已补回「'+cur.t+'」的默认关键词');
+      await this.loadSubjects();
+    }catch(e){ if(e.message!=='unauth')this.flash('补回失败：'+e.message,true); }
+    return;
+  }
   const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
   const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
   if(!confirm('重建内置科目「'+d.name+'」（代码 '+d.code+'）？'

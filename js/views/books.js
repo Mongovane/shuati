@@ -33,7 +33,15 @@ async deleteCurrentBook(){ return this.deleteBook(this.currentBook); },
 async deleteBook(b){ if(!b){ this.flash('请先选择书籍',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除《'+b.title+'》及其全部 '+b.pages.length+' 页？此操作不可恢复（题库不受影响）。')) return; const ids=b.pages.map(m=>m.id).filter(Boolean); try{ const d=await this.api('/api/materials',{method:'DELETE',body:JSON.stringify({ids})}); this.flash('已删除《'+b.title+'》，共 '+(d.deleted||ids.length)+' 页'); try{ localStorage.removeItem('zb_readpos:'+b.key); }catch(_){ } if(this.currentBookId===b.key){ this.currentBookId=''; this.bookIdx=0; } await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
 // 数字进度：total>0 时前端进度条走确定进度并显示 百分比 · cur/total
 _setProg(cur,total,unit){ const t=Math.max(0,total|0), c=Math.min(Math.max(0,cur|0),t||Infinity);
-      this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' }; },
+      this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' };
+      // 整本抽题正在跑时，把同一份进度镜像到底栏那句提示上。
+      // matProg 的进度条渲染在书架顶部，而「整本抽题入库」按钮在页面底栏 ——
+      // 点完按钮往往已经滚不到顶部了，底栏又只显示一句静态的「正在载入正文 273 页…」，
+      // 于是看起来像卡死。
+      if(this.bookExtract&&this.bookExtract.busy&&t){
+        this.bookExtract.prog='①/④ 正在载入正文 '+c+' / '+t+' 页（'+this.matProg.pct+'%）…';
+        this.bookExtract.done=c; this.bookExtract.total=t;
+      } },
 _clearProg(){ this.matProg={ cur:0, total:0, pct:0, unit:'段' }; },
 async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } this.materials.loading=true; this.loadProgMsg='正在请求…';
       // 书架只拉元信息（meta=1，不含 content_md）并翻页拉全：

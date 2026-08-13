@@ -229,7 +229,12 @@ const TPL_VIEW_BOOKS = `
                 <button v-if="!genq.busy" class="btn subtle" :disabled="!(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）"><icon name="sparkles" :size="15" /> AI 出题</button>
                 <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
               </div>
-              <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
+              <span v-if="bookExtract.busy && bookExtract.prog" class="bk-extract-prog">
+            <span class="spin"></span>
+            <span class="bk-extract-txt">{{ bookExtract.prog }}</span>
+            <span v-if="bookExtract.total" class="bk-extract-bar"><i :style="{width: Math.min(100, Math.round(100*(bookExtract.done||0)/Math.max(1,bookExtract.total)))+'%'}"></i></span>
+            <span v-else-if="matProg.total" class="bk-extract-bar"><i :style="{width: matProg.pct+'%'}"></i></span>
+          </span>
               <div class="bk-nav">
                 <button :disabled="bookIdx<=0" @click="bookPrev"><icon name="arrow-left" :size="15" /> 上一页</button>
                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 <icon name="arrow-right" :size="15" /></button>

@@ -102,13 +102,13 @@ const TPL_VIEW_SETTINGS = `
         <div v-if="subjDefaults && subjDefaults.length" class="def-chips">
           <span class="def-chips-label">内置科目</span>
           <button v-for="d in subjDefaults" :key="d.code"
-                  class="def-chip" :class="{gone: !subjects.some(x=>x.v===d.code)}"
-                  :disabled="subjects.some(x=>x.v===d.code)"
+                  class="def-chip" :class="subjChipState(d)"
+                  :disabled="subjChipState(d)==='ok'"
                   @click="subjRestoreDefault(d)"
-                  :title="subjects.some(x=>x.v===d.code) ? '已存在' : '点击重建（代码 '+d.code+'，含默认关键词）'">
-            {{ d.name }}<code>{{ d.code }}</code>
+                  :title="subjChipTip(d)">
+            <i class="def-dot"></i>{{ d.name }}
           </button>
-          <span class="def-chips-tip">灰色＝已存在；高亮＝已删除，点一下按原代码重建（内容会自动归位）</span>
+          <span class="def-chips-tip">灰点＝正常；黄点＝缺默认关键词，点一下补回；蓝点＝科目已被删除，点一下按原代码重建（内容自动归位）</span>
         </div>
         <div v-if="subjOrphans && subjOrphans.length" class="orphan-box">
           <div class="orphan-title">⚠ 发现 {{ subjOrphans.length }} 个「无主内容」</div>

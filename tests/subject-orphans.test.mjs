@@ -121,62 +121,96 @@ describe('前端：把孤儿摆出来并能一键恢复', () => {
   });
 });
 
-describe('内置科目的一键重建 chip', () => {
+describe('内置科目 chip：三态灰点', () => {
   const settings = read('js/views/settings.js');
   const tpl = read('js/tpl/view-settings.js');
   const css = read('css/style.css');
 
-  const DEFAULTS = [
-    { code: 'politics', name: '政治理论', sort: 1, keywords: '马克思,毛概' },
-    { code: 'english', name: '英语', sort: 2, keywords: '阅读理解,完形' },
-  ];
-  const mkCtx = (subjects, orphans = []) => {
+  const D = {
+    politics: { code: 'politics', name: '政治理论', keywords: '马克思,毛概' },
+    english: { code: 'english', name: '英语', keywords: '阅读理解,完形,四级' },
+  };
+  const mk = (subjects, orphans = []) => {
     const calls = [];
-    return {
-      calls, flashes: [], subjects, subjOrphans: orphans,
+    return Object.assign(Object.create(Settings.methods), {
+      subjects, subjOrphans: orphans, calls, flashes: [],
       flash(m) { this.flashes.push(String(m)); },
       loadSubjects: async () => {}, loadMeta() {},
-      async api(p, o) { calls.push(JSON.parse(o.body)); return { ok: true }; },
-    };
+      async api(p, o) { calls.push({ m: o.method, b: JSON.parse(o.body) }); return { ok: true }; },
+    });
   };
-  const restore = (c, d) => Settings.methods.subjRestoreDefault.call(c, d);
 
+  it('三态判定：正常 / 缺关键词 / 已删除', () => {
+    const c = mk([
+      { v: 'english', t: '英语', keywords: '' },
+      { v: 'math', t: '高等数学', keywords: '导数,积分' },
+    ]);
+    expect(c.subjChipState({ code: 'math' })).toBe('ok');
+    expect(c.subjChipState({ code: 'english' })).toBe('nokw');
+    expect(c.subjChipState({ code: 'politics' })).toBe('gone');
+  });
+  it('只有空白字符的关键词也算缺', () => {
+    const c = mk([{ v: 'english', t: '英语', keywords: '   ' }]);
+    expect(c.subjChipState({ code: 'english' })).toBe('nokw');
+  });
+
+  it('黄点（缺关键词）：PATCH 补回默认值，不重建科目', async () => {
+    global.confirm = () => true;
+    const c = mk([{ v: 'english', t: '英语', keywords: '', sort: 10 }]);
+    await c.subjRestoreDefault(D.english);
+    expect(c.calls[0].m).toBe('PATCH');
+    expect(c.calls[0].b).toMatchObject({ code: 'english', keywords: '阅读理解,完形,四级' });
+    expect(c.flashes.join('')).toMatch(/已补回/);
+  });
+  it('蓝点（已删除）：POST 按原代码重建', async () => {
+    global.confirm = () => true;
+    const c = mk([]);
+    await c.subjRestoreDefault(D.english);
+    expect(c.calls[0].m).toBe('POST');
+    expect(c.calls[0].b).toMatchObject({ code: 'english', keywords: '阅读理解,完形,四级' });
+  });
+  it('灰点（正常）：不发任何请求', async () => {
+    const c = mk([{ v: 'english', t: '英语', keywords: '已有关键词' }]);
+    await c.subjRestoreDefault(D.english);
+    expect(c.calls).toHaveLength(0);
+    expect(c.flashes.join('')).toMatch(/已存在且有关键词/);
+  });
+  it('两种可点状态都要确认，取消就不动', async () => {
+    global.confirm = () => false;
+    for (const subjects of [[{ v: 'english', t: '英语', keywords: '' }], []]) {
+      const c = mk(subjects);
+      await c.subjRestoreDefault(D.english);
+      expect(c.calls).toHaveLength(0);
+    }
+  });
+  it('重建时若有孤儿内容，提示要说明会归位多少', async () => {
+    global.confirm = () => true;
+    const c = mk([], [{ code: 'politics', questions: 0, materials: 278 }]);
+    await c.subjRestoreDefault(D.politics);
+    expect(c.flashes.join('')).toMatch(/278 页教材 已归位/);
+  });
+
+  it('渲染成小圆点而不是整颗高亮胶囊', () => {
+    expect(tpl).toContain('<i class="def-dot"></i>');
+    expect(tpl).toContain(':class="subjChipState(d)"');
+    expect(css).toContain('.def-dot{');
+    for (const st of ['.def-chip.nokw .def-dot', '.def-chip.gone .def-dot']) expect(css).toContain(st);
+  });
+  it('正常态不可点，另外两态可点', () => {
+    expect(tpl).toContain(":disabled=\"subjChipState(d)==='ok'\"");
+    expect(css).toContain('.def-chip.nokw,.def-chip.gone{cursor:pointer');
+  });
+  it('每个点都有 title 说明点了会发生什么', () => {
+    expect(tpl).toContain(':title="subjChipTip(d)"');
+    expect(settings).toContain('subjChipTip(d)');
+  });
+  it('图例把三种颜色讲清楚', () => {
+    expect(tpl).toMatch(/灰点＝正常/);
+    expect(tpl).toMatch(/黄点＝缺默认关键词/);
+    expect(tpl).toMatch(/蓝点＝科目已被删除/);
+  });
   it('后端把默认定义下发给前端（不让前端再抄一份）', () => {
     expect(read('functions/api/subjects.js')).toContain('defaults: DEFAULT_SUBJECTS.map');
     expect(settings).toContain('this.subjDefaults=Array.isArray(d&&d.defaults)?d.defaults:[];');
-  });
-  it('重建时用内置代码，并带回默认名称和关键词', async () => {
-    global.confirm = () => true;
-    const c = mkCtx([{ v: 'english', t: '英语' }]);
-    await restore(c, DEFAULTS[0]);
-    expect(c.calls[0]).toMatchObject({ code: 'politics', name: '政治理论', keywords: '马克思,毛概' });
-  });
-  it('挂在这个代码下的内容会归位，提示要说出来', async () => {
-    global.confirm = () => true;
-    const c = mkCtx([], [{ code: 'politics', questions: 0, materials: 278 }]);
-    await restore(c, DEFAULTS[0]);
-    expect(c.flashes.join('')).toMatch(/278 页教材 已归位/);
-  });
-  it('已存在的科目不重复创建', async () => {
-    const c = mkCtx([{ v: 'english', t: '英语' }]);
-    await restore(c, DEFAULTS[1]);
-    expect(c.calls).toHaveLength(0);
-    expect(c.flashes.join('')).toMatch(/已存在/);
-  });
-  it('取消确认就不发请求', async () => {
-    global.confirm = () => false;
-    const c = mkCtx([]);
-    await restore(c, DEFAULTS[0]);
-    expect(c.calls).toHaveLength(0);
-  });
-  it('chip 按「是否已存在」区分状态：已存在灰且禁用，缺失才可点', () => {
-    expect(tpl).toContain("{gone: !subjects.some(x=>x.v===d.code)}");
-    expect(tpl).toContain(':disabled="subjects.some(x=>x.v===d.code)"');
-    expect(css).toContain('.def-chip{');
-    expect(css).toContain('.def-chip.gone{');
-  });
-  it('chip 上显示代码，用户才知道「代码必须一致」', () => {
-    expect(tpl).toContain('<code>{{ d.code }}</code>');
-    expect(tpl).toMatch(/灰色＝已存在/);
   });
 });
