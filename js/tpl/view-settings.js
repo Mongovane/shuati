@@ -99,6 +99,31 @@ const TPL_VIEW_SETTINGS = `
         <div class="fold-head" @click="settFold.subjects=!settFold.subjects"><span style="font-weight:700;font-size:15px">科目管理<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px" v-if="meta.subjects&&meta.subjects.length">{{ meta.subjects.length }} 个科目</span></span><span class="fold-arrow" :class="{open:!settFold.subjects}">▾</span></div>
         <div v-show="!settFold.subjects" class="fold-body" style="margin-top:10px">
         <div class="hint" style="margin-bottom:14px">增删改科目，全站下拉自动同步。用 ▲▼ 调整顺序。「关键词」帮导入时自动归类（逗号分隔）；代码、公式、英文等特征已内置，不用填。</div>
+        <div v-if="subjDefaults && subjDefaults.length" class="def-chips">
+          <span class="def-chips-label">内置科目</span>
+          <button v-for="d in subjDefaults" :key="d.code"
+                  class="def-chip" :class="{gone: !subjects.some(x=>x.v===d.code)}"
+                  :disabled="subjects.some(x=>x.v===d.code)"
+                  @click="subjRestoreDefault(d)"
+                  :title="subjects.some(x=>x.v===d.code) ? '已存在' : '点击重建（代码 '+d.code+'，含默认关键词）'">
+            {{ d.name }}<code>{{ d.code }}</code>
+          </button>
+          <span class="def-chips-tip">灰色＝已存在；高亮＝已删除，点一下按原代码重建（内容会自动归位）</span>
+        </div>
+        <div v-if="subjOrphans && subjOrphans.length" class="orphan-box">
+          <div class="orphan-title">⚠ 发现 {{ subjOrphans.length }} 个「无主内容」</div>
+          <div class="orphan-desc">下面这些内容挂在已经不存在的科目上（多半是科目被删过）。它们还在库里，只是分组标题会显示成原始代码。重建同名代码的科目即可自动归位。</div>
+          <div v-for="o in subjOrphans" :key="o.code" class="orphan-row">
+            <code class="orphan-code">{{ o.code }}</code>
+            <span class="orphan-cnt">
+              <template v-if="o.questions">{{ o.questions }} 道题</template>
+              <template v-if="o.questions && o.materials"> · </template>
+              <template v-if="o.materials">{{ o.materials }} 页教材</template>
+            </span>
+            <span style="flex:1"></span>
+            <button class="btn subtle xs" @click="subjRestoreOrphan(o)">重建「{{ o.suggestName || o.code }}」</button>
+          </div>
+        </div>
         <div v-for="(s,si) in subjects" :key="s.v" class="subj-edit">
           <div class="subj-row">
             <span class="subj-move"><button class="subj-mv-btn" :disabled="si===0" @click="subjMove(si,-1)" title="上移">▲</button><button class="subj-mv-btn" :disabled="si===subjects.length-1" @click="subjMove(si,1)" title="下移">▼</button></span>

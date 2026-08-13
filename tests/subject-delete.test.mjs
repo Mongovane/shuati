@@ -1,4 +1,8 @@
 // 科目删除：非空科目需 force 才能连题删除，否则 409 拒绝
+//
+// 注意：这里的「空科目：直接删除成功」只是在说【后端】对真·空科目会放行。
+// 前端绝不能因此就不确认 —— 线上正是因为前端「先删了再说」而丢了两个科目。
+// 确认流程、dry_run 试探、以及「非空判定要含教材」都在 subject-delete-guard.test.mjs。
 import { describe, it, expect } from 'vitest';
 import { FakeDB, authedReq, makeEnv } from './helpers.mjs';
 import { onRequestDelete as subjDelete } from '../functions/api/subjects.js';

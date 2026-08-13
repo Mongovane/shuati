@@ -8,36 +8,116 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
       if(has('english')&&len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
       for(const sub of this.subjects){ const kws=String(sub.keywords||'').split(/[，,;；\s]+/).map(k=>k.trim()).filter(k=>k.length>=2); for(const k of kws){ if(s.includes(k))return sub.v; } }
       return ''; },
-async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); } }catch(e){} },
+async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); }
+  // 孤儿科目：题目/教材引用了某个 subject 但科目表里没有这一行。
+  // 不显示出来的话，用户只会看到教材列表的分组标题变成原始代码（「politics 1 本」），
+  // 完全不知道发生了什么、更不知道重建科目时代码必须一模一样。
+  this.subjOrphans=Array.isArray(d&&d.orphans)?d.orphans:[];
+  this.subjDefaults=Array.isArray(d&&d.defaults)?d.defaults:[];
+  }catch(e){} },
+// 一键重建某个内置科目（灰色 chip）。代码取内置定义，名称和关键词也一并恢复，
+// 所以之前挂在这个代码下的题目/教材会自动归位 —— 这正是误删之后最需要的一步。
+async subjRestoreDefault(d){
+  if(!d || !d.code)return;
+  if((this.subjects||[]).some(x=>x.v===d.code)){ this.flash('科目「'+d.name+'」已存在',true); return; }
+  const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
+  const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
+  if(!confirm('重建内置科目「'+d.name+'」（代码 '+d.code+'）？'
+    +(what?('\n\n目前有 '+what+' 挂在这个代码下，重建后会自动归位。'):'\n\n将恢复它的默认关键词。')))return;
+  try{
+    await this.api('/api/subjects',{method:'POST',body:JSON.stringify({
+      code:d.code, name:d.name, sort:d.sort||((this.subjects.length+1)*10), keywords:d.keywords||'' })});
+    this.flash('已重建科目「'+d.name+'」'+(what?('，'+what+' 已归位'):''));
+    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+    if(what){ this.bankDirty=true; this.statsDirty=true; }
+  }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
+},
+// 一键重建缺失的科目：代码必须和内容里引用的完全一致，内容才会自动归位
+async subjRestoreOrphan(o){
+  const name=String(o.suggestName||o.code);
+  const what=[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、');
+  if(!confirm('重建科目「'+name+'」（代码 '+o.code+'）？\n\n'
+    +'这些内容目前挂在一个不存在的科目上：'+what+'。\n'
+    +'重建后它们会自动归位。'))return;
+  try{
+    await this.api('/api/subjects',{method:'POST',body:JSON.stringify({
+      code:o.code, name, sort:(this.subjects.length+1)*10, keywords:o.suggestKeywords||'' })});
+    this.flash('已重建科目「'+name+'」，'+what+' 已归位');
+    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+    this.bankDirty=true; this.statsDirty=true;
+  }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
+},
 async subjAdd(){ const m=this.subjMgr; const code=String(m.code||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,''); const name=String(m.name||'').trim(); if(!code){ this.flash('科目代码只能用小写字母/数字/下划线',true); return; } if(!name){ this.flash('请填写科目名称',true); return; } m.busy=true; try{ await this.api('/api/subjects',{method:'POST',body:JSON.stringify({code,name,sort:Number(m.sort)||(this.subjects.length+1),keywords:m.keywords||''})}); this.flash('已新增科目「'+name+'」'); this.subjMgr={ code:'', name:'', sort:'', keywords:'', busy:false }; await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('新增失败：'+e.message,true); } m.busy=false; },
 async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:Number(s.sort)||0,keywords:s.keywords||''})}); this.flash('已保存「'+s.t+'」'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } },
 // 科目排序：上移/下移一格后批量写回 sort（触摸端比拖拽可靠）
 async subjMove(i,dir){ const j=i+dir; if(j<0||j>=this.subjects.length)return; const arr=[...this.subjects]; const t=arr[i]; arr[i]=arr[j]; arr[j]=t; this.subjects=arr; await this.subjReorder(); },
 async subjReorder(){ try{ for(let i=0;i<this.subjects.length;i++){ const s=this.subjects[i]; const ns=(i+1)*10; if(s.sort!==ns){ s.sort=ns; await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:ns,keywords:s.keywords||''})}); } } this.flash('科目顺序已更新'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('排序保存失败：'+e.message,true); } },
 async subjDelete(s){
-  // 先尝试删除（后端会检查是否为空）；非空则返回 409 + 题目数
-  const doDelete=async (force)=>{
-    return await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,force:!!force})});
-  };
+  // 删除科目是不可逆的。原来的流程是「先删了再说」：只有后端返回 409（科目下有题目）
+  // 才弹确认，科目为空就直接删掉、零提示 —— 手滑点到「删除」就没了。
+  // 而且后端的「为空」只数题目不数教材，所以「0 题 + 278 页教材」的科目会被判成空，
+  // 静默删掉之后那些教材页还挂着一个已不存在的 subject，变成孤儿。
+  const doDelete=async (opts)=>await this.api('/api/subjects',{method:'DELETE',
+    body:JSON.stringify(Object.assign({code:s.v}, opts||{}))});
+
+  // 先用 dry_run 探数量 —— 绝不能靠「发一次真删」来探测，那样空科目在用户
+  // 还没确认的时候就已经没了。
+  let q=0, m=0;
   try{
-    await doDelete(false);
-    this.flash('\u5df2\u5220\u9664\u79d1\u76ee\u300c'+s.t+'\u300d');
-    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+    const probe=await doDelete({dry_run:1});
+    q=(probe&&probe.questions)||0; m=(probe&&probe.materials)||0;
   }catch(e){
-    // 后端拒绝：该科目下还有题目
-    if(e && e.status===409 && e.data && e.data.error==='subject_not_empty'){
-      const n=e.data.count||0;
-      if(confirm('\u79d1\u76ee\u300c'+s.t+'\u300d\u4e0b\u8fd8\u6709 '+n+' \u9053\u9898\u76ee\u3002\n\n\u5fc5\u987b\u5148\u5904\u7406\u8fd9\u4e9b\u9898\u76ee\u624d\u80fd\u5220\u9664\u79d1\u76ee\u3002\n\n\u70b9\u300c\u786e\u5b9a\u300d\uff1a\u8fde\u540c\u8fd9 '+n+' \u9053\u9898\u76ee\u4e00\u8d77\u5220\u9664\uff08\u4e0d\u53ef\u6062\u590d\uff09\uff1b\u70b9\u300c\u53d6\u6d88\u300d\uff1a\u4fdd\u7559\u3002')){
-        try{
-          const r=await doDelete(true);
-          this.flash('\u5df2\u5220\u9664\u79d1\u76ee\u300c'+s.t+'\u300d\u53ca\u5176\u4e0b '+((r&&r.removedQuestions)||n)+' \u9053\u9898');
-          await this.loadSubjects(); this.loadMeta&&this.loadMeta(true); this.bankDirty=true; this.statsDirty=true;
-        }catch(e2){ if(e2.message!=='unauth')this.flash('\u5220\u9664\u5931\u8d25\uff1a'+e2.message,true); }
-      }
-      return;
-    }
-    if(e.message!=='unauth')this.flash('\u5220\u9664\u5931\u8d25\uff1a'+e.message,true);
+    if(e && e.message!=='unauth')this.flash('无法读取科目内容：'+e.message,true);
+    return;
   }
+
+  // 空科目也要确认。科目配置（代码、名称、关键词、排序）删了就没了，
+  // 而这个按钮就挨着「保存」，手滑代价不该是静默丢失。
+  if(!q && !m){
+    if(!confirm('删除空科目「'+s.t+'」？\n\n它下面没有题目和教材，但科目本身的关键词、排序等配置会一并删除。'))return;
+    try{
+      await doDelete({force:true});
+      this.flash('已删除空科目「'+s.t+'」');
+      await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+    }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); }
+    return;
+  }
+
+  const what=[q?(q+' 道题目'):'', m?(m+' 页教材'):''].filter(Boolean).join(' 和 ');
+  // 优先引导「转移」而不是「删除」——后端一直支持 moveTo，前端以前没用上
+  const others=(this.subjects||[]).filter(x=>x.v!==s.v);
+  if(others.length && confirm('科目「'+s.t+'」下还有 '+what+'。\n\n'
+      +'点「确定」：先把它们转移到别的科目，再删掉这个科目（内容保留）。\n'
+      +'点「取消」：进入删除流程。')){
+    const list=others.map((x,i)=>(i+1)+'. '+x.t+'（'+x.v+'）').join('\n');
+    const pick=prompt('转移到哪个科目？输入序号：\n\n'+list);
+    if(pick==null)return;
+    const idx=parseInt(String(pick).trim(),10)-1;
+    const target=others[idx];
+    if(!target){ this.flash('序号无效，已取消',true); return; }
+    try{
+      const r=await doDelete({moveTo:target.v});
+      this.flash('已把 '+what+' 转移到「'+target.t+'」，并删除科目「'+s.t+'」');
+      await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+      this.bankDirty=true; this.statsDirty=true;
+      void r;
+    }catch(e){ if(e.message!=='unauth')this.flash('转移失败：'+e.message,true); }
+    return;
+  }
+
+  // 二次确认：要求手动输入科目名，防止手滑（这一步会连内容一起永久删除）
+  const typed=prompt('这会永久删除科目「'+s.t+'」及其下的 '+what+'，不可恢复。\n\n'
+    +'确认请输入科目名：'+s.t);
+  if(typed==null)return;
+  if(String(typed).trim()!==String(s.t).trim()){ this.flash('输入不匹配，已取消删除',true); return; }
+  try{
+    const r=await doDelete({force:true});
+    const done=[(r&&r.removedQuestions)?((r.removedQuestions)+' 道题'):'',
+                (r&&r.removedMaterials)?((r.removedMaterials)+' 页教材'):''].filter(Boolean).join('、');
+    this.flash('已删除科目「'+s.t+'」'+(done?('及其下 '+done):''));
+    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
+    this.bankDirty=true; this.statsDirty=true;
+  }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); }
 },
 guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
 saveExplainCfg(){ try{ localStorage.setItem('zb_explaincfg', JSON.stringify(this.explainCfg)); }catch(_){} },

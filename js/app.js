@@ -80,6 +80,8 @@ const App={
     extractSkippedToc:0,
     extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
     bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },
+    subjDefaults:[],  // 内置科目的默认定义（后端下发），供设置页渲染一键重建的 chip
+    subjOrphans:[],   // 题目/教材引用了、但科目表里没有的 subject 代码（科目被误删的痕迹）
     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
     pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
