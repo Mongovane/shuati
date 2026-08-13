@@ -241,7 +241,14 @@ a{color:var(--accent)}
 .prev-list{display:flex;flex-direction:column;gap:10px}
 .prev-item{display:flex;gap:10px;padding:12px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
 .prev-item.noans{border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
-.prev-item.off{opacity:.5}
+.prev-item.off{opacity:.45;filter:saturate(.4)}
+/* 勾选态给正向反馈：原来只有「未勾选变淡」，全选状态下满屏一个样，看不出这是可切换的 */
+.prev-item:not(.off){box-shadow:inset 3px 0 0 var(--accent)}
+.prev-item{transition:opacity .15s,box-shadow .15s,filter .15s}
+@media(pointer:fine){.prev-item:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}}
+/* 查重：勾中=将被删除，用警示色而不只是删除线 */
+.dup-item.del{background:var(--bad-soft)}
+.dup-item.del:hover{background:var(--bad-soft)}
 .prev-ck{flex:none;padding-top:2px}
 .prev-ck input{width:18px;height:18px}
 .prev-body{flex:1;min-width:0}
@@ -1363,3 +1370,31 @@ h2{margin:.2em 0 .6em}
 .usage-chip{font-weight:400;font-size:11px;margin-left:6px;padding:1px 7px;border-radius:999px;
   background:var(--surface-2);color:var(--ink-soft);cursor:help;white-space:nowrap;
   font-variant-numeric:tabular-nums}
+
+/* ===================== 题库：选中态的视觉引导 ===================== */
+/* 原来「清空选择」是 btn subtle，和旁边一排按钮长得完全一样，
+   「已选 0」又是灰字 —— 选中了几十道题，界面上几乎没有反馈。 */
+.sel-count{font-size:12.5px;font-weight:600;color:var(--ink-soft);
+  padding:2px 10px;border-radius:999px;background:var(--surface-2);
+  font-variant-numeric:tabular-nums;transition:background .15s,color .15s}
+.sel-count.on{background:var(--accent);color:#fff}
+.btn.sel-clear{display:inline-flex;align-items:center;gap:5px;
+  border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:600}
+.btn.sel-clear:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+[data-theme=dark] .sel-count.on{color:var(--bg)}
+[data-theme=dark] .btn.sel-clear:hover{color:var(--bg)}
+
+/* 选中时整行工具条给一条强调边，远看就知道「现在处于选中状态」 */
+.bank-toolbar.has-sel{box-shadow:inset 3px 0 0 var(--accent);border-radius:4px}
+
+/* ---- 移动端：工具条与面板 ---- */
+@media(max-width:560px){
+  .fill-head{flex-wrap:wrap;gap:6px 8px}
+  .fill-bar{order:5;flex-basis:100%;margin-top:2px}
+  .fill-x{order:4}
+  .fill-row{flex-wrap:wrap;gap:4px 8px;padding:8px 12px}
+  .fill-stem{flex-basis:100%;white-space:normal;line-height:1.5}
+  .fill-res{max-width:100%;margin-left:14px}
+  .fill-log{max-height:300px}
+  .sel-count,.btn.sel-clear{font-size:12px}
+}

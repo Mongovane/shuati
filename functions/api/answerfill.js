@@ -88,8 +88,17 @@ export async function onRequestPost({ request, env }) {
     if (q.passage) parts.push('材料：\n' + String(q.passage).slice(0, 1500));
     // 图片已转存 R2，提示词里把链接摘掉，避免模型以为自己看得到图
     const stem = String(q.stem).slice(0, 3000)
+      // 先整块吃掉 <figure>…</figure>，再处理裸的 <img> / markdown 图片。
+      // 只替换 <img> 的话，包在外面的 <figure class="fig"> 和 </figure> 会留在提示词里，
+      // 模型看到一堆残缺 HTML；而且这段还会原样出现在补答案面板的日志上
+      //（实测显示成「…如图 4.18 所示。 <figure class="fig"><」）。
+      .replace(/<figure[\s\S]*?<\/figure>/gi, '［此处有插图，未提供］')
+      .replace(/<figure[^>]*>/gi, '［此处有插图，未提供］')   // 跨页被截断、没有闭合标签的情况
       .replace(/!\[[^\]]*\]\([^)]*\)/g, '［此处有插图，未提供］')
-      .replace(/<img[^>]*>/gi, '［此处有插图，未提供］');
+      .replace(/<img[^>]*>/gi, '［此处有插图，未提供］')
+      .replace(/<img\b[\s\S]*$/i, "［此处有插图，未提供］")   // 跨页截断：<img 开了头但没收尾
+      .replace(/<\/?(?:figcaption|figure|div|span|p|br)[^>]*>/gi, ' ')   // 残留的结构标签
+      .replace(/\s{2,}/g, ' ');
     parts.push('题干：\n' + stem);
     if (Array.isArray(q.options) && q.options.length) {
       parts.push('选项：\n' + q.options.map((o) => `${o.key || ''}. ${String(o.text || '').slice(0, 400)}`).join('\n'));
