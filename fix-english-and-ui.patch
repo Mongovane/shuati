@@ -7,7 +7,7 @@ index 0000000..2752eb9
 +node_modules/
 +.DS_Store
 diff --git a/css/style.css b/css/style.css
-index 7ac1fe1..6a7e4f4 100644
+index 7ac1fe1..d600ad2 100644
 --- a/css/style.css
 +++ b/css/style.css
 @@ -241,7 +241,14 @@ a{color:var(--accent)}
@@ -26,7 +26,7 @@ index 7ac1fe1..6a7e4f4 100644
  .prev-ck{flex:none;padding-top:2px}
  .prev-ck input{width:18px;height:18px}
  .prev-body{flex:1;min-width:0}
-@@ -1246,3 +1253,175 @@ h2{margin:.2em 0 .6em}
+@@ -1246,3 +1253,190 @@ h2{margin:.2em 0 .6em}
    text-align:center;vertical-align:baseline}
  .passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
    color:var(--accent);font-weight:600}
@@ -187,21 +187,36 @@ index 7ac1fe1..6a7e4f4 100644
 +.orphan-cnt{color:var(--ink-soft);font-variant-numeric:tabular-nums}
 +@media(max-width:560px){ .orphan-row{flex-wrap:wrap;gap:6px} }
 +
-+/* 内置科目一键重建 chip：灰色=已存在（不可点），高亮=被删了（点一下按原代码重建） */
-+.def-chips{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px}
++/* 内置科目 chip：小圆点指示状态，比整颗高亮胶囊克制得多
++   灰点=正常 / 黄点=缺默认关键词 / 蓝点=科目被删了（可点重建） */
++.def-chips{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin-bottom:14px}
 +.def-chips-label{font-size:12px;font-weight:600;color:var(--ink-soft)}
 +.def-chip{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;
-+  border:1px solid var(--line);background:var(--surface-2);color:var(--ink-soft);
-+  padding:4px 10px;border-radius:999px;cursor:default;transition:all .15s}
-+.def-chip code{font-family:var(--mono);font-size:11px;opacity:.7}
-+.def-chip.gone{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);
-+  cursor:pointer;font-weight:600}
-+.def-chip.gone:hover{background:var(--accent);color:#fff}
-+.def-chip.gone:hover code{opacity:.85}
-+.def-chip.gone:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-+.def-chips-tip{font-size:11.5px;color:var(--ink-soft);opacity:.85;flex-basis:100%}
-+[data-theme=dark] .def-chip.gone:hover{color:var(--bg)}
-+@media(max-width:560px){ .def-chips-tip{line-height:1.6} }
++  border:0;background:transparent;color:var(--ink-soft);padding:2px 0;cursor:default;
++  transition:color .15s}
++.def-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-soft);opacity:.45;
++  flex:none;transition:background .15s,opacity .15s,box-shadow .15s}
++.def-chip.nokw,.def-chip.gone{cursor:pointer;color:var(--ink)}
++.def-chip.nokw .def-dot{background:var(--warn);opacity:1}
++.def-chip.gone .def-dot{background:var(--accent);opacity:1;
++  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
++.def-chip.nokw:hover{color:var(--warn)}
++.def-chip.gone:hover{color:var(--accent)}
++.def-chip.nokw:focus-visible,.def-chip.gone:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
++.def-chips-tip{font-size:11.5px;color:var(--ink-soft);opacity:.85;flex-basis:100%;line-height:1.6}
++@media(max-width:560px){ .def-chips{gap:6px 12px} }
++
++/* 整本抽题：把进度摆在按钮旁边。matProg 的进度条在书架顶部，
++   点完底栏的按钮往往已经滚不到那儿了，看起来像卡死。 */
++.bk-extract-prog{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);
++  min-width:0;flex:1}
++.bk-extract-txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
++.bk-extract-bar{flex:none;width:90px;height:5px;border-radius:999px;background:var(--surface-2);overflow:hidden}
++.bk-extract-bar i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .25s}
++@media(max-width:560px){
++  .bk-extract-prog{flex-basis:100%;order:9}
++  .bk-extract-bar{flex:1;width:auto}
++}
 diff --git a/fixes.patch b/fixes.patch
 deleted file mode 100644
 index 37440a4..0000000
@@ -1629,6 +1644,24 @@ index c70ddef..1d254f4 100644
          <div v-if="bank.sel.length" style="display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;width:100%;margin-top:4px">
            <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
            <button class="btn subtle" :disabled="busyOps.bankBatchSubject" @click="bankBatchSubject"><span v-if="busyOps.bankBatchSubject" class="spin"></span>应用</button>
+diff --git a/js/tpl/view-books.js b/js/tpl/view-books.js
+index b260bfd..a998d55 100644
+--- a/js/tpl/view-books.js
++++ b/js/tpl/view-books.js
+@@ -229,7 +229,12 @@ const TPL_VIEW_BOOKS = `
+                 <button v-if="!genq.busy" class="btn subtle" :disabled="!(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）"><icon name="sparkles" :size="15" /> AI 出题</button>
+                 <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
+               </div>
+-              <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
++              <span v-if="bookExtract.busy && bookExtract.prog" class="bk-extract-prog">
++            <span class="spin"></span>
++            <span class="bk-extract-txt">{{ bookExtract.prog }}</span>
++            <span v-if="bookExtract.total" class="bk-extract-bar"><i :style="{width: Math.min(100, Math.round(100*(bookExtract.done||0)/Math.max(1,bookExtract.total)))+'%'}"></i></span>
++            <span v-else-if="matProg.total" class="bk-extract-bar"><i :style="{width: matProg.pct+'%'}"></i></span>
++          </span>
+               <div class="bk-nav">
+                 <button :disabled="bookIdx<=0" @click="bookPrev"><icon name="arrow-left" :size="15" /> 上一页</button>
+                 <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 <icon name="arrow-right" :size="15" /></button>
 diff --git a/js/tpl/view-practice.js b/js/tpl/view-practice.js
 index 73c38a0..1f8fbc7 100644
 --- a/js/tpl/view-practice.js
@@ -1659,7 +1692,7 @@ index 73c38a0..1f8fbc7 100644
            <div class="q-nav-bar">
              <button class="btn subtle" :disabled="qi<=0" @click="prev"><icon name="arrow-left" :size="15" /> 上一题</button>
 diff --git a/js/tpl/view-settings.js b/js/tpl/view-settings.js
-index e0a075c..60ae8ad 100644
+index e0a075c..dbf86b5 100644
 --- a/js/tpl/view-settings.js
 +++ b/js/tpl/view-settings.js
 @@ -51,6 +51,16 @@ const TPL_VIEW_SETTINGS = `
@@ -1686,13 +1719,13 @@ index e0a075c..60ae8ad 100644
 +        <div v-if="subjDefaults && subjDefaults.length" class="def-chips">
 +          <span class="def-chips-label">内置科目</span>
 +          <button v-for="d in subjDefaults" :key="d.code"
-+                  class="def-chip" :class="{gone: !subjects.some(x=>x.v===d.code)}"
-+                  :disabled="subjects.some(x=>x.v===d.code)"
++                  class="def-chip" :class="subjChipState(d)"
++                  :disabled="subjChipState(d)==='ok'"
 +                  @click="subjRestoreDefault(d)"
-+                  :title="subjects.some(x=>x.v===d.code) ? '已存在' : '点击重建（代码 '+d.code+'，含默认关键词）'">
-+            {{ d.name }}<code>{{ d.code }}</code>
++                  :title="subjChipTip(d)">
++            <i class="def-dot"></i>{{ d.name }}
 +          </button>
-+          <span class="def-chips-tip">灰色＝已存在；高亮＝已删除，点一下按原代码重建（内容会自动归位）</span>
++          <span class="def-chips-tip">灰点＝正常；黄点＝缺默认关键词，点一下补回；蓝点＝科目已被删除，点一下按原代码重建（内容自动归位）</span>
 +        </div>
 +        <div v-if="subjOrphans && subjOrphans.length" class="orphan-box">
 +          <div class="orphan-title">⚠ 发现 {{ subjOrphans.length }} 个「无主内容」</div>
@@ -1870,10 +1903,27 @@ index a007d78..dae8278 100644
          // 合并交给服务端（addTags）：一个请求搞定任意条数，
          // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。
 diff --git a/js/views/books.js b/js/views/books.js
-index 9f08e09..3102dcd 100644
+index 9f08e09..e68e3ab 100644
 --- a/js/views/books.js
 +++ b/js/views/books.js
-@@ -221,7 +221,18 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
+@@ -33,7 +33,15 @@ async deleteCurrentBook(){ return this.deleteBook(this.currentBook); },
+ async deleteBook(b){ if(!b){ this.flash('请先选择书籍',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除《'+b.title+'》及其全部 '+b.pages.length+' 页？此操作不可恢复（题库不受影响）。')) return; const ids=b.pages.map(m=>m.id).filter(Boolean); try{ const d=await this.api('/api/materials',{method:'DELETE',body:JSON.stringify({ids})}); this.flash('已删除《'+b.title+'》，共 '+(d.deleted||ids.length)+' 页'); try{ localStorage.removeItem('zb_readpos:'+b.key); }catch(_){ } if(this.currentBookId===b.key){ this.currentBookId=''; this.bookIdx=0; } await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
+ // 数字进度：total>0 时前端进度条走确定进度并显示 百分比 · cur/total
+ _setProg(cur,total,unit){ const t=Math.max(0,total|0), c=Math.min(Math.max(0,cur|0),t||Infinity);
+-      this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' }; },
++      this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' };
++      // 整本抽题正在跑时，把同一份进度镜像到底栏那句提示上。
++      // matProg 的进度条渲染在书架顶部，而「整本抽题入库」按钮在页面底栏 ——
++      // 点完按钮往往已经滚不到顶部了，底栏又只显示一句静态的「正在载入正文 273 页…」，
++      // 于是看起来像卡死。
++      if(this.bookExtract&&this.bookExtract.busy&&t){
++        this.bookExtract.prog='①/④ 正在载入正文 '+c+' / '+t+' 页（'+this.matProg.pct+'%）…';
++        this.bookExtract.done=c; this.bookExtract.total=t;
++      } },
+ _clearProg(){ this.matProg={ cur:0, total:0, pct:0, unit:'段' }; },
+ async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } this.materials.loading=true; this.loadProgMsg='正在请求…';
+       // 书架只拉元信息（meta=1，不含 content_md）并翻页拉全：
+@@ -221,7 +229,18 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
            question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页的图片提问，请先识别图中文字再回答）', type:'short_answer', subject:'教材' },
            analysis:'', history, ask:q };
        }
@@ -1894,7 +1944,7 @@ index 9f08e09..3102dcd 100644
        if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
        if(!entry.a) entry.a='_（模型没有返回内容）_';
 diff --git a/js/views/ingest.js b/js/views/ingest.js
-index 209d29a..20ba6c3 100644
+index 209d29a..4f326bd 100644
 --- a/js/views/ingest.js
 +++ b/js/views/ingest.js
 @@ -205,19 +205,48 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
@@ -2136,7 +2186,69 @@ index 209d29a..20ba6c3 100644
        if(q&&Array.isArray(q.options))for(const o of q.options)scan(o&&o.text);
        if(q&&Array.isArray(q.answer))for(const a of q.answer)if(typeof a==='string')scan(a);
        return out; },
-@@ -494,6 +596,7 @@ async _hoistImages(arr){
+@@ -476,24 +578,56 @@ async _hoistImages(arr){
+       for(const q of (arr||[]))for(const u of this._collectDataImages(q))seen.add(u);
+       const stat={ total:seen.size, uploaded:0, inlined:0, failed:0 };
+       if(!seen.size)return stat;
+-      const map=new Map(); let i=0;
+-      for(const u of seen){ i++;
+-        this.bookExtract.prog='正在转存插图 '+i+' / '+seen.size+'…';
+-        if(u.length<=INLINE_MAX){ stat.inlined++; continue; }
++      this.bookExtract.done=0; this.bookExtract.total=seen.size;
++      const map=new Map();
++
++      // 先把不用上传的挑出来（小图保持内嵌、拿不到 blob 的直接记失败），
++      // 剩下的才是真正要走网络的任务。这样并发只作用在网络这一段，
++      // 计数逻辑和串行版完全一致。
++      const todo=[]; let done=0;
++      for(const u of seen){
++        if(u.length<=INLINE_MAX){ stat.inlined++; done++; continue; }
+         const blob=this._dataUrlToBlob(u);
+-        if(!blob){ stat.failed++; continue; }
+-        try{
+-          const ext=(blob.type.split('/')[1]||'png').replace('jpeg','jpg');
+-          const fd=new FormData(); fd.append('file', blob, 'fig.'+ext);
+-          const res=await fetch('/api/qimg',{method:'POST',headers:{authorization:'Bearer '+this.token},body:fd});
+-          const d=await res.json().catch(()=>({}));
+-          if(!res.ok||!d.url)throw new Error(d.error||('HTTP '+res.status));
+-          map.set(u,d.url); stat.uploaded++;
+-        }catch(_){ stat.failed++; }        // 保留内嵌，图不能丢
++        if(!blob){ stat.failed++; done++; continue; }
++        todo.push({ u, blob });
+       }
++      const tick=()=>{ this.bookExtract.done=done; this.bookExtract.total=seen.size;
++        this.bookExtract.prog='③/④ 正在转存插图 '+done+' / '+seen.size+'…'; };
++      tick();
++
++      // 3 路并发。串行时 343 张图要排 343 个来回，整本抽题前干等好几分钟；
++      // 并发数和 _runMatFill 保持一致（3），再高容易被中转/网关限流。
++      // map 以 URL 为键，所以完成顺序不影响结果。
++      const CONC=3;
++      const upload=async (task)=>{
++        const ext=(task.blob.type.split('/')[1]||'png').replace('jpeg','jpg');
++        for(let attempt=0; attempt<2; attempt++){
++          try{
++            const fd=new FormData(); fd.append('file', task.blob, 'fig.'+ext);
++            const res=await fetch('/api/qimg',{method:'POST',headers:{authorization:'Bearer '+this.token},body:fd});
++            const d=await res.json().catch(()=>({}));
++            if(!res.ok||!d.url)throw new Error(d.error||('HTTP '+res.status));
++            map.set(task.u, d.url); stat.uploaded++; return;
++          }catch(e){
++            // 限流/网关/网络抖动重试一次；其余（如 413 图太大）重试也没用
++            const retryable=/429|50[234]|Failed to fetch|NetworkError|timeout|超时/i.test(String((e&&e.message)||''));
++            if(!retryable || attempt===1){ stat.failed++; return; }   // 保留内嵌，图不能丢
++            await new Promise(r=>setTimeout(r,800));
++          }
++        }
++      };
++      let cur=0;
++      await Promise.all(Array.from({length:Math.min(CONC,todo.length)},async()=>{
++        while(cur<todo.length){
++          const task=todo[cur++];
++          await upload(task);
++          done++; tick();
++        }
++      }));
        if(map.size){
          const swap=(t)=>{ let s=String(t||''); for(const [k,v] of map)s=s.split(k).join(v); return s; };
          for(const q of arr){ q.stem=swap(q.stem); if(q.analysis)q.analysis=swap(q.analysis);
@@ -2144,6 +2256,39 @@ index 209d29a..20ba6c3 100644
            if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:swap(o.text)}));
            if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
        }
+@@ -536,14 +670,15 @@ async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写
+ async _localExtractBookInner(){
+       const b0=this.currentBook;
+       const need=this.matMissingCount?this.matMissingCount(b0):0;
+-      this.bookExtract.prog=need? ('正在载入正文 '+need+' 页…') : '正在准备…';
++      this.bookExtract.done=0; this.bookExtract.total=0;
++      this.bookExtract.prog=need? ('①/④ 正在载入正文 0 / '+need+' 页…') : '①/④ 正文已就绪';
+       await this._yieldToPaint();
+       if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md
+       const b=this.currentBook; if(!b||!b.pages.length){ this.flash('请先选择一本书',true); return; }
+       // 兜底自检：正文没补齐就别开跑，宁可报错也别拿半本书静默少抽
+       const missing=this.matMissingCount?this.matMissingCount(b):0;
+       if(missing){ this.flash('这本书还有 '+missing+' 页正文没载入完，请等进度条走完再抽题',true); return; }
+-      this.bookExtract.prog='正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
++      this.bookExtract.prog='②/④ 正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
+       const all=this._extractWholeBook(b);
+       if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
+       // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目
+@@ -551,11 +686,13 @@ async _localExtractBookInner(){
+       if(all.length>800 && !confirm('整本解析出 '+all.length+' 题，其中 '+noAns+' 题没抽到答案。\n\n题量较大，规则抽取可能把页眉/目录行误判成题目，建议在预览里筛一遍再导入（可用「勾选/取消无答案的题」快速排除）。\n\n继续打开预览？'))return;
+       const ist=await this._hoistImages(all);
+       if(ist.failed)this.flash(ist.failed+' 张插图没能转存到 R2（已保留内嵌，可能偏大）',true);
++      this.bookExtract.done=0; this.bookExtract.total=0;
++      this.bookExtract.prog='④/④ 正在生成预览…'; await this._yieldToPaint();
+       const tocNote=this.extractSkippedToc? '（已跳过 '+this.extractSkippedToc+' 页目录）':'';
+       this._openPreview(all, '《'+b.title+'》整本'+tocNote+'（预览）', b.subject, b.title); },
+ async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
+       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
+-      try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
++      try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length+' 题…'; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
+         this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.extractClose(); }
+       catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
+ saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },
 diff --git a/js/views/practice.js b/js/views/practice.js
 index 905810d..c300c53 100644
 --- a/js/views/practice.js
@@ -2344,10 +2489,10 @@ index 905810d..c300c53 100644
    if(!c || this.aiX.asking) return;
    const q=c.q; list.splice(i,1);
 diff --git a/js/views/settings.js b/js/views/settings.js
-index 9bd9152..a3f3add 100644
+index 9bd9152..581dca6 100644
 --- a/js/views/settings.js
 +++ b/js/views/settings.js
-@@ -8,36 +8,116 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
+@@ -8,36 +8,142 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
        if(has('english')&&len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
        for(const sub of this.subjects){ const kws=String(sub.keywords||'').split(/[，,;；\s]+/).map(k=>k.trim()).filter(k=>k.length>=2); for(const k of kws){ if(s.includes(k))return sub.v; } }
        return ''; },
@@ -2361,9 +2506,35 @@ index 9bd9152..a3f3add 100644
 +  }catch(e){} },
 +// 一键重建某个内置科目（灰色 chip）。代码取内置定义，名称和关键词也一并恢复，
 +// 所以之前挂在这个代码下的题目/教材会自动归位 —— 这正是误删之后最需要的一步。
++// 内置科目 chip 的三态：ok=正常 / nokw=存在但没关键词 / gone=科目被删了
++subjChipState(d){
++  const cur=(this.subjects||[]).find(x=>x.v===d.code);
++  if(!cur)return 'gone';
++  return String(cur.keywords||'').trim() ? 'ok' : 'nokw';
++},
++subjChipTip(d){
++  const st=this.subjChipState(d);
++  if(st==='ok')return d.name+'（'+d.code+'）正常';
++  if(st==='nokw')return '「'+d.name+'」没有关键词，点一下补回默认值';
++  return '科目「'+d.name+'」不存在，点一下按代码 '+d.code+' 重建';
++},
 +async subjRestoreDefault(d){
 +  if(!d || !d.code)return;
-+  if((this.subjects||[]).some(x=>x.v===d.code)){ this.flash('科目「'+d.name+'」已存在',true); return; }
++  const cur=(this.subjects||[]).find(x=>x.v===d.code);
++  if(cur){
++    // 科目已存在但关键词是空的 —— 这是「先手工重建、后来才有默认回填」留下的状态：
++    // 回填只在 POST 新建时生效，已存在的行不会被动，所以关键词一直空着。
++    // 这种情况点 chip 就是把默认关键词补回去。
++    if(String(cur.keywords||'').trim()){ this.flash('科目「'+cur.t+'」已存在且有关键词',true); return; }
++    if(!confirm('把「'+cur.t+'」的默认关键词补回来？\n\n'+(d.keywords||'').split(',').slice(0,6).join('、')+'…（共 '+(d.keywords||'').split(',').filter(Boolean).length+' 个）'))return;
++    try{
++      await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({
++        code:cur.v, name:cur.t, sort:Number(cur.sort)||0, keywords:d.keywords||'' })});
++      this.flash('已补回「'+cur.t+'」的默认关键词');
++      await this.loadSubjects();
++    }catch(e){ if(e.message!=='unauth')this.flash('补回失败：'+e.message,true); }
++    return;
++  }
 +  const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
 +  const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
 +  if(!confirm('重建内置科目「'+d.name+'」（代码 '+d.code+'）？'
@@ -2445,7 +2616,7 @@ index 9bd9152..a3f3add 100644
 +      await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
 +    }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); }
 +    return;
-+  }
+   }
 +
 +  const what=[q?(q+' 道题目'):'', m?(m+' 页教材'):''].filter(Boolean).join(' 和 ');
 +  // 优先引导「转移」而不是「删除」——后端一直支持 moveTo，前端以前没用上
@@ -2467,7 +2638,7 @@ index 9bd9152..a3f3add 100644
 +      void r;
 +    }catch(e){ if(e.message!=='unauth')this.flash('转移失败：'+e.message,true); }
 +    return;
-   }
++  }
 +
 +  // 二次确认：要求手动输入科目名，防止手滑（这一步会连内容一起永久删除）
 +  const typed=prompt('这会永久删除科目「'+s.t+'」及其下的 '+what+'，不可恢复。\n\n'
@@ -3441,6 +3612,225 @@ index 0000000..800d1a5
 +    const css = read('css/style.css');
 +    expect(css).toContain('.fill-bar{order:5;flex-basis:100%');
 +    expect(css).toContain('.fill-stem{flex-basis:100%;white-space:normal');
++  });
++});
+diff --git a/tests/book-extract-progress.test.mjs b/tests/book-extract-progress.test.mjs
+new file mode 100644
+index 0000000..89b2d52
+--- /dev/null
++++ b/tests/book-extract-progress.test.mjs
+@@ -0,0 +1,213 @@
++// 整本抽题看起来「卡死」：点完按钮很久没反应，用户不知道进行到哪一步。
++//
++// 排查结果：进度其实一直在设，但摆错了地方 ——
++//  · 载入正文（273 页 / 6.76MB，最慢的一步）的进度条渲染在【书架顶部】的 matProg，
++//    而「整本抽题入库」按钮在页面【底栏】，点完往往已经滚不到顶部了；
++//    底栏那句又是静态的「正在载入正文 273 页…」，不带计数，看着就像卡住。
++//  · 各阶段的提示没有编号，用户不知道总共几步、还剩几步。
++//
++// 顺带确认：预览渲染不是瓶颈（每页 40 条分页渲染，见 extractPageItems）。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const Books = new Function(read('js/views/books.js') + ';return BooksMixin;')();
++
++describe('载入正文的进度镜像到底栏', () => {
++  const mk = (busy) => ({ bookExtract: { busy, prog: '', done: 0, total: 0 }, matProg: {} });
++  it('抽题进行中：底栏显示实时页数和百分比', () => {
++    const c = mk(true);
++    Books.methods._setProg.call(c, 120, 273, '页');
++    expect(c.bookExtract.prog).toBe('①/④ 正在载入正文 120 / 273 页（44%）…');
++  });
++  it('同时喂给底栏的进度条', () => {
++    const c = mk(true);
++    Books.methods._setProg.call(c, 120, 273, '页');
++    expect(c.bookExtract.done).toBe(120);
++    expect(c.bookExtract.total).toBe(273);
++  });
++  it('不在抽题时不污染底栏（书架自己加载也会调 _setProg）', () => {
++    const c = mk(false);
++    Books.methods._setProg.call(c, 50, 100, '页');
++    expect(c.bookExtract.prog).toBe('');
++  });
++  it('总数为 0 时不写（避免出现「0 / 0」）', () => {
++    const c = mk(true);
++    Books.methods._setProg.call(c, 0, 0, '页');
++    expect(c.bookExtract.prog).toBe('');
++  });
++  it('matProg 本身照常更新，顶部进度条不受影响', () => {
++    const c = mk(true);
++    Books.methods._setProg.call(c, 120, 273, '页');
++    expect(c.matProg).toMatchObject({ cur: 120, total: 273, pct: 44, unit: '页' });
++  });
++});
++
++describe('四个阶段都有编号，用户知道还剩几步', () => {
++  const src = read('js/views/ingest.js');
++  it('①载入 ②解析 ③转存插图 ④生成预览', () => {
++    expect(read('js/views/books.js')).toContain('①/④ 正在载入正文');
++    expect(src).toContain('①/④ 正文已就绪');
++    expect(src).toContain('②/④ 正在解析全书');
++    expect(src).toContain('③/④ 正在转存插图');
++    expect(src).toContain('④/④ 正在生成预览');
++  });
++  it('转存插图那步也带进度条（343 张图是最慢的一段）', () => {
++    // 这一段从串行改成了 3 路并发，进度由共享计数器 done 驱动（不再是循环下标 i）
++    expect(src).toContain("this.bookExtract.done=done; this.bookExtract.total=seen.size;");
++    expect(src).toContain("'③/④ 正在转存插图 '+done+' / '+seen.size+'…'");
++  });
++  it('进入预览前清掉进度条，避免残留', () => {
++    expect(src).toContain("this.bookExtract.done=0; this.bookExtract.total=0;\n      this.bookExtract.prog='④/④ 正在生成预览…'");
++  });
++  it('导入阶段的提示带单位', () => {
++    expect(src).toMatch(/正在导入 .+ 题…/);
++  });
++});
++
++describe('底栏把进度摆在按钮旁边', () => {
++  const tpl = read('js/tpl/view-books.js');
++  const css = read('css/style.css');
++  it('有转圈、文字和进度条三件套', () => {
++    expect(tpl).toContain('bk-extract-prog');
++    expect(tpl).toContain('bk-extract-txt');
++    expect(tpl).toContain('bk-extract-bar');
++  });
++  it('优先用 bookExtract 的计数，没有就回落到 matProg', () => {
++    expect(tpl).toContain('v-if="bookExtract.total"');
++    expect(tpl).toContain('v-else-if="matProg.total"');
++  });
++  it('进度条宽度钳到 100%', () => {
++    expect(tpl).toContain('Math.min(100,');
++  });
++  it('窄屏下进度条独占一行并撑满', () => {
++    expect(css).toContain('.bk-extract-prog{flex-basis:100%');
++    expect(css).toContain('.bk-extract-bar{flex:1;width:auto}');
++  });
++  it('长文案省略而不是把导航按钮挤走', () => {
++    expect(css).toContain('.bk-extract-txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis');
++  });
++});
++
++describe('预览渲染不是瓶颈', () => {
++  const src = read('js/views/ingest.js');
++  it('分页渲染，默认每页 40 条', () => {
++    expect(src).toContain('extractPageItems()');
++    expect(src).toContain('p.pageSize||40');
++  });
++  it('勾选状态跨页保留（不是只在当前页有效）', () => {
++    expect(read('js/tpl/shell-close.js')).toContain('勾选状态跨页保留');
++  });
++});
++
++// ===== 插图转存并发化 =====
++// 343 张图串行上传，整本抽题前要干等好几分钟。改成 3 路并发。
++// 这一段有三条不能破的不变量：
++//   ① 上传失败必须【保留内嵌】—— 图不能丢，宁可题目偏大
++//   ② ≤32KB 的小图不上传，只计入 inlined
++//   ③ map 以 dataURL 为键，完成顺序不影响替换结果
++describe('插图转存：并发但行为不变', () => {
++  const Ing = new Function(read('js/views/ingest.js') + ';return IngestMixin;')().methods;
++  const big = (n) => 'data:image/png;base64,' + 'A'.repeat(n);
++  const mkQs = (n, size = 40000) => Array.from({ length: n }, (_, i) => ({ stem: '题 <img src="' + big(size + i) + '">', options: [], answer: [] }));
++
++  const run = async (fetchImpl, qs) => {
++    const prevFD = global.FormData, prevFetch = global.fetch;
++    global.FormData = class { append() {} };
++    global.fetch = fetchImpl;
++    try {
++      const ctx = Object.assign(Object.create(Ing), {
++        token: 't', bookExtract: { busy: true, prog: '', done: 0, total: 0 },
++        _dataUrlToBlob: (u) => (u.startsWith('data:image/png;base64,BAD') ? null : { type: 'image/png' }),
++      });
++      const stat = await Ing._hoistImages.call(ctx, qs);
++      return { stat, qs, ctx };
++    } finally { global.FormData = prevFD; global.fetch = prevFetch; }
++  };
++  const okFetch = () => async () => ({ ok: true, status: 200, json: async () => ({ url: 'https://r2/ok.png' }) });
++
++  it('正常路径：全部换成 R2 链接', async () => {
++    const { stat, qs } = await run(okFetch(), mkQs(5));
++    expect(stat).toMatchObject({ total: 5, uploaded: 5, failed: 0 });
++    expect(qs.every((q) => /https:\/\/r2\//.test(q.stem))).toBe(true);
++    expect(qs.some((q) => /;base64,/.test(q.stem))).toBe(false);
++  });
++  it('小图不上传，只计 inlined（≤32KB）', async () => {
++    let calls = 0;
++    const { stat, qs } = await run(async () => { calls++; return { ok: true, json: async () => ({ url: 'x' }) }; }, mkQs(4, 1000));
++    expect(stat).toMatchObject({ total: 4, inlined: 4, uploaded: 0 });
++    expect(calls).toBe(0);
++    expect(qs.every((q) => /;base64,/.test(q.stem))).toBe(true);   // 保持内嵌
++  });
++  it('上传失败必须保留内嵌 —— 图不能丢', async () => {
++    const { stat, qs } = await run(async () => ({ ok: false, status: 500, json: async () => ({ error: 'boom' }) }), mkQs(5));
++    expect(stat).toMatchObject({ uploaded: 0, failed: 5 });
++    expect(qs.every((q) => /;base64,/.test(q.stem))).toBe(true);
++  });
++  it('拿不到 blob 的记失败，也保留内嵌', async () => {
++    const qs = [{ stem: 'x <img src="data:image/png;base64,BAD' + 'A'.repeat(40000) + '">', options: [], answer: [] }];
++    const { stat } = await run(okFetch(), qs);
++    expect(stat).toMatchObject({ total: 1, failed: 1, uploaded: 0 });
++    expect(/;base64,/.test(qs[0].stem)).toBe(true);
++  });
++  it('限流会重试一次并救回来', async () => {
++    let n = 0;
++    const { stat } = await run(async () => {
++      n++;
++      if (n <= 3) return { ok: false, status: 429, json: async () => ({ error: '429 rate limit' }) };
++      return { ok: true, json: async () => ({ url: 'https://r2/ok.png' }) };
++    }, mkQs(3));
++    expect(stat).toMatchObject({ uploaded: 3, failed: 0 });
++    expect(n).toBe(6);          // 3 次失败 + 3 次重试成功
++  });
++  it('不可重试的错误（413 图太大）不浪费重试', async () => {
++    let n = 0;
++    const { stat } = await run(async () => { n++; return { ok: false, status: 413, json: async () => ({ error: 'file too large' }) }; }, mkQs(4));
++    expect(n).toBe(4);
++    expect(stat.failed).toBe(4);
++  });
++  it('并发上限是 3，不会一口气全打出去', async () => {
++    let live = 0, peak = 0;
++    await run(async () => {
++      live++; peak = Math.max(peak, live);
++      await new Promise((r) => setTimeout(r, 5));
++      live--;
++      return { ok: true, json: async () => ({ url: 'https://r2/ok.png' }) };
++    }, mkQs(12));
++    expect(peak).toBe(3);
++  });
++  it('进度计数走到满，且不超过总数', async () => {
++    const { ctx, stat } = await run(okFetch(), [...mkQs(6), ...mkQs(3, 1000)]);
++    expect(ctx.bookExtract.done).toBe(stat.total);
++    expect(ctx.bookExtract.total).toBe(stat.total);
++    expect(ctx.bookExtract.prog).toContain('9 / 9');
++  });
++  it('没有图时不发请求，stat 全零', async () => {
++    const { stat } = await run(async () => { throw new Error('不该被调用'); }, [{ stem: '纯文字题干', options: [], answer: [] }]);
++    expect(stat).toEqual({ total: 0, uploaded: 0, inlined: 0, failed: 0 });
++  });
++  it('同一张图在多道题里只上传一次（按 URL 去重）', async () => {
++    let n = 0;
++    const url = big(40000);
++    const qs = [1, 2, 3].map(() => ({ stem: 'x <img src="' + url + '">', options: [], answer: [] }));
++    const { stat } = await run(async () => { n++; return { ok: true, json: async () => ({ url: 'https://r2/one.png' }) }; }, qs);
++    expect(n).toBe(1);
++    expect(stat.total).toBe(1);
++    expect(qs.every((q) => q.stem.includes('https://r2/one.png'))).toBe(true);
++  });
++  it('替换覆盖 stem / passage / analysis / options / answer 五处', async () => {
++    const url = big(40000);
++    const qs = [{ stem: 'S <img src="' + url + '">', passage: 'P <img src="' + url + '">',
++      analysis: 'A <img src="' + url + '">',
++      options: [{ key: 'A', text: 'O <img src="' + url + '">' }],
++      answer: ['R <img src="' + url + '">'] }];
++    await run(okFetch(), qs);
++    const q = qs[0];
++    for (const t of [q.stem, q.passage, q.analysis, q.options[0].text, q.answer[0]]) {
++      expect(t).toContain('https://r2/ok.png');
++      expect(t).not.toContain('base64');
++    }
 +  });
 +});
 diff --git a/tests/chat-scope-bankfill.test.mjs b/tests/chat-scope-bankfill.test.mjs
@@ -5007,10 +5397,10 @@ index bb047cd..100402c 100644
  import { onRequestDelete as subjDelete } from '../functions/api/subjects.js';
 diff --git a/tests/subject-orphans.test.mjs b/tests/subject-orphans.test.mjs
 new file mode 100644
-index 0000000..d657ab7
+index 0000000..628d4ba
 --- /dev/null
 +++ b/tests/subject-orphans.test.mjs
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,216 @@
 +// 两个后续问题，都是「科目被误删」的余波：
 +//
 +//  ① 重建科目后关键词没了。种子只在【表完全为空】时才灌（ensure 里 if(!c.n)），
@@ -5134,62 +5524,96 @@ index 0000000..d657ab7
 +  });
 +});
 +
-+describe('内置科目的一键重建 chip', () => {
++describe('内置科目 chip：三态灰点', () => {
 +  const settings = read('js/views/settings.js');
 +  const tpl = read('js/tpl/view-settings.js');
 +  const css = read('css/style.css');
 +
-+  const DEFAULTS = [
-+    { code: 'politics', name: '政治理论', sort: 1, keywords: '马克思,毛概' },
-+    { code: 'english', name: '英语', sort: 2, keywords: '阅读理解,完形' },
-+  ];
-+  const mkCtx = (subjects, orphans = []) => {
++  const D = {
++    politics: { code: 'politics', name: '政治理论', keywords: '马克思,毛概' },
++    english: { code: 'english', name: '英语', keywords: '阅读理解,完形,四级' },
++  };
++  const mk = (subjects, orphans = []) => {
 +    const calls = [];
-+    return {
-+      calls, flashes: [], subjects, subjOrphans: orphans,
++    return Object.assign(Object.create(Settings.methods), {
++      subjects, subjOrphans: orphans, calls, flashes: [],
 +      flash(m) { this.flashes.push(String(m)); },
 +      loadSubjects: async () => {}, loadMeta() {},
-+      async api(p, o) { calls.push(JSON.parse(o.body)); return { ok: true }; },
-+    };
++      async api(p, o) { calls.push({ m: o.method, b: JSON.parse(o.body) }); return { ok: true }; },
++    });
 +  };
-+  const restore = (c, d) => Settings.methods.subjRestoreDefault.call(c, d);
 +
++  it('三态判定：正常 / 缺关键词 / 已删除', () => {
++    const c = mk([
++      { v: 'english', t: '英语', keywords: '' },
++      { v: 'math', t: '高等数学', keywords: '导数,积分' },
++    ]);
++    expect(c.subjChipState({ code: 'math' })).toBe('ok');
++    expect(c.subjChipState({ code: 'english' })).toBe('nokw');
++    expect(c.subjChipState({ code: 'politics' })).toBe('gone');
++  });
++  it('只有空白字符的关键词也算缺', () => {
++    const c = mk([{ v: 'english', t: '英语', keywords: '   ' }]);
++    expect(c.subjChipState({ code: 'english' })).toBe('nokw');
++  });
++
++  it('黄点（缺关键词）：PATCH 补回默认值，不重建科目', async () => {
++    global.confirm = () => true;
++    const c = mk([{ v: 'english', t: '英语', keywords: '', sort: 10 }]);
++    await c.subjRestoreDefault(D.english);
++    expect(c.calls[0].m).toBe('PATCH');
++    expect(c.calls[0].b).toMatchObject({ code: 'english', keywords: '阅读理解,完形,四级' });
++    expect(c.flashes.join('')).toMatch(/已补回/);
++  });
++  it('蓝点（已删除）：POST 按原代码重建', async () => {
++    global.confirm = () => true;
++    const c = mk([]);
++    await c.subjRestoreDefault(D.english);
++    expect(c.calls[0].m).toBe('POST');
++    expect(c.calls[0].b).toMatchObject({ code: 'english', keywords: '阅读理解,完形,四级' });
++  });
++  it('灰点（正常）：不发任何请求', async () => {
++    const c = mk([{ v: 'english', t: '英语', keywords: '已有关键词' }]);
++    await c.subjRestoreDefault(D.english);
++    expect(c.calls).toHaveLength(0);
++    expect(c.flashes.join('')).toMatch(/已存在且有关键词/);
++  });
++  it('两种可点状态都要确认，取消就不动', async () => {
++    global.confirm = () => false;
++    for (const subjects of [[{ v: 'english', t: '英语', keywords: '' }], []]) {
++      const c = mk(subjects);
++      await c.subjRestoreDefault(D.english);
++      expect(c.calls).toHaveLength(0);
++    }
++  });
++  it('重建时若有孤儿内容，提示要说明会归位多少', async () => {
++    global.confirm = () => true;
++    const c = mk([], [{ code: 'politics', questions: 0, materials: 278 }]);
++    await c.subjRestoreDefault(D.politics);
++    expect(c.flashes.join('')).toMatch(/278 页教材 已归位/);
++  });
++
++  it('渲染成小圆点而不是整颗高亮胶囊', () => {
++    expect(tpl).toContain('<i class="def-dot"></i>');
++    expect(tpl).toContain(':class="subjChipState(d)"');
++    expect(css).toContain('.def-dot{');
++    for (const st of ['.def-chip.nokw .def-dot', '.def-chip.gone .def-dot']) expect(css).toContain(st);
++  });
++  it('正常态不可点，另外两态可点', () => {
++    expect(tpl).toContain(":disabled=\"subjChipState(d)==='ok'\"");
++    expect(css).toContain('.def-chip.nokw,.def-chip.gone{cursor:pointer');
++  });
++  it('每个点都有 title 说明点了会发生什么', () => {
++    expect(tpl).toContain(':title="subjChipTip(d)"');
++    expect(settings).toContain('subjChipTip(d)');
++  });
++  it('图例把三种颜色讲清楚', () => {
++    expect(tpl).toMatch(/灰点＝正常/);
++    expect(tpl).toMatch(/黄点＝缺默认关键词/);
++    expect(tpl).toMatch(/蓝点＝科目已被删除/);
++  });
 +  it('后端把默认定义下发给前端（不让前端再抄一份）', () => {
 +    expect(read('functions/api/subjects.js')).toContain('defaults: DEFAULT_SUBJECTS.map');
 +    expect(settings).toContain('this.subjDefaults=Array.isArray(d&&d.defaults)?d.defaults:[];');
-+  });
-+  it('重建时用内置代码，并带回默认名称和关键词', async () => {
-+    global.confirm = () => true;
-+    const c = mkCtx([{ v: 'english', t: '英语' }]);
-+    await restore(c, DEFAULTS[0]);
-+    expect(c.calls[0]).toMatchObject({ code: 'politics', name: '政治理论', keywords: '马克思,毛概' });
-+  });
-+  it('挂在这个代码下的内容会归位，提示要说出来', async () => {
-+    global.confirm = () => true;
-+    const c = mkCtx([], [{ code: 'politics', questions: 0, materials: 278 }]);
-+    await restore(c, DEFAULTS[0]);
-+    expect(c.flashes.join('')).toMatch(/278 页教材 已归位/);
-+  });
-+  it('已存在的科目不重复创建', async () => {
-+    const c = mkCtx([{ v: 'english', t: '英语' }]);
-+    await restore(c, DEFAULTS[1]);
-+    expect(c.calls).toHaveLength(0);
-+    expect(c.flashes.join('')).toMatch(/已存在/);
-+  });
-+  it('取消确认就不发请求', async () => {
-+    global.confirm = () => false;
-+    const c = mkCtx([]);
-+    await restore(c, DEFAULTS[0]);
-+    expect(c.calls).toHaveLength(0);
-+  });
-+  it('chip 按「是否已存在」区分状态：已存在灰且禁用，缺失才可点', () => {
-+    expect(tpl).toContain("{gone: !subjects.some(x=>x.v===d.code)}");
-+    expect(tpl).toContain(':disabled="subjects.some(x=>x.v===d.code)"');
-+    expect(css).toContain('.def-chip{');
-+    expect(css).toContain('.def-chip.gone{');
-+  });
-+  it('chip 上显示代码，用户才知道「代码必须一致」', () => {
-+    expect(tpl).toContain('<code>{{ d.code }}</code>');
-+    expect(tpl).toMatch(/灰色＝已存在/);
 +  });
 +});
