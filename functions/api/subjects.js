@@ -34,10 +34,20 @@ const normCode = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9_]
 export async function onRequestGet({ request, env }) {
   const auth = await checkAuth(request, env);
   if (!auth.ok) return auth.resp;
+  const url = new URL(request.url);
   try {
     await ensure(env);
     const r = await env.DB.prepare(`SELECT code, name, sort, keywords FROM subjects ORDER BY sort ASC, code ASC`).all();
     const items = (r.results || []).map((x) => ({ v: x.code, t: x.name, sort: x.sort || 0, keywords: x.keywords || '' }));
+
+    // 孤儿扫描默认【不做】：它要在 questions 和 materials 上各跑一次 GROUP BY 全表扫描，
+    // 而 loadSubjects() 在前端有 13 处调用（每次保存科目、调顺序、补关键词后都会重新拉一遍）。
+    // 上一版无条件扫，把这条本该很快的接口拖成几百毫秒起 —— 用户点「补回关键词」
+    // 半天没反应，于是连点好几次。
+    // 现在只有设置页显式带 ?orphans=1 时才扫。
+    if (!url.searchParams.get('orphans')) {
+      return json({ items, defaults: DEFAULT_SUBJECTS.map(([code, name, sort, keywords]) => ({ code, name, sort, keywords })) });
+    }
 
     // 孤儿科目：题目 / 教材里引用了某个 subject，但 subjects 表里没有这一行。
     // 成因：科目被删（内容没跟着删或没转移），或者手工改过 subject 字段。

@@ -7,7 +7,7 @@ index 0000000..2752eb9
 +node_modules/
 +.DS_Store
 diff --git a/css/style.css b/css/style.css
-index 7ac1fe1..d600ad2 100644
+index 7ac1fe1..b5c84c3 100644
 --- a/css/style.css
 +++ b/css/style.css
 @@ -241,7 +241,14 @@ a{color:var(--accent)}
@@ -26,7 +26,7 @@ index 7ac1fe1..d600ad2 100644
  .prev-ck{flex:none;padding-top:2px}
  .prev-ck input{width:18px;height:18px}
  .prev-body{flex:1;min-width:0}
-@@ -1246,3 +1253,190 @@ h2{margin:.2em 0 .6em}
+@@ -1246,3 +1253,267 @@ h2{margin:.2em 0 .6em}
    text-align:center;vertical-align:baseline}
  .passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
    color:var(--accent);font-weight:600}
@@ -217,6 +217,83 @@ index 7ac1fe1..d600ad2 100644
 +  .bk-extract-prog{flex-basis:100%;order:9}
 +  .bk-extract-bar{flex:1;width:auto}
 +}
++
++/* 内置科目 chip 的居中确认弹窗。不用浏览器原生 confirm：
++   它弹在屏幕顶部、样式不可控，也没法把默认关键词列出来给用户过目。 */
++.chipdlg-mask{position:fixed;inset:0;z-index:60;background:rgba(20,25,40,.42);
++  display:flex;align-items:center;justify-content:center;padding:20px}
++.chipdlg{width:100%;max-width:460px;background:var(--surface);border:1px solid var(--line);
++  border-radius:var(--radius);box-shadow:0 12px 40px rgba(20,25,40,.18);overflow:hidden}
++.chipdlg-h{display:flex;align-items:center;gap:8px;padding:14px 16px;font-size:14px;font-weight:700;
++  color:var(--ink);border-bottom:1px solid var(--line)}
++.chipdlg-h .def-dot{width:8px;height:8px;opacity:1}
++.chipdlg-h .def-dot.nokw{background:var(--warn)}
++.chipdlg-h .def-dot.gone{background:var(--accent)}
++.chipdlg-x{margin-left:auto;border:0;background:transparent;color:var(--ink-soft);
++  font-size:20px;line-height:1;cursor:pointer;padding:0 2px}
++.chipdlg-x:hover{color:var(--ink)}
++.chipdlg-b{padding:14px 16px}
++.chipdlg-desc{margin:0 0 12px;font-size:13px;line-height:1.75;color:var(--ink-soft)}
++.chipdlg-row{display:flex;gap:10px;align-items:baseline;font-size:12.5px;margin-bottom:8px}
++.chipdlg-row:last-child{margin-bottom:0}
++.chipdlg-k{flex:none;color:var(--ink-soft)}
++.chipdlg-k em{font-style:normal;opacity:.75}
++.chipdlg-row code{font-family:var(--mono);background:var(--surface-2);padding:2px 8px;border-radius:5px}
++.chipdlg-kws{flex-direction:column;gap:6px}
++.chipdlg-kwlist{display:flex;flex-wrap:wrap;gap:5px;max-height:132px;overflow:auto}
++.chipdlg-kw{font-size:11.5px;background:var(--surface-2);color:var(--ink-soft);
++  padding:2px 7px;border-radius:999px}
++.chipdlg-f{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;
++  border-top:1px solid var(--line);background:var(--surface-2)}
++@media(max-width:560px){
++  .chipdlg-mask{padding:12px;align-items:flex-end}
++  .chipdlg{max-width:none}
++  .chipdlg-f .btn{flex:1}
++}
++
++/* ===================== 整本抽题：居中进度面板 ===================== */
++/* 底栏那行文字一滚就看不见了，而整本抽题动辄几分钟（载入 273 页 + 转存 343 张图），
++   必须有个不会跑掉的地方看进度。可「收起」去做别的，完成后照常弹预览。 */
++.exdlg-mask{position:fixed;inset:0;z-index:58;background:rgba(20,25,40,.38);
++  display:flex;align-items:center;justify-content:center;padding:20px}
++.exdlg{width:100%;max-width:430px;background:var(--surface);border:1px solid var(--line);
++  border-radius:var(--radius);box-shadow:0 12px 40px rgba(20,25,40,.2);overflow:hidden}
++.exdlg-h{display:flex;align-items:center;gap:9px;padding:14px 16px;border-bottom:1px solid var(--line)}
++.exdlg-title{font-size:14px;font-weight:700;color:var(--ink)}
++.exdlg-x{margin-left:auto;border:1px solid var(--line);background:var(--surface);
++  color:var(--ink-soft);font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;cursor:pointer}
++.exdlg-x:hover{border-color:var(--accent);color:var(--accent)}
++.exdlg-b{padding:14px 16px}
++
++.exstep{display:flex;align-items:baseline;gap:9px;padding:5px 0;font-size:13px}
++.exstep-dot{flex:none;width:19px;height:19px;border-radius:50%;display:inline-flex;
++  align-items:center;justify-content:center;font-size:11px;font-style:normal;font-weight:700;
++  background:var(--surface-2);color:var(--ink-soft);transform:translateY(2px)}
++.exstep-t{font-weight:600;color:var(--ink-soft);white-space:nowrap}
++.exstep-d{font-size:11.5px;color:var(--ink-soft);opacity:.7;overflow:hidden;
++  text-overflow:ellipsis;white-space:nowrap}
++.exstep.done .exstep-dot{background:var(--ok-soft);color:var(--ok)}
++.exstep.done .exstep-t{color:var(--ink-soft)}
++.exstep.run .exstep-dot{background:var(--accent);color:#fff}
++.exstep.run .exstep-t{color:var(--ink)}
++.exstep.run .exstep-d{opacity:1}
++.exstep.wait{opacity:.5}
++[data-theme=dark] .exstep.run .exstep-dot{color:var(--bg)}
++
++.exdlg-now{margin-top:12px;font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums;
++  min-height:1.4em}
++.exdlg-bar{margin-top:8px;height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden}
++.exdlg-bar i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .25s}
++/* 没有确定总数的阶段（解析/生成预览）：走一条来回滑动的条，表示"在动" */
++.exdlg-bar.indet i{width:38%;animation:exslide 1.1s ease-in-out infinite}
++@keyframes exslide{0%{margin-left:-38%}100%{margin-left:100%}}
++.exdlg-f{padding:11px 16px;border-top:1px solid var(--line);background:var(--surface-2);
++  font-size:11.5px;line-height:1.7;color:var(--ink-soft)}
++@media(max-width:560px){
++  .exdlg-mask{padding:12px}
++  .exstep-d{display:none}
++}
++@media(prefers-reduced-motion:reduce){.exdlg-bar.indet i{animation:none;width:100%;opacity:.5}}
 diff --git a/fixes.patch b/fixes.patch
 deleted file mode 100644
 index 37440a4..0000000
@@ -1068,7 +1145,7 @@ index 84cdf6f..da8fce7 100644
    for (const k of ALLOWED) {
      if (body[k] !== undefined && body[k] !== null) {
 diff --git a/functions/api/subjects.js b/functions/api/subjects.js
-index a798014..0e5eaf4 100644
+index a798014..285dcd8 100644
 --- a/functions/api/subjects.js
 +++ b/functions/api/subjects.js
 @@ -1,6 +1,17 @@
@@ -1104,12 +1181,25 @@ index a798014..0e5eaf4 100644
        await env.DB.prepare(`INSERT OR IGNORE INTO subjects (code,name,sort,keywords) VALUES (?,?,?,?)`).bind(code, name, sort, kw).run();
      }
    }
-@@ -32,7 +37,38 @@ export async function onRequestGet({ request, env }) {
+@@ -29,10 +34,51 @@ const normCode = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9_]
+ export async function onRequestGet({ request, env }) {
+   const auth = await checkAuth(request, env);
+   if (!auth.ok) return auth.resp;
++  const url = new URL(request.url);
    try {
      await ensure(env);
      const r = await env.DB.prepare(`SELECT code, name, sort, keywords FROM subjects ORDER BY sort ASC, code ASC`).all();
 -    return json({ items: (r.results || []).map((x) => ({ v: x.code, t: x.name, sort: x.sort || 0, keywords: x.keywords || '' })) });
 +    const items = (r.results || []).map((x) => ({ v: x.code, t: x.name, sort: x.sort || 0, keywords: x.keywords || '' }));
++
++    // 孤儿扫描默认【不做】：它要在 questions 和 materials 上各跑一次 GROUP BY 全表扫描，
++    // 而 loadSubjects() 在前端有 13 处调用（每次保存科目、调顺序、补关键词后都会重新拉一遍）。
++    // 上一版无条件扫，把这条本该很快的接口拖成几百毫秒起 —— 用户点「补回关键词」
++    // 半天没反应，于是连点好几次。
++    // 现在只有设置页显式带 ?orphans=1 时才扫。
++    if (!url.searchParams.get('orphans')) {
++      return json({ items, defaults: DEFAULT_SUBJECTS.map(([code, name, sort, keywords]) => ({ code, name, sort, keywords })) });
++    }
 +
 +    // 孤儿科目：题目 / 教材里引用了某个 subject，但 subjects 表里没有这一行。
 +    // 成因：科目被删（内容没跟着删或没转移），或者手工改过 subject 字段。
@@ -1144,7 +1234,7 @@ index a798014..0e5eaf4 100644
    } catch (e) {
      return json({ error: '读取科目失败：' + e.message }, 500);
    }
-@@ -46,7 +82,10 @@ export async function onRequestPost({ request, env }) {
+@@ -46,7 +92,10 @@ export async function onRequestPost({ request, env }) {
    const code = normCode(body.code || body.v);
    const name = String(body.name || body.t || '').trim();
    const sort = Number.isFinite(+body.sort) ? +body.sort : 0;
@@ -1156,7 +1246,7 @@ index a798014..0e5eaf4 100644
    if (!code) return json({ error: '科目代码只能用小写字母/数字/下划线，且不能为空' }, 400);
    if (!name) return json({ error: '请填写科目名称' }, 400);
    try {
-@@ -92,27 +131,40 @@ export async function onRequestDelete({ request, env }) {
+@@ -92,27 +141,40 @@ export async function onRequestDelete({ request, env }) {
    if (!code) return json({ error: '缺少科目代码' }, 400);
    try {
      await ensure(env);
@@ -1208,7 +1298,7 @@ index a798014..0e5eaf4 100644
      return json({ error: '删除科目失败：' + e.message }, 500);
    }
 diff --git a/js/app.js b/js/app.js
-index 51b2a7f..85a5062 100644
+index 51b2a7f..1c04efe 100644
 --- a/js/app.js
 +++ b/js/app.js
 @@ -55,12 +55,12 @@ const App={
@@ -1226,21 +1316,27 @@ index 51b2a7f..85a5062 100644
      autoSaveAi:false,  // 自动保存 AI 解析/知识点卡片到题目（默认关：手动保存更省存储/额度）
      modelPick:{ busy:false, list:[] }, modelBoxOpen:false, aiTestBusy:false,  // 「从端点拉取」到的模型候选列表
      explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
-@@ -76,10 +76,12 @@ const App={
+@@ -74,12 +74,17 @@ const App={
+     mineruCfg:{ pageLimit:1000, fileLimit:5000, tokenExp:'', token:'' },  // token：用户自己的 MinerU API Token，留空用服务端
+     mineruUsageView:{ date:'', pages:0, files:0 },
      mineruTokenBad:false,
-     bookExtract:{ busy:false, prog:'', done:0, total:0 },
+-    bookExtract:{ busy:false, prog:'', done:0, total:0 },
++    // phase: ''|page|load|parse —— 只有 load 阶段允许 _setProg 往底栏写抽题进度
++    bookExtract:{ busy:false, prog:'', done:0, total:0, phase:'', hidden:false },
      busyOps:{},   // 防重入标志，键是方法名；模板可用 :disabled="busyOps.xxx" 拿到反馈
 -    bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0 },   // AI 补答案进度
 +    bankAiFill:{ busy:false, prog:'', total:0, filled:0, skipped:0, failed:0, canceled:false, log:[], panel:false },   // AI 补答案进度（log 供过程面板逐题显示）
      extractSkippedToc:0,
      extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
      bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },
++    subjChipDlg:null,  // 内置科目 chip 的居中确认弹窗
++    subjChipBusy:'',   // 正在处理的内置科目 chip 代码（防连点）
 +    subjDefaults:[],  // 内置科目的默认定义（后端下发），供设置页渲染一键重建的 chip
 +    subjOrphans:[],   // 题目/教材引用了、但科目表里没有的 subject 代码（科目被误删的痕迹）
      subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
      bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
      pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
-@@ -148,7 +150,12 @@ const App={
+@@ -148,7 +153,12 @@ const App={
      mockResult(){ const v=Object.values(this.mock.answers); const correct=v.filter(x=>x===true).length; const half=v.filter(x=>x===0.5).length;
        return { graded:v.filter(x=>x!==null).length, correct, half, score:correct+half*0.5, total:this.mock.questions.length }; },
      curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? this.aiX.text : ''; },
@@ -1254,7 +1350,7 @@ index 51b2a7f..85a5062 100644
      curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && (this.aiX.view==='explain'||this.aiX.view==='concept')) ? (this.aiX.chat||[]) : []; },
      readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
      // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
-@@ -199,7 +206,7 @@ const App={
+@@ -199,7 +209,7 @@ const App={
        if(s){
          const view=s.view|| (genC?'concept':'explain');
          const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
@@ -1263,7 +1359,20 @@ index 51b2a7f..85a5062 100644
        } else {
          // 无会话缓存：从题目已存的 ai_cards 和 analysis 同时恢复（两者可共存）
          const savedCards = nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length ? nc.ai_cards.slice() : [];
-@@ -313,6 +320,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -227,7 +237,11 @@ const App={
+     'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
+     view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); this.$nextTick(()=>this._syncTabStrip()); },
+     mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
+-    currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ } let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender();
++    currentBookId(v){ try{ localStorage.setItem('zb_bookid', v); }catch(_){ }
++      // 切书要把抽题的进度残留清掉。否则新书的正文加载会沿用上一本的提示，
++      // 每本书底下都显示同一句「①/④ 正在载入正文…」，看着像卡住。
++      if(this.bookExtract){ this.bookExtract.prog=''; this.bookExtract.phase=''; this.bookExtract.done=0; this.bookExtract.total=0; this.bookExtract.hidden=false; }
++      let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender();
+       // 书架只载入了元信息，翻到这本书才把它的正文补齐（目录标题/阅读/抽题都依赖 content_md）
+       if(v)this.ensureBookContent(); },
+     bookIdx(v){ this.genq.result=null; try{ if(this.currentBookId)localStorage.setItem('zb_readpos:'+this.currentBookId, String(v)); }catch(_){ } },
+@@ -313,6 +327,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
          if(useStream && ct.includes('text/event-stream') && res.body){
            let acc=''; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
            try{
@@ -1272,7 +1381,7 @@ index 51b2a7f..85a5062 100644
              while(true){ const {done,value}=await reader.read(); if(done)break;
                buf+=dec.decode(value,{stream:true});
                let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
-@@ -320,6 +329,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -320,6 +336,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                  if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
                  if(j.error) throw new Error(j.error.message||String(j.error));
                  if(j.model && onDelta) onDelta({model:j.model});
@@ -1289,7 +1398,7 @@ index 51b2a7f..85a5062 100644
                  const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
                  const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
                  if(fr && onDelta) onDelta({finish_reason:fr});
-@@ -340,7 +359,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -340,7 +366,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                      else { this._thinkBuf+=t.replace('<think>',''); if(onDelta)onDelta({reasoning:t.replace('<think>','')}); }
                    } else { acc+=t; if(onDelta)onDelta({text:t, acc}); }
                  } else if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); }
@@ -1306,7 +1415,7 @@ index 51b2a7f..85a5062 100644
              return { res, text:acc, ok:true };
            }catch(e){
              if(signal && signal.aborted) throw e;
-@@ -353,6 +380,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -353,6 +387,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
            if(d && d.error) return { res, text:'', ok:false, errText:d.error };
            const txt = (d && d.text) || '';
            if(d && d.model && onDelta) onDelta({model:d.model});
@@ -1321,7 +1430,7 @@ index 51b2a7f..85a5062 100644
            if(txt && onDelta) onDelta({text:txt, acc:txt, full:true});
            return { res, text:txt, ok:true };
          }catch(e){
-@@ -362,10 +397,32 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -362,10 +404,32 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
        };
        return attempt(!stable, 2);
      },
@@ -1354,6 +1463,15 @@ index 51b2a7f..85a5062 100644
    if(vision && this.ocrCfg && (this.ocrCfg.model||'').trim()) o.vision_model=this.ocrCfg.model.trim();
    return o; },
  flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
+@@ -386,6 +450,8 @@ go(v){
+         qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
+       }
+       this.view=v;
++      // 进设置页时才做一次孤儿扫描（要全表 GROUP BY，不能放在每次 loadSubjects 里）
++      if(v==='settings' && this.token && !this._orphansScanned){ this._orphansScanned=true; this.loadSubjects(true); }
+       this._syncHash(v);
+       try{ localStorage.setItem('zb_view',v); }catch(_){}
+       if(v==='favorite' && this.fav.listMode){
 diff --git a/js/components/question-card.js b/js/components/question-card.js
 index 87b62bc..eb170bc 100644
 --- a/js/components/question-card.js
@@ -1645,23 +1763,47 @@ index c70ddef..1d254f4 100644
            <select class="bk-mini" v-model="bank.batchSubject"><option value="">改科目为…</option><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
            <button class="btn subtle" :disabled="busyOps.bankBatchSubject" @click="bankBatchSubject"><span v-if="busyOps.bankBatchSubject" class="spin"></span>应用</button>
 diff --git a/js/tpl/view-books.js b/js/tpl/view-books.js
-index b260bfd..a998d55 100644
+index b260bfd..97ea3c5 100644
 --- a/js/tpl/view-books.js
 +++ b/js/tpl/view-books.js
-@@ -229,7 +229,12 @@ const TPL_VIEW_BOOKS = `
+@@ -229,8 +229,35 @@ const TPL_VIEW_BOOKS = `
                  <button v-if="!genq.busy" class="btn subtle" :disabled="!(ai.hasAI || (explainCfg.base && explainCfg.key))" @click="genQuestionsFromMaterial" title="让 AI 依据本页内容出题（会消耗 AI 额度）"><icon name="sparkles" :size="15" /> AI 出题</button>
                  <button v-else class="btn subtle" @click="genqStop" title="停止等待（后端可能已在生成，题目仍可能入库）"><span class="spin"></span>■ 停止出题</button>
                </div>
 -              <span v-if="bookExtract.busy && bookExtract.prog" class="muted">{{ bookExtract.prog }}</span>
+-              <div class="bk-nav">
 +              <span v-if="bookExtract.busy && bookExtract.prog" class="bk-extract-prog">
 +            <span class="spin"></span>
 +            <span class="bk-extract-txt">{{ bookExtract.prog }}</span>
 +            <span v-if="bookExtract.total" class="bk-extract-bar"><i :style="{width: Math.min(100, Math.round(100*(bookExtract.done||0)/Math.max(1,bookExtract.total)))+'%'}"></i></span>
 +            <span v-else-if="matProg.total" class="bk-extract-bar"><i :style="{width: matProg.pct+'%'}"></i></span>
 +          </span>
-               <div class="bk-nav">
++              <div v-if="extractPanelOpen()" class="exdlg-mask">
++          <div class="exdlg" role="dialog" aria-modal="true" aria-label="整本抽题进度">
++            <div class="exdlg-h">
++              <span class="spin"></span>
++              <span class="exdlg-title">整本抽题入库</span>
++              <button class="exdlg-x" @click="extractPanelHide" title="收起面板，抽题继续在后台跑">收起</button>
++            </div>
++            <div class="exdlg-b">
++              <div v-for="(s,i) in extractSteps()" :key="s.k" class="exstep" :class="s.state">
++                <i class="exstep-dot">{{ s.state==='done' ? '✓' : (i+1) }}</i>
++                <span class="exstep-t">{{ s.t }}</span>
++                <span class="exstep-d">{{ s.d }}</span>
++              </div>
++              <div class="exdlg-now">{{ bookExtract.prog || '正在准备…' }}</div>
++              <div v-if="bookExtract.total" class="exdlg-bar">
++                <i :style="{width: Math.min(100, Math.round(100*(bookExtract.done||0)/Math.max(1,bookExtract.total)))+'%'}"></i>
++              </div>
++              <div v-else class="exdlg-bar indet"><i></i></div>
++            </div>
++            <div class="exdlg-f">整本书页数多、插图多时会跑几分钟。可以点「收起」去做别的，完成后会自动弹出预览。</div>
++          </div>
++        </div>
++        <div class="bk-nav">
                  <button :disabled="bookIdx<=0" @click="bookPrev"><icon name="arrow-left" :size="15" /> 上一页</button>
                  <button :disabled="bookIdx>=currentBook.pages.length-1" @click="bookNext">下一页 <icon name="arrow-right" :size="15" /></button>
+               </div>
 diff --git a/js/tpl/view-practice.js b/js/tpl/view-practice.js
 index 73c38a0..1f8fbc7 100644
 --- a/js/tpl/view-practice.js
@@ -1692,7 +1834,7 @@ index 73c38a0..1f8fbc7 100644
            <div class="q-nav-bar">
              <button class="btn subtle" :disabled="qi<=0" @click="prev"><icon name="arrow-left" :size="15" /> 上一题</button>
 diff --git a/js/tpl/view-settings.js b/js/tpl/view-settings.js
-index e0a075c..dbf86b5 100644
+index e0a075c..44b3d38 100644
 --- a/js/tpl/view-settings.js
 +++ b/js/tpl/view-settings.js
 @@ -51,6 +51,16 @@ const TPL_VIEW_SETTINGS = `
@@ -1712,20 +1854,44 @@ index e0a075c..dbf86b5 100644
          <div class="row" style="gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
            <button class="btn subtle xs" :disabled="modelPick.busy" @click="fetchModels" title="向中转站 /v1/models 拉取可用模型列表"><span v-if="modelPick.busy" class="spin"></span><icon name="download" :size="15" /> 从端点拉取</button>
            <button class="btn subtle xs" :disabled="aiTestBusy" @click="testAiConnection" title="发一条简单消息测试中转站是否通畅"><span v-if="aiTestBusy" class="spin"></span><icon name="wifi" :size="15" /> 测试连接</button>
-@@ -89,6 +99,31 @@ const TPL_VIEW_SETTINGS = `
+@@ -89,6 +99,55 @@ const TPL_VIEW_SETTINGS = `
          <div class="fold-head" @click="settFold.subjects=!settFold.subjects"><span style="font-weight:700;font-size:15px">科目管理<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px" v-if="meta.subjects&&meta.subjects.length">{{ meta.subjects.length }} 个科目</span></span><span class="fold-arrow" :class="{open:!settFold.subjects}">▾</span></div>
          <div v-show="!settFold.subjects" class="fold-body" style="margin-top:10px">
          <div class="hint" style="margin-bottom:14px">增删改科目，全站下拉自动同步。用 ▲▼ 调整顺序。「关键词」帮导入时自动归类（逗号分隔）；代码、公式、英文等特征已内置，不用填。</div>
 +        <div v-if="subjDefaults && subjDefaults.length" class="def-chips">
 +          <span class="def-chips-label">内置科目</span>
 +          <button v-for="d in subjDefaults" :key="d.code"
-+                  class="def-chip" :class="subjChipState(d)"
-+                  :disabled="subjChipState(d)==='ok'"
-+                  @click="subjRestoreDefault(d)"
-+                  :title="subjChipTip(d)">
-+            <i class="def-dot"></i>{{ d.name }}
++                  class="def-chip" :class="[subjChipState(d), {busy: subjChipBusy===d.code}]"
++                  :disabled="subjChipState(d)==='ok' || !!subjChipBusy"
++                  @click="subjChipClick(d)">
++            <span v-if="subjChipBusy===d.code" class="spin"></span>
++            <i v-else class="def-dot"></i>{{ d.name }}
 +          </button>
 +          <span class="def-chips-tip">灰点＝正常；黄点＝缺默认关键词，点一下补回；蓝点＝科目已被删除，点一下按原代码重建（内容自动归位）</span>
++        </div>
++        <div v-if="subjChipDlg" class="chipdlg-mask" @click.self="subjChipDlgClose">
++          <div class="chipdlg" role="dialog" aria-modal="true">
++            <div class="chipdlg-h">
++              <i class="def-dot" :class="subjChipDlg.state"></i>
++              <span>{{ subjChipDlg.title }}</span>
++              <button class="chipdlg-x" :disabled="!!subjChipBusy" @click="subjChipDlgClose">×</button>
++            </div>
++            <div class="chipdlg-b">
++              <p class="chipdlg-desc">{{ subjChipDlg.desc }}</p>
++              <div class="chipdlg-row"><span class="chipdlg-k">科目代码</span><code>{{ subjChipDlg.code_hint }}</code></div>
++              <div v-if="subjChipDlg.moved" class="chipdlg-row"><span class="chipdlg-k">会归位</span><b>{{ subjChipDlg.moved }}</b></div>
++              <div v-if="subjChipDlg.kws.length" class="chipdlg-row chipdlg-kws">
++                <span class="chipdlg-k">默认关键词 <em>{{ subjChipDlg.kws.length }} 个</em></span>
++                <span class="chipdlg-kwlist"><span v-for="k in subjChipDlg.kws" :key="k" class="chipdlg-kw">{{ k }}</span></span>
++              </div>
++            </div>
++            <div class="chipdlg-f">
++              <button class="btn subtle" :disabled="!!subjChipBusy" @click="subjChipDlgClose">取消</button>
++              <button class="btn" :disabled="!!subjChipBusy" @click="subjChipDlgOk">
++                <span v-if="subjChipBusy" class="spin"></span>{{ subjChipDlg.state==='nokw' ? '补回关键词' : '重建科目' }}
++              </button>
++            </div>
++          </div>
 +        </div>
 +        <div v-if="subjOrphans && subjOrphans.length" class="orphan-box">
 +          <div class="orphan-title">⚠ 发现 {{ subjOrphans.length }} 个「无主内容」</div>
@@ -1903,27 +2069,49 @@ index a007d78..dae8278 100644
          // 合并交给服务端（addTags）：一个请求搞定任意条数，
          // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。
 diff --git a/js/views/books.js b/js/views/books.js
-index 9f08e09..e68e3ab 100644
+index 9f08e09..6a2aa46 100644
 --- a/js/views/books.js
 +++ b/js/views/books.js
-@@ -33,7 +33,15 @@ async deleteCurrentBook(){ return this.deleteBook(this.currentBook); },
+@@ -33,7 +33,20 @@ async deleteCurrentBook(){ return this.deleteBook(this.currentBook); },
  async deleteBook(b){ if(!b){ this.flash('请先选择书籍',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!confirm('确定删除《'+b.title+'》及其全部 '+b.pages.length+' 页？此操作不可恢复（题库不受影响）。')) return; const ids=b.pages.map(m=>m.id).filter(Boolean); try{ const d=await this.api('/api/materials',{method:'DELETE',body:JSON.stringify({ids})}); this.flash('已删除《'+b.title+'》，共 '+(d.deleted||ids.length)+' 页'); try{ localStorage.removeItem('zb_readpos:'+b.key); }catch(_){ } if(this.currentBookId===b.key){ this.currentBookId=''; this.bookIdx=0; } await this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); } },
  // 数字进度：total>0 时前端进度条走确定进度并显示 百分比 · cur/total
  _setProg(cur,total,unit){ const t=Math.max(0,total|0), c=Math.min(Math.max(0,cur|0),t||Infinity);
 -      this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' }; },
 +      this.matProg={ cur:c, total:t, pct: t? Math.min(100,Math.round(c/t*100)) : 0, unit:unit||'段' };
-+      // 整本抽题正在跑时，把同一份进度镜像到底栏那句提示上。
++      // 整本抽题的载入阶段，把同一份进度镜像到底栏那句提示上。
 +      // matProg 的进度条渲染在书架顶部，而「整本抽题入库」按钮在页面底栏 ——
-+      // 点完按钮往往已经滚不到顶部了，底栏又只显示一句静态的「正在载入正文 273 页…」，
-+      // 于是看起来像卡死。
-+      if(this.bookExtract&&this.bookExtract.busy&&t){
++      // 点完按钮往往已经滚不到顶部了，只显示一句静态提示就像卡死。
++      //
++      // 必须用 phase 精确门控，不能只看 busy：_setProg 还被书架加载（loadMaterials）
++      // 和任意翻页取正文（_runMatFill）调用。只看 busy 的话——
++      //   · 「本页抽题」也会被贴上「①/④ 正在载入正文」这种整本流程的标签
++      //   · 抽题途中切到别的书，新书的正文加载会继续往底栏写抽题进度，
++      //     于是每本书底下都显示同一句、看着像卡住（v- 这一版实测到了）
++      if(this.bookExtract&&this.bookExtract.phase==='load'&&t){
 +        this.bookExtract.prog='①/④ 正在载入正文 '+c+' / '+t+' 页（'+this.matProg.pct+'%）…';
 +        this.bookExtract.done=c; this.bookExtract.total=t;
 +      } },
  _clearProg(){ this.matProg={ cur:0, total:0, pct:0, unit:'段' }; },
  async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } this.materials.loading=true; this.loadProgMsg='正在请求…';
        // 书架只拉元信息（meta=1，不含 content_md）并翻页拉全：
-@@ -221,7 +229,18 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
+@@ -67,6 +80,16 @@ async loadMaterials(){ if(!this.token){ this.materials.loaded=true; return; } th
+ // matFilling 是 id -> 正在拉这一页的 Promise。关键点：撞上在途必须 **await 同一个 Promise**，
+ // 不能「看到在途就直接 return」——那样 ensureBookContent 根本没"确保"到任何事，
+ // 整本抽题会在正文只载入一半时开跑，静默少掉几百道题（线上实测 665 → 430）。
++// 只补齐指定的几页正文。本页抽题只用到当前页，没必要为了一页去载入整本
++// （388 页那本要等十几秒，用户看到的就是按钮一直转）。
++async ensurePagesContent(mats){
++      const list=(Array.isArray(mats)?mats:[mats]).filter(m=>m&&m.content_md===undefined&&m.id);
++      if(!list.length)return;
++      const ids=list.map(m=>m.id);
++      const waiting=[]; const todo=[];
++      for(const id of ids){ const p=matFilling.get(id); if(p)waiting.push(p); else todo.push(id); }
++      if(todo.length)await this._fillMatContent(todo, (this.currentBook&&this.currentBook.title)||'');
++      if(waiting.length)await Promise.allSettled(waiting); },
+ async ensureBookContent(book){
+       book=book||this.currentBook; if(!book||!book.pages||!book.pages.length)return;
+       for(let round=0;round<3;round++){          // 拉完自己那批，再回头确认没有别人漏下的
+@@ -221,7 +244,18 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
            question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页的图片提问，请先识别图中文字再回答）', type:'short_answer', subject:'教材' },
            analysis:'', history, ask:q };
        }
@@ -1944,7 +2132,7 @@ index 9f08e09..e68e3ab 100644
        if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
        if(!entry.a) entry.a='_（模型没有返回内容）_';
 diff --git a/js/views/ingest.js b/js/views/ingest.js
-index 209d29a..4f326bd 100644
+index 209d29a..eea48f8 100644
 --- a/js/views/ingest.js
 +++ b/js/views/ingest.js
 @@ -205,19 +205,48 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
@@ -2256,12 +2444,67 @@ index 209d29a..4f326bd 100644
            if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:swap(o.text)}));
            if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
        }
-@@ -536,14 +670,15 @@ async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写
+@@ -511,11 +645,17 @@ _yieldToPaint(){ return new Promise(r=>{ let done=false;
+       try{ requestAnimationFrame(()=>requestAnimationFrame(fin)); }catch(_){ fin(); } }); },
+ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+       if(this.bookExtract.busy)return;                            // 防重入：慢的时候用户会连点
+-      this.bookExtract.busy=true; this.bookExtract.prog='正在准备正文…';
++      this.bookExtract.busy=true; this.bookExtract.phase='page'; this.bookExtract.prog='正在准备正文…';
+       try{
+         await this._yieldToPaint();
+-        if(this.ensureBookContent)await this.ensureBookContent();  // 书架只带元信息，抽题前先确保本书正文已载入
++        // 只补当前这一页的正文。本页抽题全程只读 currentPageMat.content_md，
++        // 原来却调 ensureBookContent() 把整本都拉下来 —— 388 页那本要干等十几秒，
++        // 用户看到的就是按钮一直转（而且中途切书还会串进度）。
++        const m0=this.currentPageMat;
++        if(this.ensurePagesContent)await this.ensurePagesContent(m0);
++        else if(this.ensureBookContent)await this.ensureBookContent();
+         const m=this.currentPageMat; if(!m){ this.flash('请先选择一页',true); return; }
++        if(m.content_md===undefined){ this.flash('这一页正文没载入成功，请重试',true); return; }
+         if(this._looksLikeTocPage(m.content_md)){ this.flash('这一页是书本目录，不是习题页（目录行会被误判成题目，已跳过）',true); return; }
+         this.bookExtract.prog='正在解析本页…'; await this._yieldToPaint();
+         const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
+@@ -526,36 +666,64 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写
+       // 必须有 catch：只有 try/finally 的话异常会变成 unhandled rejection，
+       // busy 复位了、界面却一个字都不说 —— 用户看到的就是「点了没反应」。
+       } catch(e){ if(e.message!=='unauth')this.flash('本页抽题失败：'+e.message,true); }
+-      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
++      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; this.bookExtract.phase=''; this.bookExtract.done=0; this.bookExtract.total=0; } },
++// 整本抽题的居中进度面板要展示的四步。底栏那行文字滚出视野就看不见了，
++// 而整本抽题动辄几分钟（载入 273 页 + 转存 343 张图），必须有个不会跑掉的地方看进度。
++extractSteps(){
++  const cur=(this.bookExtract&&this.bookExtract.phase)||'';
++  const order=['load','parse','img','preview'];
++  const at=order.indexOf(cur);
++  return [
++    { k:'load',    t:'载入正文',   d:'从服务端取每页 Markdown' },
++    { k:'parse',   t:'解析题目',   d:'按规则切分题干、选项、答案' },
++    { k:'img',     t:'转存插图',   d:'内嵌图片上传到 R2，换成短链' },
++    { k:'preview', t:'生成预览',   d:'去重、排序，准备勾选界面' },
++  ].map((x,i)=>Object.assign(x,{
++    state: at<0 ? 'wait' : (i<at ? 'done' : (i===at ? 'run' : 'wait')),
++  }));
++},
++extractPanelOpen(){
++  const b=this.bookExtract||{};
++  // 只在整本抽题时弹（本页抽题现在只拉一页，快得没必要打断视线）
++  return !!(b.busy && !b.hidden && ['load','parse','img','preview'].includes(b.phase));
++},
++extractPanelHide(){ if(this.bookExtract)this.bookExtract.hidden=true; },
+ async localExtractBook(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+       if(this.bookExtract.busy)return;                            // 防重入
+-      this.bookExtract.busy=true;
++      this.bookExtract.busy=true; this.bookExtract.hidden=false;
+       try{ return await this._localExtractBookInner(); }
+       catch(e){ if(e.message!=='unauth')this.flash('整本抽题失败：'+e.message,true); }
+-      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; } },
++      finally { this.bookExtract.busy=false; this.bookExtract.prog=''; this.bookExtract.phase=''; this.bookExtract.done=0; this.bookExtract.total=0; } },
  async _localExtractBookInner(){
        const b0=this.currentBook;
        const need=this.matMissingCount?this.matMissingCount(b0):0;
 -      this.bookExtract.prog=need? ('正在载入正文 '+need+' 页…') : '正在准备…';
 +      this.bookExtract.done=0; this.bookExtract.total=0;
++      this.bookExtract.phase='load';        // 只有这一段允许 _setProg 往底栏写进度
 +      this.bookExtract.prog=need? ('①/④ 正在载入正文 0 / '+need+' 页…') : '①/④ 正文已就绪';
        await this._yieldToPaint();
        if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md
@@ -2270,15 +2513,18 @@ index 209d29a..4f326bd 100644
        const missing=this.matMissingCount?this.matMissingCount(b):0;
        if(missing){ this.flash('这本书还有 '+missing+' 页正文没载入完，请等进度条走完再抽题',true); return; }
 -      this.bookExtract.prog='正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
++      this.bookExtract.phase='parse';       // 载入结束，后面的 _setProg 不该再改底栏
 +      this.bookExtract.prog='②/④ 正在解析全书 '+b.pages.length+' 页…'; await this._yieldToPaint();
        const all=this._extractWholeBook(b);
        if(!all.length){ this.flash('整本书没解析出题目（可能这本不是习题集）',true); return; }
        // 题量大时先给预期：规则抽取在扫描/OCR 文本上会把页眉、目录行误判成题目
-@@ -551,11 +686,13 @@ async _localExtractBookInner(){
+       const noAns=all.filter(q=>!(q.answer&&q.answer.length)).length;
        if(all.length>800 && !confirm('整本解析出 '+all.length+' 题，其中 '+noAns+' 题没抽到答案。\n\n题量较大，规则抽取可能把页眉/目录行误判成题目，建议在预览里筛一遍再导入（可用「勾选/取消无答案的题」快速排除）。\n\n继续打开预览？'))return;
++      this.bookExtract.phase='img';
        const ist=await this._hoistImages(all);
        if(ist.failed)this.flash(ist.failed+' 张插图没能转存到 R2（已保留内嵌，可能偏大）',true);
 +      this.bookExtract.done=0; this.bookExtract.total=0;
++      this.bookExtract.phase='preview';
 +      this.bookExtract.prog='④/④ 正在生成预览…'; await this._yieldToPaint();
        const tocNote=this.extractSkippedToc? '（已跳过 '+this.extractSkippedToc+' 页目录）':'';
        this._openPreview(all, '《'+b.title+'》整本'+tocNote+'（预览）', b.subject, b.title); },
@@ -2489,19 +2735,21 @@ index 905810d..c300c53 100644
    if(!c || this.aiX.asking) return;
    const q=c.q; list.splice(i,1);
 diff --git a/js/views/settings.js b/js/views/settings.js
-index 9bd9152..581dca6 100644
+index 9bd9152..dff4b49 100644
 --- a/js/views/settings.js
 +++ b/js/views/settings.js
-@@ -8,36 +8,142 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
+@@ -8,36 +8,172 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
        if(has('english')&&len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
        for(const sub of this.subjects){ const kws=String(sub.keywords||'').split(/[，,;；\s]+/).map(k=>k.trim()).filter(k=>k.length>=2); for(const k of kws){ if(s.includes(k))return sub.v; } }
        return ''; },
 -async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); } }catch(e){} },
-+async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); }
++// withOrphans=true 只在设置页首次进入时用一次：孤儿扫描要全表 GROUP BY，
++// 而这个方法在保存科目/调顺序/补关键词之后都会被调，无条件扫会把每次操作都拖慢。
++async loadSubjects(withOrphans){ if(!this.token)return; try{ const d=await this.api('/api/subjects'+(withOrphans?'?orphans=1':'')); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); }
 +  // 孤儿科目：题目/教材引用了某个 subject 但科目表里没有这一行。
 +  // 不显示出来的话，用户只会看到教材列表的分组标题变成原始代码（「politics 1 本」），
 +  // 完全不知道发生了什么、更不知道重建科目时代码必须一模一样。
-+  this.subjOrphans=Array.isArray(d&&d.orphans)?d.orphans:[];
++  if(Array.isArray(d&&d.orphans))this.subjOrphans=d.orphans;   // 不带 orphans=1 的调用不覆盖已有结果
 +  this.subjDefaults=Array.isArray(d&&d.defaults)?d.defaults:[];
 +  }catch(e){} },
 +// 一键重建某个内置科目（灰色 chip）。代码取内置定义，名称和关键词也一并恢复，
@@ -2518,34 +2766,62 @@ index 9bd9152..581dca6 100644
 +  if(st==='nokw')return '「'+d.name+'」没有关键词，点一下补回默认值';
 +  return '科目「'+d.name+'」不存在，点一下按代码 '+d.code+' 重建';
 +},
++// chip 点击 → 打开居中弹窗说明要做什么，由弹窗里的按钮确认。
++// 不用浏览器原生 confirm：它弹在屏幕顶部、样式不可控，而且没法展示关键词列表。
++subjChipClick(d){
++  if(!d || !d.code || this.subjChipBusy)return;
++  const st=this.subjChipState(d);
++  if(st==='ok')return;
++  const cur=(this.subjects||[]).find(x=>x.v===d.code);
++  const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
++  const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
++  const kws=String(d.keywords||'').split(',').map(x=>x.trim()).filter(Boolean);
++  this.subjChipDlg={
++    code:d.code, name:d.name, state:st, def:d,
++    title: st==='nokw' ? ('补回「'+d.name+'」的默认关键词') : ('重建科目「'+d.name+'」'),
++    desc: st==='nokw'
++      ? '这个科目现在没有关键词，导入时无法自动归类。下面是内置的默认关键词，确认后写入。'
++      : (what ? ('目前有 '+what+' 挂在代码 '+d.code+' 下（科目被删过）。按原代码重建后，这些内容会自动归位。')
++              : ('将按代码 '+d.code+' 重建这个科目，并恢复它的默认关键词。')),
++    code_hint:d.code, kws, moved:what,
++  };
++},
++subjChipDlgClose(){ if(!this.subjChipBusy)this.subjChipDlg=null; },
++async subjChipDlgOk(){
++  const dlg=this.subjChipDlg; if(!dlg || this.subjChipBusy)return;
++  await this.subjRestoreDefault(dlg.def);
++  if(!this.subjChipBusy)this.subjChipDlg=null;
++},
++// 实际干活。确认已经在弹窗里做过了，这里不再 confirm。
 +async subjRestoreDefault(d){
 +  if(!d || !d.code)return;
++  // 防连点：一次要等 PATCH/POST + 重新拉科目列表，慢的时候用户会以为没反应而反复按，
++  // 结果同一个科目被重复写好几次（上一版就是这样）。
++  if(this.subjChipBusy)return;
 +  const cur=(this.subjects||[]).find(x=>x.v===d.code);
 +  if(cur){
-+    // 科目已存在但关键词是空的 —— 这是「先手工重建、后来才有默认回填」留下的状态：
-+    // 回填只在 POST 新建时生效，已存在的行不会被动，所以关键词一直空着。
-+    // 这种情况点 chip 就是把默认关键词补回去。
 +    if(String(cur.keywords||'').trim()){ this.flash('科目「'+cur.t+'」已存在且有关键词',true); return; }
-+    if(!confirm('把「'+cur.t+'」的默认关键词补回来？\n\n'+(d.keywords||'').split(',').slice(0,6).join('、')+'…（共 '+(d.keywords||'').split(',').filter(Boolean).length+' 个）'))return;
++    this.subjChipBusy=d.code;
 +    try{
 +      await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({
 +        code:cur.v, name:cur.t, sort:Number(cur.sort)||0, keywords:d.keywords||'' })});
 +      this.flash('已补回「'+cur.t+'」的默认关键词');
 +      await this.loadSubjects();
 +    }catch(e){ if(e.message!=='unauth')this.flash('补回失败：'+e.message,true); }
++    finally{ this.subjChipBusy=''; }
 +    return;
 +  }
 +  const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
 +  const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
-+  if(!confirm('重建内置科目「'+d.name+'」（代码 '+d.code+'）？'
-+    +(what?('\n\n目前有 '+what+' 挂在这个代码下，重建后会自动归位。'):'\n\n将恢复它的默认关键词。')))return;
++  this.subjChipBusy=d.code;
 +  try{
 +    await this.api('/api/subjects',{method:'POST',body:JSON.stringify({
 +      code:d.code, name:d.name, sort:d.sort||((this.subjects.length+1)*10), keywords:d.keywords||'' })});
 +    this.flash('已重建科目「'+d.name+'」'+(what?('，'+what+' 已归位'):''));
-+    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
++    await this.loadSubjects(true); this.loadMeta&&this.loadMeta(true);
 +    if(what){ this.bankDirty=true; this.statsDirty=true; }
 +  }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
++  finally{ this.subjChipBusy=''; }
 +},
 +// 一键重建缺失的科目：代码必须和内容里引用的完全一致，内容才会自动归位
 +async subjRestoreOrphan(o){
@@ -2604,7 +2880,7 @@ index 9bd9152..581dca6 100644
 -    if(e.message!=='unauth')this.flash('\u5220\u9664\u5931\u8d25\uff1a'+e.message,true);
 +    if(e && e.message!=='unauth')this.flash('无法读取科目内容：'+e.message,true);
 +    return;
-+  }
+   }
 +
 +  // 空科目也要确认。科目配置（代码、名称、关键词、排序）删了就没了，
 +  // 而这个按钮就挨着「保存」，手滑代价不该是静默丢失。
@@ -2616,7 +2892,7 @@ index 9bd9152..581dca6 100644
 +      await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
 +    }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); }
 +    return;
-   }
++  }
 +
 +  const what=[q?(q+' 道题目'):'', m?(m+' 页教材'):''].filter(Boolean).join(' 和 ');
 +  // 优先引导「转移」而不是「删除」——后端一直支持 moveTo，前端以前没用上
@@ -3616,10 +3892,10 @@ index 0000000..800d1a5
 +});
 diff --git a/tests/book-extract-progress.test.mjs b/tests/book-extract-progress.test.mjs
 new file mode 100644
-index 0000000..89b2d52
+index 0000000..e98fc38
 --- /dev/null
 +++ b/tests/book-extract-progress.test.mjs
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,378 @@
 +// 整本抽题看起来「卡死」：点完按钮很久没反应，用户不知道进行到哪一步。
 +//
 +// 排查结果：进度其实一直在设，但摆错了地方 ——
@@ -3638,32 +3914,81 @@ index 0000000..89b2d52
 +const Books = new Function(read('js/views/books.js') + ';return BooksMixin;')();
 +
 +describe('载入正文的进度镜像到底栏', () => {
-+  const mk = (busy) => ({ bookExtract: { busy, prog: '', done: 0, total: 0 }, matProg: {} });
-+  it('抽题进行中：底栏显示实时页数和百分比', () => {
-+    const c = mk(true);
++  // 门控必须是 phase==='load'，不能只看 busy。
++  // _setProg 还被书架加载（loadMaterials）和任意翻页取正文（_runMatFill）调用，
++  // 只看 busy 会造成两个线上实测到的问题：
++  //   · 「本页抽题」被贴上「①/④ 正在载入正文」这种整本流程的标签
++  //   · 抽题途中切到别的书，新书的正文加载继续往底栏写抽题进度，
++  //     每本书底下都显示同一句，看着像卡住
++  const mk = (phase) => ({ bookExtract: { busy: !!phase, phase: phase || '', prog: '', done: 0, total: 0 }, matProg: {} });
++  it('载入阶段：底栏显示实时页数和百分比', () => {
++    const c = mk('load');
 +    Books.methods._setProg.call(c, 120, 273, '页');
 +    expect(c.bookExtract.prog).toBe('①/④ 正在载入正文 120 / 273 页（44%）…');
 +  });
 +  it('同时喂给底栏的进度条', () => {
-+    const c = mk(true);
++    const c = mk('load');
 +    Books.methods._setProg.call(c, 120, 273, '页');
 +    expect(c.bookExtract.done).toBe(120);
 +    expect(c.bookExtract.total).toBe(273);
 +  });
++  it('本页抽题（phase=page）不蹭整本的标签', () => {
++    const c = mk('page');
++    c.bookExtract.prog = '正在准备正文…';
++    Books.methods._setProg.call(c, 120, 273, '页');
++    expect(c.bookExtract.prog).toBe('正在准备正文…');
++  });
++  it('解析阶段之后不再被载入进度改写', () => {
++    const c = mk('parse');
++    c.bookExtract.prog = '②/④ 正在解析全书 273 页…';
++    Books.methods._setProg.call(c, 5, 10, '页');
++    expect(c.bookExtract.prog).toBe('②/④ 正在解析全书 273 页…');
++  });
 +  it('不在抽题时不污染底栏（书架自己加载也会调 _setProg）', () => {
-+    const c = mk(false);
++    const c = mk('');
++    Books.methods._setProg.call(c, 50, 100, '页');
++    expect(c.bookExtract.prog).toBe('');
++  });
++  it('busy 为真但 phase 已清空时也不写（切书后的残留场景）', () => {
++    const c = { bookExtract: { busy: true, phase: '', prog: '', done: 0, total: 0 }, matProg: {} };
 +    Books.methods._setProg.call(c, 50, 100, '页');
 +    expect(c.bookExtract.prog).toBe('');
 +  });
 +  it('总数为 0 时不写（避免出现「0 / 0」）', () => {
-+    const c = mk(true);
++    const c = mk('load');
 +    Books.methods._setProg.call(c, 0, 0, '页');
 +    expect(c.bookExtract.prog).toBe('');
 +  });
 +  it('matProg 本身照常更新，顶部进度条不受影响', () => {
-+    const c = mk(true);
++    const c = mk('load');
 +    Books.methods._setProg.call(c, 120, 273, '页');
 +    expect(c.matProg).toMatchObject({ cur: 120, total: 273, pct: 44, unit: '页' });
++  });
++});
++
++describe('切书要清掉抽题进度残留', () => {
++  const app = read('js/app.js');
++  const ing = read('js/views/ingest.js');
++  it('currentBookId 的 watcher 里重置（含收起状态）', () => {
++    expect(app).toContain("this.bookExtract.phase=''");
++    expect(app).toContain('this.bookExtract.hidden=false;');
++  });
++  it('phase / hidden 字段都有声明', () => {
++    expect(app).toContain("bookExtract:{ busy:false, prog:'', done:0, total:0, phase:'', hidden:false }");
++  });
++  it('两个抽题入口的 finally 都清 phase 和进度条', () => {
++    const fins = ing.match(/finally \{ this\.bookExtract\.busy=false;[^}]*\}/g) || [];
++    expect(fins).toHaveLength(2);
++    for (const f of fins) {
++      expect(f).toContain("phase=''");
++      expect(f).toContain('done=0');
++      expect(f).toContain('total=0');
++    }
++  });
++  it('整本流程按阶段推进 phase', () => {
++    expect(ing).toContain("this.bookExtract.phase='load';");
++    expect(ing).toContain("this.bookExtract.phase='parse';");
++    expect(ing).toContain("this.bookExtract.phase='page';");
 +  });
 +});
 +
@@ -3682,7 +4007,7 @@ index 0000000..89b2d52
 +    expect(src).toContain("'③/④ 正在转存插图 '+done+' / '+seen.size+'…'");
 +  });
 +  it('进入预览前清掉进度条，避免残留', () => {
-+    expect(src).toContain("this.bookExtract.done=0; this.bookExtract.total=0;\n      this.bookExtract.prog='④/④ 正在生成预览…'");
++    expect(src).toContain("this.bookExtract.done=0; this.bookExtract.total=0;\n      this.bookExtract.phase='preview';");
 +  });
 +  it('导入阶段的提示带单位', () => {
 +    expect(src).toMatch(/正在导入 .+ 题…/);
@@ -3831,6 +4156,122 @@ index 0000000..89b2d52
 +      expect(t).toContain('https://r2/ok.png');
 +      expect(t).not.toContain('base64');
 +    }
++  });
++});
++
++// 本页抽题原来调 ensureBookContent()，把整本都拉下来 —— 388 页那本要干等十几秒，
++// 用户看到的就是按钮一直转。它全程只读 currentPageMat.content_md，一页都不需要别的。
++describe('本页抽题只载入当前页', () => {
++  const Books2 = new Function(read('js/views/books.js') + ';return BooksMixin;')();
++  const mk = () => {
++    const filled = [];
++    return Object.assign(Object.create(Books2.methods), {
++      filled,
++      currentBook: { title: '高数上', pages: Array.from({ length: 388 }, (_, i) => ({ id: 'm' + i, page: i + 1 })) },
++      _fillMatContent: async (ids) => { filled.push(...ids); },
++    });
++  };
++  it('只拉当前这一页，不是整本', async () => {
++    const c = mk();
++    await c.ensurePagesContent(c.currentBook.pages[15]);
++    expect(c.filled).toEqual(['m15']);
++  });
++  it('正文已在本地就不发请求', async () => {
++    const c = mk();
++    await c.ensurePagesContent({ id: 'm3', content_md: '已有正文' });
++    expect(c.filled).toEqual([]);
++  });
++  it('空输入 / null 不炸', async () => {
++    const c = mk();
++    await c.ensurePagesContent(null);
++    await c.ensurePagesContent([]);
++    await c.ensurePagesContent([null, undefined]);
++    expect(c.filled).toEqual([]);
++  });
++  it('可以一次补多页（跨页题目将来会用到）', async () => {
++    const c = mk();
++    await c.ensurePagesContent([c.currentBook.pages[0], c.currentBook.pages[1]]);
++    expect(c.filled).toEqual(['m0', 'm1']);
++  });
++  it('localExtractPage 改用 ensurePagesContent，并保留旧方法作兜底', () => {
++    const ing = read('js/views/ingest.js');
++    expect(ing).toContain('if(this.ensurePagesContent)await this.ensurePagesContent(m0);');
++    expect(ing).toContain('else if(this.ensureBookContent)await this.ensureBookContent();');
++  });
++  it('正文没载入成功要报错，不能拿 undefined 去解析', () => {
++    expect(read('js/views/ingest.js')).toContain("if(m.content_md===undefined){ this.flash('这一页正文没载入成功，请重试',true); return; }");
++  });
++  it('整本抽题仍然用 ensureBookContent（它确实需要全书）', () => {
++    expect(read('js/views/ingest.js')).toContain('if(this.ensureBookContent)await this.ensureBookContent();   // 同上：整本抽题依赖每页 content_md');
++  });
++});
++
++// 底栏那行文字一滚就看不见了，而整本抽题动辄几分钟（载入 273 页 + 转存 343 张图）。
++// 加一个居中面板，四步进度一目了然，可「收起」去做别的。
++describe('整本抽题的居中进度面板', () => {
++  const Ing = new Function(read('js/views/ingest.js') + ';return IngestMixin;')().methods;
++  const mk = (phase, extra = {}) => Object.assign(Object.create(Ing), {
++    bookExtract: Object.assign({ busy: !!phase, phase: phase || '', prog: '', done: 0, total: 0, hidden: false }, extra),
++  });
++
++  it('四步的顺序和当前步高亮', () => {
++    const steps = mk('img').extractSteps();
++    expect(steps.map((s) => s.k)).toEqual(['load', 'parse', 'img', 'preview']);
++    expect(steps.map((s) => s.state)).toEqual(['done', 'done', 'run', 'wait']);
++  });
++  it('第一步进行中时后面三步都是等待', () => {
++    expect(mk('load').extractSteps().map((s) => s.state)).toEqual(['run', 'wait', 'wait', 'wait']);
++  });
++  it('最后一步进行中时前三步都已完成', () => {
++    expect(mk('preview').extractSteps().map((s) => s.state)).toEqual(['done', 'done', 'done', 'run']);
++  });
++  it('没在跑时全部是等待，不会误标完成', () => {
++    expect(mk('').extractSteps().every((s) => s.state === 'wait')).toBe(true);
++  });
++
++  it('只在整本抽题的四个阶段弹出', () => {
++    for (const p of ['load', 'parse', 'img', 'preview']) expect(mk(p).extractPanelOpen()).toBe(true);
++  });
++  it('本页抽题不弹（现在只拉一页，快得没必要打断视线）', () => {
++    expect(mk('page').extractPanelOpen()).toBe(false);
++  });
++  it('没在跑时不弹', () => {
++    expect(mk('').extractPanelOpen()).toBe(false);
++    expect(mk('load', { busy: false }).extractPanelOpen()).toBe(false);
++  });
++  it('收起后不再弹，但抽题继续（busy 仍为真）', () => {
++    const c = mk('load');
++    c.extractPanelHide();
++    expect(c.bookExtract.hidden).toBe(true);
++    expect(c.bookExtract.busy).toBe(true);
++    expect(c.extractPanelOpen()).toBe(false);
++  });
++  it('每次开始整本抽题都重新展开（上次收起过也不影响）', () => {
++    expect(read('js/views/ingest.js')).toContain('this.bookExtract.busy=true; this.bookExtract.hidden=false;');
++  });
++
++  const tpl = read('js/tpl/view-books.js');
++  const css = read('css/style.css');
++  it('模板渲染四步、当前提示和进度条', () => {
++    expect(tpl).toContain('v-for="(s,i) in extractSteps()"');
++    expect(tpl).toContain('bookExtract.prog');
++    expect(tpl).toContain('exdlg-bar');
++  });
++  it('总数未知的阶段用不定长滑动条，而不是假装 0%', () => {
++    expect(tpl).toContain('exdlg-bar indet');
++    expect(css).toContain('.exdlg-bar.indet i{width:38%;animation:exslide');
++  });
++  it('居中显示', () => {
++    expect(css).toContain('.exdlg-mask{position:fixed;inset:0');
++    expect(css).toContain('align-items:center;justify-content:center');
++  });
++  it('有「收起」而不是「取消」——目前没有中止抽题的能力，不能给假按钮', () => {
++    expect(tpl).toContain('extractPanelHide');
++    expect(tpl).toContain('收起');
++    expect(tpl).not.toMatch(/exdlg[\s\S]{0,400}取消/);
++  });
++  it('减少动效偏好下不跑动画', () => {
++    expect(css).toContain('@media(prefers-reduced-motion:reduce){.exdlg-bar.indet i{animation:none');
 +  });
 +});
 diff --git a/tests/chat-scope-bankfill.test.mjs b/tests/chat-scope-bankfill.test.mjs
@@ -4116,6 +4557,18 @@ index 0000000..a15485d
 +    expect(tpl).toContain('回到底部');
 +  });
 +});
+diff --git a/tests/click-handlers.test.mjs b/tests/click-handlers.test.mjs
+index 36b1137..85cd294 100644
+--- a/tests/click-handlers.test.mjs
++++ b/tests/click-handlers.test.mjs
+@@ -68,6 +68,7 @@ describe('async 点击处理器必须处理异常', () => {
+     pickBookSubject: '_setBookSubjectPages 内部已 try/catch',
+     subjMove: 'subjReorder 内部已 try/catch',
+     mineruConvert: '无 await，纯同步分发',
++    subjChipDlgOk: 'subjRestoreDefault 内部已 try/catch/finally',
+   };
+ 
+   // 位置断言必须在「剥掉注释」的代码上做：注释里出现 finally / catch 这类词会让下标失真
 diff --git a/tests/extract-mineru-junk.test.mjs b/tests/extract-mineru-junk.test.mjs
 index e1b2c11..ca979bf 100644
 --- a/tests/extract-mineru-junk.test.mjs
@@ -5397,10 +5850,10 @@ index bb047cd..100402c 100644
  import { onRequestDelete as subjDelete } from '../functions/api/subjects.js';
 diff --git a/tests/subject-orphans.test.mjs b/tests/subject-orphans.test.mjs
 new file mode 100644
-index 0000000..628d4ba
+index 0000000..7e2487d
 --- /dev/null
 +++ b/tests/subject-orphans.test.mjs
-@@ -0,0 +1,216 @@
+@@ -0,0 +1,282 @@
 +// 两个后续问题，都是「科目被误删」的余波：
 +//
 +//  ① 重建科目后关键词没了。种子只在【表完全为空】时才灌（ensure 里 if(!c.n)），
@@ -5425,7 +5878,14 @@ index 0000000..628d4ba
 +  { match: /FROM questions WHERE subject IS NOT NULL/i, value: q },
 +  { match: /FROM materials WHERE subject IS NOT NULL/i, value: m },
 +]);
-+const get = async (db) => (await getSubjects({ request: authedReq('http://x/api/subjects'), env: Object.assign(makeEnv(db), { DB: db }) })).json();
++// 孤儿扫描要在 questions/materials 上各跑一次 GROUP BY 全表扫描，
++// 而 loadSubjects() 前端有 13 处调用（每次保存科目/调顺序/补关键词后都会重拉）。
++// 所以改成显式 ?orphans=1 才扫 —— 上一版无条件扫，把这条接口拖成几百毫秒，
++// 用户点「补回关键词」半天没反应就连点好几次。
++const get = async (db, withOrphans = true) => (await getSubjects({
++  request: authedReq('http://x/api/subjects' + (withOrphans ? '?orphans=1' : '')),
++  env: Object.assign(makeEnv(db), { DB: db }),
++})).json();
 +const post = async (db, body) => postSubject({
 +  request: authedReq('http://x/api/subjects', { method: 'POST', body: JSON.stringify(body) }),
 +  env: Object.assign(makeEnv(db), { DB: db }),
@@ -5463,6 +5923,14 @@ index 0000000..628d4ba
 +  it('items 照常返回，不受影响', async () => {
 +    const d = await get(mkDb({ subjects: SUBJ, m: [{ s: 'politics', n: 278 }] }));
 +    expect(d.items.map((x) => x.v)).toEqual(['english', 'math', '2']);
++  });
++  it('不带 orphans=1 时跳过扫描（这是热路径，13 处调用都走这条）', async () => {
++    const db = mkDb({ subjects: SUBJ, m: [{ s: 'politics', n: 278 }] });
++    const d = await get(db, false);
++    expect(d.orphans).toBeUndefined();
++    expect(db.log.filter((r) => /GROUP BY subject/i.test(r.sql))).toHaveLength(0);
++    expect(d.items).toHaveLength(3);          // 科目列表照常返回
++    expect(d.defaults).toHaveLength(4);       // chip 需要的默认值也照常返回
 +  });
 +});
 +
@@ -5504,8 +5972,13 @@ index 0000000..628d4ba
 +describe('前端：把孤儿摆出来并能一键恢复', () => {
 +  const settings = read('js/views/settings.js');
 +  const tpl = read('js/tpl/view-settings.js');
-+  it('loadSubjects 保存 orphans', () => {
-+    expect(settings).toContain('this.subjOrphans=Array.isArray(d&&d.orphans)?d.orphans:[];');
++  it('loadSubjects 只在带 orphans=1 时更新列表，不覆盖已有结果', () => {
++    expect(settings).toContain("async loadSubjects(withOrphans)");
++    expect(settings).toContain("'/api/subjects'+(withOrphans?'?orphans=1':'')");
++    expect(settings).toContain('if(Array.isArray(d&&d.orphans))this.subjOrphans=d.orphans;');
++  });
++  it('只在进设置页时扫一次', () => {
++    expect(read('js/app.js')).toContain("if(v==='settings' && this.token && !this._orphansScanned){ this._orphansScanned=true; this.loadSubjects(true); }");
 +  });
 +  it('有重建入口，且代码用孤儿的原始代码（改一个字就归不了位）', () => {
 +    expect(settings).toContain('async subjRestoreOrphan(o)');
@@ -5578,13 +6051,41 @@ index 0000000..628d4ba
 +    expect(c.calls).toHaveLength(0);
 +    expect(c.flashes.join('')).toMatch(/已存在且有关键词/);
 +  });
-+  it('两种可点状态都要确认，取消就不动', async () => {
-+    global.confirm = () => false;
-+    for (const subjects of [[{ v: 'english', t: '英语', keywords: '' }], []]) {
-+      const c = mk(subjects);
-+      await c.subjRestoreDefault(D.english);
-+      expect(c.calls).toHaveLength(0);
-+    }
++  it('点击只开弹窗，不直接发请求', () => {
++    const c = mk([{ v: 'english', t: '英语', keywords: '' }]);
++    c.subjChipClick(D.english);
++    expect(c.calls).toHaveLength(0);
++    expect(c.subjChipDlg).toMatchObject({ code: 'english', state: 'nokw' });
++    expect(c.subjChipDlg.kws).toEqual(['阅读理解', '完形', '四级']);
++  });
++  it('正常态点了不开弹窗', () => {
++    const c = mk([{ v: 'english', t: '英语', keywords: '有了' }]);
++    c.subjChipClick(D.english);
++    expect(c.subjChipDlg).toBeFalsy();
++  });
++  it('弹窗里取消就什么都不做', () => {
++    const c = mk([]);
++    c.subjChipClick(D.english);
++    c.subjChipDlgClose();
++    expect(c.subjChipDlg).toBe(null);
++    expect(c.calls).toHaveLength(0);
++  });
++  it('重建态的弹窗要说明会归位多少内容', () => {
++    const c = mk([], [{ code: 'politics', questions: 0, materials: 278 }]);
++    c.subjChipClick(D.politics);
++    expect(c.subjChipDlg.moved).toBe('278 页教材');
++    expect(c.subjChipDlg.desc).toMatch(/自动归位/);
++  });
++  it('防连点：正在处理时再点无效', async () => {
++    const c = mk([{ v: 'english', t: '英语', keywords: '', sort: 10 }]);
++    c.subjChipBusy = 'english';
++    await c.subjRestoreDefault(D.english);
++    expect(c.calls).toHaveLength(0);
++  });
++  it('处理完清掉 busy，允许再次操作', async () => {
++    const c = mk([{ v: 'english', t: '英语', keywords: '', sort: 10 }]);
++    await c.subjRestoreDefault(D.english);
++    expect(c.subjChipBusy).toBe('');
 +  });
 +  it('重建时若有孤儿内容，提示要说明会归位多少', async () => {
 +    global.confirm = () => true;
@@ -5594,18 +6095,36 @@ index 0000000..628d4ba
 +  });
 +
 +  it('渲染成小圆点而不是整颗高亮胶囊', () => {
-+    expect(tpl).toContain('<i class="def-dot"></i>');
-+    expect(tpl).toContain(':class="subjChipState(d)"');
++    expect(tpl).toContain('class="def-dot"');
++    expect(tpl).toContain('subjChipState(d)');
 +    expect(css).toContain('.def-dot{');
 +    for (const st of ['.def-chip.nokw .def-dot', '.def-chip.gone .def-dot']) expect(css).toContain(st);
 +  });
-+  it('正常态不可点，另外两态可点', () => {
-+    expect(tpl).toContain(":disabled=\"subjChipState(d)==='ok'\"");
++  it('正常态不可点；正在处理时全部不可点（防连点）', () => {
++    expect(tpl).toContain("subjChipState(d)==='ok' || !!subjChipBusy");
 +    expect(css).toContain('.def-chip.nokw,.def-chip.gone{cursor:pointer');
 +  });
-+  it('每个点都有 title 说明点了会发生什么', () => {
-+    expect(tpl).toContain(':title="subjChipTip(d)"');
-+    expect(settings).toContain('subjChipTip(d)');
++  it('处理中的那个 chip 显示转圈', () => {
++    expect(tpl).toContain('subjChipBusy===d.code');
++    expect(tpl).toContain('class="spin"');
++  });
++  it('说明改成居中弹窗，不再用浏览器原生 title/confirm', () => {
++    expect(tpl).toContain('chipdlg-mask');
++    expect(tpl).toContain('@click.self="subjChipDlgClose"');
++    expect(tpl).not.toContain(':title="subjChipTip(d)"');
++    expect(settings).not.toContain("confirm('重建内置科目");
++  });
++  it('弹窗把默认关键词逐个列出来给用户过目', () => {
++    expect(tpl).toContain('chipdlg-kwlist');
++    expect(tpl).toContain('v-for="k in subjChipDlg.kws"');
++  });
++  it('弹窗在处理中禁用取消和确定，避免中途关掉', () => {
++    expect(tpl.match(/:disabled="!!subjChipBusy"/g).length).toBeGreaterThanOrEqual(3);
++  });
++  it('居中且移动端贴底', () => {
++    expect(css).toContain('.chipdlg-mask{position:fixed;inset:0');
++    expect(css).toContain('align-items:center;justify-content:center');
++    expect(css).toContain('.chipdlg-mask{padding:12px;align-items:flex-end}');
 +  });
 +  it('图例把三种颜色讲清楚', () => {
 +    expect(tpl).toMatch(/灰点＝正常/);
