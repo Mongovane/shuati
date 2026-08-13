@@ -1398,3 +1398,30 @@ h2{margin:.2em 0 .6em}
   .fill-log{max-height:300px}
   .sel-count,.btn.sel-clear{font-size:12px}
 }
+
+/* 无主内容（孤儿科目）提示：科目被删后，内容还在但分组显示成原始代码 */
+.orphan-box{border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent);
+  border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.orphan-title{font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px}
+.orphan-desc{font-size:12.5px;line-height:1.7;color:var(--ink-soft);margin-bottom:8px}
+.orphan-row{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:12.5px;
+  border-top:1px solid color-mix(in srgb,var(--warn) 20%,transparent)}
+.orphan-code{font-family:var(--mono);background:var(--surface-2);padding:2px 8px;border-radius:5px}
+.orphan-cnt{color:var(--ink-soft);font-variant-numeric:tabular-nums}
+@media(max-width:560px){ .orphan-row{flex-wrap:wrap;gap:6px} }
+
+/* 内置科目一键重建 chip：灰色=已存在（不可点），高亮=被删了（点一下按原代码重建） */
+.def-chips{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.def-chips-label{font-size:12px;font-weight:600;color:var(--ink-soft)}
+.def-chip{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;
+  border:1px solid var(--line);background:var(--surface-2);color:var(--ink-soft);
+  padding:4px 10px;border-radius:999px;cursor:default;transition:all .15s}
+.def-chip code{font-family:var(--mono);font-size:11px;opacity:.7}
+.def-chip.gone{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);
+  cursor:pointer;font-weight:600}
+.def-chip.gone:hover{background:var(--accent);color:#fff}
+.def-chip.gone:hover code{opacity:.85}
+.def-chip.gone:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.def-chips-tip{font-size:11.5px;color:var(--ink-soft);opacity:.85;flex-basis:100%}
+[data-theme=dark] .def-chip.gone:hover{color:var(--bg)}
+@media(max-width:560px){ .def-chips-tip{line-height:1.6} }

@@ -7,7 +7,7 @@ index 0000000..2752eb9
 +node_modules/
 +.DS_Store
 diff --git a/css/style.css b/css/style.css
-index 7ac1fe1..2d73b9a 100644
+index 7ac1fe1..6a7e4f4 100644
 --- a/css/style.css
 +++ b/css/style.css
 @@ -241,7 +241,14 @@ a{color:var(--accent)}
@@ -26,7 +26,7 @@ index 7ac1fe1..2d73b9a 100644
  .prev-ck{flex:none;padding-top:2px}
  .prev-ck input{width:18px;height:18px}
  .prev-body{flex:1;min-width:0}
-@@ -1246,3 +1253,148 @@ h2{margin:.2em 0 .6em}
+@@ -1246,3 +1253,175 @@ h2{margin:.2em 0 .6em}
    text-align:center;vertical-align:baseline}
  .passage .cloze.cur{border-bottom-color:var(--accent);background:var(--accent-soft);
    color:var(--accent);font-weight:600}
@@ -175,6 +175,33 @@ index 7ac1fe1..2d73b9a 100644
 +  .fill-log{max-height:300px}
 +  .sel-count,.btn.sel-clear{font-size:12px}
 +}
++
++/* 无主内容（孤儿科目）提示：科目被删后，内容还在但分组显示成原始代码 */
++.orphan-box{border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 8%,transparent);
++  border-radius:10px;padding:12px 14px;margin-bottom:14px}
++.orphan-title{font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px}
++.orphan-desc{font-size:12.5px;line-height:1.7;color:var(--ink-soft);margin-bottom:8px}
++.orphan-row{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:12.5px;
++  border-top:1px solid color-mix(in srgb,var(--warn) 20%,transparent)}
++.orphan-code{font-family:var(--mono);background:var(--surface-2);padding:2px 8px;border-radius:5px}
++.orphan-cnt{color:var(--ink-soft);font-variant-numeric:tabular-nums}
++@media(max-width:560px){ .orphan-row{flex-wrap:wrap;gap:6px} }
++
++/* 内置科目一键重建 chip：灰色=已存在（不可点），高亮=被删了（点一下按原代码重建） */
++.def-chips{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px}
++.def-chips-label{font-size:12px;font-weight:600;color:var(--ink-soft)}
++.def-chip{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;
++  border:1px solid var(--line);background:var(--surface-2);color:var(--ink-soft);
++  padding:4px 10px;border-radius:999px;cursor:default;transition:all .15s}
++.def-chip code{font-family:var(--mono);font-size:11px;opacity:.7}
++.def-chip.gone{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);
++  cursor:pointer;font-weight:600}
++.def-chip.gone:hover{background:var(--accent);color:#fff}
++.def-chip.gone:hover code{opacity:.85}
++.def-chip.gone:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
++.def-chips-tip{font-size:11.5px;color:var(--ink-soft);opacity:.85;flex-basis:100%}
++[data-theme=dark] .def-chip.gone:hover{color:var(--bg)}
++@media(max-width:560px){ .def-chips-tip{line-height:1.6} }
 diff --git a/fixes.patch b/fixes.patch
 deleted file mode 100644
 index 37440a4..0000000
@@ -1025,8 +1052,148 @@ index 84cdf6f..da8fce7 100644
    const sets = [], vals = [];
    for (const k of ALLOWED) {
      if (body[k] !== undefined && body[k] !== null) {
+diff --git a/functions/api/subjects.js b/functions/api/subjects.js
+index a798014..0e5eaf4 100644
+--- a/functions/api/subjects.js
++++ b/functions/api/subjects.js
+@@ -1,6 +1,17 @@
+ import { json, checkAuth } from './_utils.js';
+ 
+ // subjects 表：code 科目代码 / name 中文名 / sort 排序 / keywords 术语关键词（逗号分隔，供自动判断科目用）
++
++// 内置科目的默认值。种子只在【表完全为空】时才灌（见 ensure），
++// 所以删掉某个内置科目再重建，关键词是空的 —— 用户会以为「加了科目但关键词没了」。
++// 现在 POST 新建时若代码命中这里且没填关键词，就自动回填默认值。
++export const DEFAULT_SUBJECTS = [
++  ['politics', '政治理论', 1, '马克思,马克思主义,毛泽东,邓小平,习近平,社会主义,中国共产党,中国特色,辩证唯物,历史唯物,生产关系,生产力,无产阶级,资本主义,党的领导,毛概,马原,史纲,思修,科学发展观,三个代表,实事求是,改革开放,新民主主义'],
++  ['english', '英语', 2, '阅读理解,完形,词汇,语法,写作,四级,六级'],
++  ['math', '高等数学', 3, '导数,积分,极限,微分,矩阵,行列式,向量,特征值,定积分,不定积分,级数,偏导,微分方程,连续函数,可导,渐近线'],
++  ['computer', '计算机基础与程序设计', 4, '算法,数据结构,时间复杂度,空间复杂度,链表,二叉树,操作系统,数据库,指针,数组,哈希,递归,进制转换,源程序,伪代码'],
++];
++const DEFAULT_BY_CODE = new Map(DEFAULT_SUBJECTS.map(([c, n, s, k]) => [c, { name: n, sort: s, keywords: k }]));
+ async function ensure(env) {
+   await env.DB.prepare(
+     `CREATE TABLE IF NOT EXISTS subjects (
+@@ -12,13 +23,7 @@ async function ensure(env) {
+   ).run();
+   const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM subjects`).first();
+   if (!c || !c.n) {
+-    const seed = [
+-      ['politics', '政治理论', 1, '马克思,马克思主义,毛泽东,邓小平,习近平,社会主义,中国共产党,中国特色,辩证唯物,历史唯物,生产关系,生产力,无产阶级,资本主义,党的领导,毛概,马原,史纲,思修,科学发展观,三个代表,实事求是,改革开放,新民主主义'],
+-      ['english', '英语', 2, '阅读理解,完形,词汇,语法,写作,四级,六级'],
+-      ['math', '高等数学', 3, '导数,积分,极限,微分,矩阵,行列式,向量,特征值,定积分,不定积分,级数,偏导,微分方程,连续函数,可导,渐近线'],
+-      ['computer', '计算机基础与程序设计', 4, '算法,数据结构,时间复杂度,空间复杂度,链表,二叉树,操作系统,数据库,指针,数组,哈希,递归,进制转换,源程序,伪代码'],
+-    ];
+-    for (const [code, name, sort, kw] of seed) {
++    for (const [code, name, sort, kw] of DEFAULT_SUBJECTS) {
+       await env.DB.prepare(`INSERT OR IGNORE INTO subjects (code,name,sort,keywords) VALUES (?,?,?,?)`).bind(code, name, sort, kw).run();
+     }
+   }
+@@ -32,7 +37,38 @@ export async function onRequestGet({ request, env }) {
+   try {
+     await ensure(env);
+     const r = await env.DB.prepare(`SELECT code, name, sort, keywords FROM subjects ORDER BY sort ASC, code ASC`).all();
+-    return json({ items: (r.results || []).map((x) => ({ v: x.code, t: x.name, sort: x.sort || 0, keywords: x.keywords || '' })) });
++    const items = (r.results || []).map((x) => ({ v: x.code, t: x.name, sort: x.sort || 0, keywords: x.keywords || '' }));
++
++    // 孤儿科目：题目 / 教材里引用了某个 subject，但 subjects 表里没有这一行。
++    // 成因：科目被删（内容没跟着删或没转移），或者手工改过 subject 字段。
++    // 表现是教材列表的分组标题直接显示原始代码（比如「politics 1 本」）而不是中文名，
++    // 用户完全看不出发生了什么、更不知道怎么恢复。
++    const known = new Set(items.map((x) => x.v));
++    const orphans = new Map();
++    const scan = async (table, key) => {
++      try {
++        const rs = await env.DB.prepare(
++          `SELECT subject AS s, COUNT(*) AS n FROM ${table} WHERE subject IS NOT NULL AND subject <> '' GROUP BY subject`
++        ).all();
++        for (const row of (rs && rs.results) || []) {
++          const code = String(row.s || '');
++          if (!code || known.has(code)) continue;
++          const cur = orphans.get(code) || { code, questions: 0, materials: 0 };
++          cur[key] = (row.n | 0);
++          // 内置代码能给出建议的中文名，方便一键恢复
++          const d = DEFAULT_BY_CODE.get(code);
++          if (d) { cur.suggestName = d.name; cur.suggestKeywords = d.keywords; }
++          orphans.set(code, cur);
++        }
++      } catch (_) { /* 表可能还没建，忽略 */ }
++    };
++    await scan('questions', 'questions');
++    await scan('materials', 'materials');
++
++    // 把内置科目的默认值也发给前端：设置页要渲染一排「一键重建」的 chip。
++    // 从后端取而不是前端再写一份，避免两处定义漂移。
++    return json({ items, orphans: [...orphans.values()],
++      defaults: DEFAULT_SUBJECTS.map(([code, name, sort, keywords]) => ({ code, name, sort, keywords })) });
+   } catch (e) {
+     return json({ error: '读取科目失败：' + e.message }, 500);
+   }
+@@ -46,7 +82,10 @@ export async function onRequestPost({ request, env }) {
+   const code = normCode(body.code || body.v);
+   const name = String(body.name || body.t || '').trim();
+   const sort = Number.isFinite(+body.sort) ? +body.sort : 0;
+-  const keywords = String(body.keywords || '').trim();
++  let keywords = String(body.keywords || '').trim();
++  // 重建内置科目时把默认关键词补回来（用户没填的话）。
++  // 删科目会连关键词一起删，而种子只在表为空时灌一次，重建就是一片空白。
++  if (!keywords) { const d = DEFAULT_BY_CODE.get(code); if (d) keywords = d.keywords; }
+   if (!code) return json({ error: '科目代码只能用小写字母/数字/下划线，且不能为空' }, 400);
+   if (!name) return json({ error: '请填写科目名称' }, 400);
+   try {
+@@ -92,27 +131,40 @@ export async function onRequestDelete({ request, env }) {
+   if (!code) return json({ error: '缺少科目代码' }, 400);
+   try {
+     await ensure(env);
+-    // 统计该科目下的题目数（判断能否直接删）
+-    let qCount = 0;
++    // 统计该科目下的题目数和教材页数（判断能否直接删）
++    let qCount = 0, mCount = 0;
+     try { const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM questions WHERE subject = ?`).bind(code).first(); qCount = (c && c.n) || 0; } catch (_) {}
++    // 教材也要数。以前只数题目：一个「0 道题但有 278 页教材」的科目会被判成空，
++    // 直接删掉科目行，而 materials 既没删也没转移 —— 那些页面 subject 指向一个
++    // 已经不存在的科目，在教材列表里按科目分组时就成了孤儿。
++    try { const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM materials WHERE subject = ?`).bind(code).first(); mCount = (c && c.n) || 0; } catch (_) {}
+     const moveTo = normCode(body.moveTo);
+     const force = !!body.force;
+-    // 有题目且既不转移、也未确认强删 → 拒绝，返回题目数让前端提示
+-    if (qCount > 0 && !moveTo && !force) {
+-      return json({ error: 'subject_not_empty', count: qCount }, 409);
++    // 试探模式：只回报数量，不做任何删除。
++    // 前端需要「先知道有多少东西，再决定怎么问用户」，如果靠发一次真删来探测，
++    // 空科目就会在用户还没确认的时候直接消失 —— 线上就是这么丢掉两个科目的。
++    if (body.dry_run) return json({ ok: true, dryRun: true, questions: qCount, materials: mCount });
++    // 有题目或有教材，且既不转移、也未确认强删 → 拒绝，把两个数都返回给前端提示
++    if ((qCount > 0 || mCount > 0) && !moveTo && !force) {
++      return json({ error: 'subject_not_empty', count: qCount, questions: qCount, materials: mCount }, 409);
+     }
+     if (moveTo) {
+       // 转移：题目改挂到目标科目
+       await env.DB.prepare(`UPDATE questions SET subject = ? WHERE subject = ?`).bind(moveTo, code).run();
+       try { await env.DB.prepare(`UPDATE materials SET subject = ? WHERE subject = ?`).bind(moveTo, code).run(); } catch (_) {}
+-    } else if (force && qCount > 0) {
+-      // 强制删除：连同该科目下的题目一并删除
+-      await env.DB.prepare(`DELETE FROM questions WHERE subject = ?`).bind(code).run();
+-      try { await env.DB.prepare(`DELETE FROM materials WHERE subject = ?`).bind(code).run(); } catch (_) {}
++    } else if (force) {
++      // 强制删除：连同该科目下的题目和教材一并删除。
++      // 条件从 `force && qCount > 0` 放宽成 `force`：原来只有「有题目」才清教材，
++      // 于是 0 题 + 有教材的科目被删后会留下一堆孤儿页。
++      if (qCount > 0) await env.DB.prepare(`DELETE FROM questions WHERE subject = ?`).bind(code).run();
++      if (mCount > 0) { try { await env.DB.prepare(`DELETE FROM materials WHERE subject = ?`).bind(code).run(); } catch (_) {} }
+     }
+     const r = await env.DB.prepare(`DELETE FROM subjects WHERE code = ?`).bind(code).run();
+     const deleted = (r && r.meta && r.meta.changes != null) ? r.meta.changes : 0;
+-    return json({ ok: true, deleted, moved: moveTo || null, removedQuestions: (force && !moveTo) ? qCount : 0 });
++    return json({ ok: true, deleted, moved: moveTo || null,
++      removedQuestions: (force && !moveTo) ? qCount : 0,
++      removedMaterials: (force && !moveTo) ? mCount : 0,
++      movedQuestions: moveTo ? qCount : 0, movedMaterials: moveTo ? mCount : 0 });
+   } catch (e) {
+     return json({ error: '删除科目失败：' + e.message }, 500);
+   }
 diff --git a/js/app.js b/js/app.js
-index 51b2a7f..5d0c8fa 100644
+index 51b2a7f..85a5062 100644
 --- a/js/app.js
 +++ b/js/app.js
 @@ -55,12 +55,12 @@ const App={
@@ -1044,7 +1211,7 @@ index 51b2a7f..5d0c8fa 100644
      autoSaveAi:false,  // 自动保存 AI 解析/知识点卡片到题目（默认关：手动保存更省存储/额度）
      modelPick:{ busy:false, list:[] }, modelBoxOpen:false, aiTestBusy:false,  // 「从端点拉取」到的模型候选列表
      explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
-@@ -76,7 +76,7 @@ const App={
+@@ -76,10 +76,12 @@ const App={
      mineruTokenBad:false,
      bookExtract:{ busy:false, prog:'', done:0, total:0 },
      busyOps:{},   // 防重入标志，键是方法名；模板可用 :disabled="busyOps.xxx" 拿到反馈
@@ -1053,7 +1220,12 @@ index 51b2a7f..5d0c8fa 100644
      extractSkippedToc:0,
      extractPreview:{ open:false, items:[], title:'', subject:'', source:'', dup:0, page:1, pageSize:40 },
      bank:{ items:[], total:0, loading:false, offset:0, limit:50, subject:'', type:'', kw:'', tag:'', status:'', mode:'all', sel:[], batchSubject:'', batchProg:'', chapter:'' },
-@@ -148,7 +148,12 @@ const App={
++    subjDefaults:[],  // 内置科目的默认定义（后端下发），供设置页渲染一键重建的 chip
++    subjOrphans:[],   // 题目/教材引用了、但科目表里没有的 subject 代码（科目被误删的痕迹）
+     subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
+     bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
+     pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
+@@ -148,7 +150,12 @@ const App={
      mockResult(){ const v=Object.values(this.mock.answers); const correct=v.filter(x=>x===true).length; const half=v.filter(x=>x===0.5).length;
        return { graded:v.filter(x=>x!==null).length, correct, half, score:correct+half*0.5, total:this.mock.questions.length }; },
      curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? this.aiX.text : ''; },
@@ -1067,7 +1239,7 @@ index 51b2a7f..5d0c8fa 100644
      curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && (this.aiX.view==='explain'||this.aiX.view==='concept')) ? (this.aiX.chat||[]) : []; },
      readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
      // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
-@@ -199,7 +204,7 @@ const App={
+@@ -199,7 +206,7 @@ const App={
        if(s){
          const view=s.view|| (genC?'concept':'explain');
          const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
@@ -1076,7 +1248,7 @@ index 51b2a7f..5d0c8fa 100644
        } else {
          // 无会话缓存：从题目已存的 ai_cards 和 analysis 同时恢复（两者可共存）
          const savedCards = nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length ? nc.ai_cards.slice() : [];
-@@ -313,6 +318,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -313,6 +320,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
          if(useStream && ct.includes('text/event-stream') && res.body){
            let acc=''; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
            try{
@@ -1085,7 +1257,7 @@ index 51b2a7f..5d0c8fa 100644
              while(true){ const {done,value}=await reader.read(); if(done)break;
                buf+=dec.decode(value,{stream:true});
                let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
-@@ -320,6 +327,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -320,6 +329,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                  if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
                  if(j.error) throw new Error(j.error.message||String(j.error));
                  if(j.model && onDelta) onDelta({model:j.model});
@@ -1102,7 +1274,7 @@ index 51b2a7f..5d0c8fa 100644
                  const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
                  const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
                  if(fr && onDelta) onDelta({finish_reason:fr});
-@@ -340,7 +357,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -340,7 +359,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                      else { this._thinkBuf+=t.replace('<think>',''); if(onDelta)onDelta({reasoning:t.replace('<think>','')}); }
                    } else { acc+=t; if(onDelta)onDelta({text:t, acc}); }
                  } else if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); }
@@ -1119,7 +1291,7 @@ index 51b2a7f..5d0c8fa 100644
              return { res, text:acc, ok:true };
            }catch(e){
              if(signal && signal.aborted) throw e;
-@@ -353,6 +378,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -353,6 +380,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
            if(d && d.error) return { res, text:'', ok:false, errText:d.error };
            const txt = (d && d.text) || '';
            if(d && d.model && onDelta) onDelta({model:d.model});
@@ -1134,7 +1306,7 @@ index 51b2a7f..5d0c8fa 100644
            if(txt && onDelta) onDelta({text:txt, acc:txt, full:true});
            return { res, text:txt, ok:true };
          }catch(e){
-@@ -362,10 +395,32 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -362,10 +397,32 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
        };
        return attempt(!stable, 2);
      },
@@ -1487,7 +1659,7 @@ index 73c38a0..1f8fbc7 100644
            <div class="q-nav-bar">
              <button class="btn subtle" :disabled="qi<=0" @click="prev"><icon name="arrow-left" :size="15" /> 上一题</button>
 diff --git a/js/tpl/view-settings.js b/js/tpl/view-settings.js
-index e0a075c..81b3465 100644
+index e0a075c..60ae8ad 100644
 --- a/js/tpl/view-settings.js
 +++ b/js/tpl/view-settings.js
 @@ -51,6 +51,16 @@ const TPL_VIEW_SETTINGS = `
@@ -1507,6 +1679,38 @@ index e0a075c..81b3465 100644
          <div class="row" style="gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
            <button class="btn subtle xs" :disabled="modelPick.busy" @click="fetchModels" title="向中转站 /v1/models 拉取可用模型列表"><span v-if="modelPick.busy" class="spin"></span><icon name="download" :size="15" /> 从端点拉取</button>
            <button class="btn subtle xs" :disabled="aiTestBusy" @click="testAiConnection" title="发一条简单消息测试中转站是否通畅"><span v-if="aiTestBusy" class="spin"></span><icon name="wifi" :size="15" /> 测试连接</button>
+@@ -89,6 +99,31 @@ const TPL_VIEW_SETTINGS = `
+         <div class="fold-head" @click="settFold.subjects=!settFold.subjects"><span style="font-weight:700;font-size:15px">科目管理<span class="muted" style="font-weight:400;font-size:12px;margin-left:8px" v-if="meta.subjects&&meta.subjects.length">{{ meta.subjects.length }} 个科目</span></span><span class="fold-arrow" :class="{open:!settFold.subjects}">▾</span></div>
+         <div v-show="!settFold.subjects" class="fold-body" style="margin-top:10px">
+         <div class="hint" style="margin-bottom:14px">增删改科目，全站下拉自动同步。用 ▲▼ 调整顺序。「关键词」帮导入时自动归类（逗号分隔）；代码、公式、英文等特征已内置，不用填。</div>
++        <div v-if="subjDefaults && subjDefaults.length" class="def-chips">
++          <span class="def-chips-label">内置科目</span>
++          <button v-for="d in subjDefaults" :key="d.code"
++                  class="def-chip" :class="{gone: !subjects.some(x=>x.v===d.code)}"
++                  :disabled="subjects.some(x=>x.v===d.code)"
++                  @click="subjRestoreDefault(d)"
++                  :title="subjects.some(x=>x.v===d.code) ? '已存在' : '点击重建（代码 '+d.code+'，含默认关键词）'">
++            {{ d.name }}<code>{{ d.code }}</code>
++          </button>
++          <span class="def-chips-tip">灰色＝已存在；高亮＝已删除，点一下按原代码重建（内容会自动归位）</span>
++        </div>
++        <div v-if="subjOrphans && subjOrphans.length" class="orphan-box">
++          <div class="orphan-title">⚠ 发现 {{ subjOrphans.length }} 个「无主内容」</div>
++          <div class="orphan-desc">下面这些内容挂在已经不存在的科目上（多半是科目被删过）。它们还在库里，只是分组标题会显示成原始代码。重建同名代码的科目即可自动归位。</div>
++          <div v-for="o in subjOrphans" :key="o.code" class="orphan-row">
++            <code class="orphan-code">{{ o.code }}</code>
++            <span class="orphan-cnt">
++              <template v-if="o.questions">{{ o.questions }} 道题</template>
++              <template v-if="o.questions && o.materials"> · </template>
++              <template v-if="o.materials">{{ o.materials }} 页教材</template>
++            </span>
++            <span style="flex:1"></span>
++            <button class="btn subtle xs" @click="subjRestoreOrphan(o)">重建「{{ o.suggestName || o.code }}」</button>
++          </div>
++        </div>
+         <div v-for="(s,si) in subjects" :key="s.v" class="subj-edit">
+           <div class="subj-row">
+             <span class="subj-move"><button class="subj-mv-btn" :disabled="si===0" @click="subjMove(si,-1)" title="上移">▲</button><button class="subj-mv-btn" :disabled="si===subjects.length-1" @click="subjMove(si,1)" title="下移">▼</button></span>
 diff --git a/js/views/bank.js b/js/views/bank.js
 index a007d78..dae8278 100644
 --- a/js/views/bank.js
@@ -2139,6 +2343,148 @@ index 905810d..c300c53 100644
  aiRetryAsk(i){ const list=this.aiX.chat||[]; const c=list[i];
    if(!c || this.aiX.asking) return;
    const q=c.q; list.splice(i,1);
+diff --git a/js/views/settings.js b/js/views/settings.js
+index 9bd9152..a3f3add 100644
+--- a/js/views/settings.js
++++ b/js/views/settings.js
+@@ -8,36 +8,116 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
+       if(has('english')&&len>=12 && letters>=len*0.55 && cjk<=len*0.15 && /\b(the|of|to|and|is|are|was|were|which|that|what|who|how|why|an?|in|on|for|with)\b/i.test(s))return'english';
+       for(const sub of this.subjects){ const kws=String(sub.keywords||'').split(/[，,;；\s]+/).map(k=>k.trim()).filter(k=>k.length>=2); for(const k of kws){ if(s.includes(k))return sub.v; } }
+       return ''; },
+-async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); } }catch(e){} },
++async loadSubjects(){ if(!this.token)return; try{ const d=await this.api('/api/subjects'); if(d&&Array.isArray(d.items)&&d.items.length){ this.subjects=d.items.map(x=>({v:x.v,t:x.t,sort:x.sort||0,keywords:x.keywords||''})); Object.keys(SUBJ_MAP).forEach(k=>delete SUBJ_MAP[k]); this.subjects.forEach(s=>{ SUBJ_MAP[s.v]=s.t; }); }
++  // 孤儿科目：题目/教材引用了某个 subject 但科目表里没有这一行。
++  // 不显示出来的话，用户只会看到教材列表的分组标题变成原始代码（「politics 1 本」），
++  // 完全不知道发生了什么、更不知道重建科目时代码必须一模一样。
++  this.subjOrphans=Array.isArray(d&&d.orphans)?d.orphans:[];
++  this.subjDefaults=Array.isArray(d&&d.defaults)?d.defaults:[];
++  }catch(e){} },
++// 一键重建某个内置科目（灰色 chip）。代码取内置定义，名称和关键词也一并恢复，
++// 所以之前挂在这个代码下的题目/教材会自动归位 —— 这正是误删之后最需要的一步。
++async subjRestoreDefault(d){
++  if(!d || !d.code)return;
++  if((this.subjects||[]).some(x=>x.v===d.code)){ this.flash('科目「'+d.name+'」已存在',true); return; }
++  const o=(this.subjOrphans||[]).find(x=>x.code===d.code);
++  const what=o?[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、'):'';
++  if(!confirm('重建内置科目「'+d.name+'」（代码 '+d.code+'）？'
++    +(what?('\n\n目前有 '+what+' 挂在这个代码下，重建后会自动归位。'):'\n\n将恢复它的默认关键词。')))return;
++  try{
++    await this.api('/api/subjects',{method:'POST',body:JSON.stringify({
++      code:d.code, name:d.name, sort:d.sort||((this.subjects.length+1)*10), keywords:d.keywords||'' })});
++    this.flash('已重建科目「'+d.name+'」'+(what?('，'+what+' 已归位'):''));
++    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
++    if(what){ this.bankDirty=true; this.statsDirty=true; }
++  }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
++},
++// 一键重建缺失的科目：代码必须和内容里引用的完全一致，内容才会自动归位
++async subjRestoreOrphan(o){
++  const name=String(o.suggestName||o.code);
++  const what=[o.questions?(o.questions+' 道题'):'', o.materials?(o.materials+' 页教材'):''].filter(Boolean).join('、');
++  if(!confirm('重建科目「'+name+'」（代码 '+o.code+'）？\n\n'
++    +'这些内容目前挂在一个不存在的科目上：'+what+'。\n'
++    +'重建后它们会自动归位。'))return;
++  try{
++    await this.api('/api/subjects',{method:'POST',body:JSON.stringify({
++      code:o.code, name, sort:(this.subjects.length+1)*10, keywords:o.suggestKeywords||'' })});
++    this.flash('已重建科目「'+name+'」，'+what+' 已归位');
++    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
++    this.bankDirty=true; this.statsDirty=true;
++  }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
++},
+ async subjAdd(){ const m=this.subjMgr; const code=String(m.code||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,''); const name=String(m.name||'').trim(); if(!code){ this.flash('科目代码只能用小写字母/数字/下划线',true); return; } if(!name){ this.flash('请填写科目名称',true); return; } m.busy=true; try{ await this.api('/api/subjects',{method:'POST',body:JSON.stringify({code,name,sort:Number(m.sort)||(this.subjects.length+1),keywords:m.keywords||''})}); this.flash('已新增科目「'+name+'」'); this.subjMgr={ code:'', name:'', sort:'', keywords:'', busy:false }; await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('新增失败：'+e.message,true); } m.busy=false; },
+ async subjSave(s){ try{ await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:Number(s.sort)||0,keywords:s.keywords||''})}); this.flash('已保存「'+s.t+'」'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); } },
+ // 科目排序：上移/下移一格后批量写回 sort（触摸端比拖拽可靠）
+ async subjMove(i,dir){ const j=i+dir; if(j<0||j>=this.subjects.length)return; const arr=[...this.subjects]; const t=arr[i]; arr[i]=arr[j]; arr[j]=t; this.subjects=arr; await this.subjReorder(); },
+ async subjReorder(){ try{ for(let i=0;i<this.subjects.length;i++){ const s=this.subjects[i]; const ns=(i+1)*10; if(s.sort!==ns){ s.sort=ns; await this.api('/api/subjects',{method:'PATCH',body:JSON.stringify({code:s.v,name:s.t,sort:ns,keywords:s.keywords||''})}); } } this.flash('科目顺序已更新'); await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('排序保存失败：'+e.message,true); } },
+ async subjDelete(s){
+-  // 先尝试删除（后端会检查是否为空）；非空则返回 409 + 题目数
+-  const doDelete=async (force)=>{
+-    return await this.api('/api/subjects',{method:'DELETE',body:JSON.stringify({code:s.v,force:!!force})});
+-  };
++  // 删除科目是不可逆的。原来的流程是「先删了再说」：只有后端返回 409（科目下有题目）
++  // 才弹确认，科目为空就直接删掉、零提示 —— 手滑点到「删除」就没了。
++  // 而且后端的「为空」只数题目不数教材，所以「0 题 + 278 页教材」的科目会被判成空，
++  // 静默删掉之后那些教材页还挂着一个已不存在的 subject，变成孤儿。
++  const doDelete=async (opts)=>await this.api('/api/subjects',{method:'DELETE',
++    body:JSON.stringify(Object.assign({code:s.v}, opts||{}))});
++
++  // 先用 dry_run 探数量 —— 绝不能靠「发一次真删」来探测，那样空科目在用户
++  // 还没确认的时候就已经没了。
++  let q=0, m=0;
+   try{
+-    await doDelete(false);
+-    this.flash('\u5df2\u5220\u9664\u79d1\u76ee\u300c'+s.t+'\u300d');
+-    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
++    const probe=await doDelete({dry_run:1});
++    q=(probe&&probe.questions)||0; m=(probe&&probe.materials)||0;
+   }catch(e){
+-    // 后端拒绝：该科目下还有题目
+-    if(e && e.status===409 && e.data && e.data.error==='subject_not_empty'){
+-      const n=e.data.count||0;
+-      if(confirm('\u79d1\u76ee\u300c'+s.t+'\u300d\u4e0b\u8fd8\u6709 '+n+' \u9053\u9898\u76ee\u3002\n\n\u5fc5\u987b\u5148\u5904\u7406\u8fd9\u4e9b\u9898\u76ee\u624d\u80fd\u5220\u9664\u79d1\u76ee\u3002\n\n\u70b9\u300c\u786e\u5b9a\u300d\uff1a\u8fde\u540c\u8fd9 '+n+' \u9053\u9898\u76ee\u4e00\u8d77\u5220\u9664\uff08\u4e0d\u53ef\u6062\u590d\uff09\uff1b\u70b9\u300c\u53d6\u6d88\u300d\uff1a\u4fdd\u7559\u3002')){
+-        try{
+-          const r=await doDelete(true);
+-          this.flash('\u5df2\u5220\u9664\u79d1\u76ee\u300c'+s.t+'\u300d\u53ca\u5176\u4e0b '+((r&&r.removedQuestions)||n)+' \u9053\u9898');
+-          await this.loadSubjects(); this.loadMeta&&this.loadMeta(true); this.bankDirty=true; this.statsDirty=true;
+-        }catch(e2){ if(e2.message!=='unauth')this.flash('\u5220\u9664\u5931\u8d25\uff1a'+e2.message,true); }
+-      }
+-      return;
+-    }
+-    if(e.message!=='unauth')this.flash('\u5220\u9664\u5931\u8d25\uff1a'+e.message,true);
++    if(e && e.message!=='unauth')this.flash('无法读取科目内容：'+e.message,true);
++    return;
++  }
++
++  // 空科目也要确认。科目配置（代码、名称、关键词、排序）删了就没了，
++  // 而这个按钮就挨着「保存」，手滑代价不该是静默丢失。
++  if(!q && !m){
++    if(!confirm('删除空科目「'+s.t+'」？\n\n它下面没有题目和教材，但科目本身的关键词、排序等配置会一并删除。'))return;
++    try{
++      await doDelete({force:true});
++      this.flash('已删除空科目「'+s.t+'」');
++      await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
++    }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); }
++    return;
++  }
++
++  const what=[q?(q+' 道题目'):'', m?(m+' 页教材'):''].filter(Boolean).join(' 和 ');
++  // 优先引导「转移」而不是「删除」——后端一直支持 moveTo，前端以前没用上
++  const others=(this.subjects||[]).filter(x=>x.v!==s.v);
++  if(others.length && confirm('科目「'+s.t+'」下还有 '+what+'。\n\n'
++      +'点「确定」：先把它们转移到别的科目，再删掉这个科目（内容保留）。\n'
++      +'点「取消」：进入删除流程。')){
++    const list=others.map((x,i)=>(i+1)+'. '+x.t+'（'+x.v+'）').join('\n');
++    const pick=prompt('转移到哪个科目？输入序号：\n\n'+list);
++    if(pick==null)return;
++    const idx=parseInt(String(pick).trim(),10)-1;
++    const target=others[idx];
++    if(!target){ this.flash('序号无效，已取消',true); return; }
++    try{
++      const r=await doDelete({moveTo:target.v});
++      this.flash('已把 '+what+' 转移到「'+target.t+'」，并删除科目「'+s.t+'」');
++      await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
++      this.bankDirty=true; this.statsDirty=true;
++      void r;
++    }catch(e){ if(e.message!=='unauth')this.flash('转移失败：'+e.message,true); }
++    return;
+   }
++
++  // 二次确认：要求手动输入科目名，防止手滑（这一步会连内容一起永久删除）
++  const typed=prompt('这会永久删除科目「'+s.t+'」及其下的 '+what+'，不可恢复。\n\n'
++    +'确认请输入科目名：'+s.t);
++  if(typed==null)return;
++  if(String(typed).trim()!==String(s.t).trim()){ this.flash('输入不匹配，已取消删除',true); return; }
++  try{
++    const r=await doDelete({force:true});
++    const done=[(r&&r.removedQuestions)?((r.removedQuestions)+' 道题'):'',
++                (r&&r.removedMaterials)?((r.removedMaterials)+' 页教材'):''].filter(Boolean).join('、');
++    this.flash('已删除科目「'+s.t+'」'+(done?('及其下 '+done):''));
++    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
++    this.bankDirty=true; this.statsDirty=true;
++  }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); }
+ },
+ guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
+ saveExplainCfg(){ try{ localStorage.setItem('zb_explaincfg', JSON.stringify(this.explainCfg)); }catch(_){} },
 diff --git a/package-lock.json b/package-lock.json
 index 4c140ba..63f9c97 100644
 --- a/package-lock.json
@@ -4444,5 +4790,406 @@ index 0000000..6f9b5eb
 +  it('深色主题下强调色上的文字有单独处理', () => {
 +    expect(css).toContain('[data-theme=dark] .sel-count.on');
 +    expect(css).toContain('[data-theme=dark] .btn.sel-clear:hover');
++  });
++});
+diff --git a/tests/subject-delete-guard.test.mjs b/tests/subject-delete-guard.test.mjs
+new file mode 100644
+index 0000000..ac92e2d
+--- /dev/null
++++ b/tests/subject-delete-guard.test.mjs
+@@ -0,0 +1,194 @@
++// 线上事故：在设置页点「删除」，科目直接就没了，没有任何确认。
++//
++// 三个叠在一起的 bug：
++//  ① 前端「先删了再说」：直接发 DELETE，只有后端回 409 才弹确认。
++//     科目为空 → 后端放行 → 零确认删除。而科目配置（代码/名称/关键词/排序）删了就没了。
++//  ② 后端的「为空」只数 questions 不数 materials。「0 道题 + 278 页教材」被判成空 ——
++//     政治理论就是这么没的。
++//  ③ 只有 `force && qCount > 0` 分支才清 materials。②那种情况下教材既没删也没转移，
++//     subject 指向一个已不存在的科目，成了孤儿。
++import { describe, it, expect, beforeEach } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { FakeDB, authedReq, makeEnv, ROOT } from './helpers.mjs';
++import { onRequestDelete as delSubject } from '../functions/api/subjects.js';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const Settings = new Function(read('js/views/settings.js') + ';return SettingsMixin;')();
++
++const dbWith = (q, m) => new FakeDB([
++  { match: /COUNT\(\*\)\s+AS\s+n\s+FROM\s+questions/i, value: [{ n: q }] },
++  { match: /COUNT\(\*\)\s+AS\s+n\s+FROM\s+materials/i, value: [{ n: m }] },
++]);
++const call = (body, db) => delSubject({
++  request: authedReq('http://x/api/subjects', { method: 'DELETE', body: JSON.stringify(body) }),
++  env: Object.assign(makeEnv(db), { DB: db }),
++});
++const ran = (db, re) => db.log.filter((r) => re.test(r.sql));
++
++describe('后端：非空判定要含教材', () => {
++  it('0 题 + 278 页教材 = 非空，拒绝并报出两个数', async () => {
++    const db = dbWith(0, 278);
++    const res = await call({ code: 'politics' }, db);
++    expect(res.status).toBe(409);
++    expect(await res.json()).toMatchObject({ error: 'subject_not_empty', questions: 0, materials: 278 });
++    expect(ran(db, /DELETE FROM subjects/i)).toHaveLength(0);
++  });
++  it('真空科目才放行', async () => {
++    const db = dbWith(0, 0);
++    expect((await call({ code: 'empty' }, db)).status).toBe(200);
++    expect(ran(db, /DELETE FROM subjects/i)).toHaveLength(1);
++  });
++});
++
++describe('后端：dry_run 只报数不动数据', () => {
++  it('返回两个数', async () => {
++    const b = await (await call({ code: 'x', dry_run: 1 }, dbWith(5, 30))).json();
++    expect(b).toMatchObject({ dryRun: true, questions: 5, materials: 30 });
++  });
++  it('一条 DELETE 都不发', async () => {
++    const db = dbWith(5, 30);
++    await call({ code: 'x', dry_run: 1 }, db);
++    expect(ran(db, /^DELETE/i)).toHaveLength(0);
++  });
++  it('空科目的 dry_run 也不删（线上丢科目正是栽在这一步）', async () => {
++    const db = dbWith(0, 0);
++    await call({ code: 'x', dry_run: 1 }, db);
++    expect(ran(db, /DELETE FROM subjects/i)).toHaveLength(0);
++  });
++});
++
++describe('后端：force 要连教材一起清，不留孤儿', () => {
++  it('0 题 + 有教材时也删教材（原来这里漏了）', async () => {
++    const db = dbWith(0, 278);
++    await call({ code: 'politics', force: true }, db);
++    expect(ran(db, /DELETE FROM materials/i)).toHaveLength(1);
++    expect(ran(db, /DELETE FROM questions/i)).toHaveLength(0);
++  });
++  it('题和教材都有就都删，并如实回报数量', async () => {
++    const db = dbWith(9, 40);
++    const b = await (await call({ code: 'x', force: true }, db)).json();
++    expect(ran(db, /DELETE FROM questions/i)).toHaveLength(1);
++    expect(ran(db, /DELETE FROM materials/i)).toHaveLength(1);
++    expect(b).toMatchObject({ removedQuestions: 9, removedMaterials: 40 });
++  });
++  it('转移时题和教材一起改挂，且不删', async () => {
++    const db = dbWith(9, 40);
++    const b = await (await call({ code: 'x', moveTo: 'math' }, db)).json();
++    expect(ran(db, /UPDATE questions SET subject/i)).toHaveLength(1);
++    expect(ran(db, /UPDATE materials SET subject/i)).toHaveLength(1);
++    expect(ran(db, /DELETE FROM questions/i)).toHaveLength(0);
++    expect(b).toMatchObject({ moved: 'math', movedQuestions: 9, movedMaterials: 40 });
++  });
++});
++
++const ctx = (probe) => {
++  const calls = [];
++  return {
++    calls, flashes: [],
++    subjects: [{ v: 'politics', t: '政治理论' }, { v: 'math', t: '高等数学' }, { v: 'computer', t: '计算机' }],
++    flash(m) { this.flashes.push(String(m)); },
++    loadSubjects: async () => {}, loadMeta: () => {},
++    async api(p, o) {
++      const body = JSON.parse(o.body || '{}');
++      calls.push(body);
++      if (body.dry_run) return probe;
++      return { ok: true, removedQuestions: probe.questions, removedMaterials: probe.materials };
++    },
++  };
++};
++const del = (c) => Settings.methods.subjDelete.call(c, { v: 'politics', t: '政治理论' });
++const realCalls = (c) => c.calls.filter((x) => !x.dry_run);
++
++beforeEach(() => { global.confirm = () => true; global.prompt = () => null; });
++
++describe('前端：任何情况都要先确认', () => {
++  it('空科目也要确认，不能静默删除', async () => {
++    const c = ctx({ questions: 0, materials: 0 });
++    const seen = [];
++    global.confirm = (m) => { seen.push(m); return false; };
++    await del(c);
++    expect(seen.join('')).toMatch(/删除空科目/);
++    expect(realCalls(c)).toHaveLength(0);
++  });
++  it('探测阶段必须用 dry_run，不能靠发真删来试', async () => {
++    const c = ctx({ questions: 0, materials: 0 });
++    global.confirm = () => false;
++    await del(c);
++    expect(c.calls[0]).toMatchObject({ dry_run: 1 });
++  });
++  it('确认后才真删', async () => {
++    const c = ctx({ questions: 0, materials: 0 });
++    await del(c);
++    expect(c.calls.some((x) => x.force)).toBe(true);
++    expect(c.flashes.join('')).toMatch(/已删除空科目/);
++  });
++});
++
++describe('前端：非空科目优先引导转移', () => {
++  it('先问要不要转移，并说清有多少内容', async () => {
++    const c = ctx({ questions: 0, materials: 278 });
++    const seen = [];
++    global.confirm = (m) => { seen.push(m); return false; };
++    await del(c);
++    expect(seen[0]).toMatch(/278 页教材/);
++    expect(seen[0]).toMatch(/转移到别的科目/);
++  });
++  it('选了转移就带 moveTo，不发 force', async () => {
++    const c = ctx({ questions: 0, materials: 278 });
++    global.prompt = () => '1';
++    await del(c);
++    expect(realCalls(c)[0]).toMatchObject({ moveTo: 'math' });
++    expect(realCalls(c).some((x) => x.force)).toBe(false);
++  });
++  it('序号无效就取消，不会误删', async () => {
++    const c = ctx({ questions: 0, materials: 278 });
++    global.prompt = () => '99';
++    await del(c);
++    expect(realCalls(c)).toHaveLength(0);
++    expect(c.flashes.join('')).toMatch(/序号无效/);
++  });
++  it('候选列表排除自己', async () => {
++    const c = ctx({ questions: 1, materials: 0 });
++    const seen = [];
++    global.prompt = (m) => { seen.push(m); return null; };
++    await del(c);
++    expect(seen[0]).not.toMatch(/政治理论/);
++    expect(seen[0]).toMatch(/高等数学/);
++  });
++});
++
++describe('前端：强删要手打科目名', () => {
++  it('输入不匹配就取消', async () => {
++    const c = ctx({ questions: 5, materials: 10 });
++    global.confirm = () => false;
++    global.prompt = () => '随便打的';
++    await del(c);
++    expect(realCalls(c)).toHaveLength(0);
++    expect(c.flashes.join('')).toMatch(/输入不匹配/);
++  });
++  it('输入正确才删，并报出实际删了多少', async () => {
++    const c = ctx({ questions: 5, materials: 10 });
++    global.confirm = () => false;
++    global.prompt = () => '政治理论';
++    await del(c);
++    expect(c.calls.some((x) => x.force)).toBe(true);
++    expect(c.flashes.join('')).toMatch(/5 道题/);
++    expect(c.flashes.join('')).toMatch(/10 页教材/);
++  });
++  it('提示里写明不可恢复', async () => {
++    const c = ctx({ questions: 5, materials: 10 });
++    global.confirm = () => false;
++    const seen = [];
++    global.prompt = (m) => { seen.push(m); return null; };
++    await del(c);
++    expect(seen[0]).toMatch(/不可恢复/);
++  });
++  it('直接关掉输入框（返回 null）也不删', async () => {
++    const c = ctx({ questions: 5, materials: 10 });
++    global.confirm = () => false;
++    global.prompt = () => null;
++    await del(c);
++    expect(realCalls(c)).toHaveLength(0);
++  });
++});
+diff --git a/tests/subject-delete.test.mjs b/tests/subject-delete.test.mjs
+index bb047cd..100402c 100644
+--- a/tests/subject-delete.test.mjs
++++ b/tests/subject-delete.test.mjs
+@@ -1,4 +1,8 @@
+ // 科目删除：非空科目需 force 才能连题删除，否则 409 拒绝
++//
++// 注意：这里的「空科目：直接删除成功」只是在说【后端】对真·空科目会放行。
++// 前端绝不能因此就不确认 —— 线上正是因为前端「先删了再说」而丢了两个科目。
++// 确认流程、dry_run 试探、以及「非空判定要含教材」都在 subject-delete-guard.test.mjs。
+ import { describe, it, expect } from 'vitest';
+ import { FakeDB, authedReq, makeEnv } from './helpers.mjs';
+ import { onRequestDelete as subjDelete } from '../functions/api/subjects.js';
+diff --git a/tests/subject-orphans.test.mjs b/tests/subject-orphans.test.mjs
+new file mode 100644
+index 0000000..d657ab7
+--- /dev/null
++++ b/tests/subject-orphans.test.mjs
+@@ -0,0 +1,182 @@
++// 两个后续问题，都是「科目被误删」的余波：
++//
++//  ① 重建科目后关键词没了。种子只在【表完全为空】时才灌（ensure 里 if(!c.n)），
++//     所以删掉内置科目再建回来，keywords 是空的 —— 用户以为「加了科目但关键词丢了」。
++//
++//  ② 教材列表出现「politics 1 本」这种以原始代码作分组标题的组。
++//     成因：materials.subject 还是 'politics'，但科目表里已经没有这一行了
++//     （用户重建时代码打成了 '2'）。内容还在，只是没有任何提示告诉用户
++//     「代码必须一模一样才会归位」。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { FakeDB, authedReq, makeEnv, ROOT } from './helpers.mjs';
++import { onRequestGet as getSubjects, onRequestPost as postSubject } from '../functions/api/subjects.js';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const Settings = new Function(read('js/views/settings.js') + ';return SettingsMixin;')();
++
++const mkDb = ({ subjects = [], q = [], m = [] }) => new FakeDB([
++  { match: /COUNT\(\*\) AS n FROM subjects/i, value: [{ n: subjects.length }] },
++  { match: /SELECT code, name, sort, keywords FROM subjects/i, value: subjects },
++  { match: /FROM questions WHERE subject IS NOT NULL/i, value: q },
++  { match: /FROM materials WHERE subject IS NOT NULL/i, value: m },
++]);
++const get = async (db) => (await getSubjects({ request: authedReq('http://x/api/subjects'), env: Object.assign(makeEnv(db), { DB: db }) })).json();
++const post = async (db, body) => postSubject({
++  request: authedReq('http://x/api/subjects', { method: 'POST', body: JSON.stringify(body) }),
++  env: Object.assign(makeEnv(db), { DB: db }),
++});
++
++const SUBJ = [
++  { code: 'english', name: '英语', sort: 10, keywords: '' },
++  { code: 'math', name: '高等数学', sort: 20, keywords: '导数,积分' },
++  { code: '2', name: '政治理论', sort: 30, keywords: '' },
++];
++
++describe('孤儿科目检测', () => {
++  it('教材挂在不存在的科目上时报出来（线上就是这个：politics 278 页）', async () => {
++    const d = await get(mkDb({ subjects: SUBJ, m: [{ s: 'politics', n: 278 }, { s: 'math', n: 711 }] }));
++    expect(d.orphans).toHaveLength(1);
++    expect(d.orphans[0]).toMatchObject({ code: 'politics', materials: 278, suggestName: '政治理论' });
++  });
++  it('题目和教材都统计', async () => {
++    const d = await get(mkDb({ subjects: SUBJ, q: [{ s: 'ghost', n: 5 }], m: [{ s: 'ghost', n: 9 }] }));
++    expect(d.orphans[0]).toMatchObject({ code: 'ghost', questions: 5, materials: 9 });
++  });
++  it('已存在的科目不算孤儿', async () => {
++    const d = await get(mkDb({ subjects: SUBJ, q: [{ s: 'math', n: 100 }], m: [{ s: 'english', n: 8 }] }));
++    expect(d.orphans).toEqual([]);
++  });
++  it('非内置代码没有建议名，但仍然报出来', async () => {
++    const d = await get(mkDb({ subjects: SUBJ, q: [{ s: 'mycode', n: 3 }] }));
++    expect(d.orphans[0].code).toBe('mycode');
++    expect(d.orphans[0].suggestName).toBeUndefined();
++  });
++  it('空 subject 值不计入', async () => {
++    const d = await get(mkDb({ subjects: SUBJ, q: [{ s: '', n: 3 }, { s: null, n: 2 }] }));
++    expect(d.orphans).toEqual([]);
++  });
++  it('items 照常返回，不受影响', async () => {
++    const d = await get(mkDb({ subjects: SUBJ, m: [{ s: 'politics', n: 278 }] }));
++    expect(d.items.map((x) => x.v)).toEqual(['english', 'math', '2']);
++  });
++});
++
++describe('重建内置科目要补回默认关键词', () => {
++  it('关键词留空时自动填默认值', async () => {
++    const db = mkDb({ subjects: [] });
++    await post(db, { code: 'english', name: '英语' });
++    const ins = db.log.find((r) => /INSERT INTO subjects/i.test(r.sql));
++    expect(ins.binds[3]).toContain('阅读理解');
++    expect(ins.binds[3]).toContain('四级');
++  });
++  it('政治理论的默认关键词也在', async () => {
++    const db = mkDb({ subjects: [] });
++    await post(db, { code: 'politics', name: '政治理论' });
++    const ins = db.log.find((r) => /INSERT INTO subjects/i.test(r.sql));
++    expect(ins.binds[3]).toContain('马克思');
++    expect(ins.binds[3]).toContain('毛概');
++  });
++  it('用户自己填了就用用户的，不覆盖', async () => {
++    const db = mkDb({ subjects: [] });
++    await post(db, { code: 'english', name: '英语', keywords: '我自己的关键词' });
++    const ins = db.log.find((r) => /INSERT INTO subjects/i.test(r.sql));
++    expect(ins.binds[3]).toBe('我自己的关键词');
++  });
++  it('非内置代码没有默认值可补，保持空', async () => {
++    const db = mkDb({ subjects: [] });
++    await post(db, { code: 'mycode', name: '我的科目' });
++    const ins = db.log.find((r) => /INSERT INTO subjects/i.test(r.sql));
++    expect(ins.binds[3]).toBe('');
++  });
++  it('种子和默认值是同一份数据，不会各写各的', () => {
++    const src = read('functions/api/subjects.js');
++    expect(src).toContain('export const DEFAULT_SUBJECTS');
++    expect(src).toContain('for (const [code, name, sort, kw] of DEFAULT_SUBJECTS)');
++    expect(src.match(/'阅读理解,完形,词汇/g)).toHaveLength(1);   // 只出现一次
++  });
++});
++
++describe('前端：把孤儿摆出来并能一键恢复', () => {
++  const settings = read('js/views/settings.js');
++  const tpl = read('js/tpl/view-settings.js');
++  it('loadSubjects 保存 orphans', () => {
++    expect(settings).toContain('this.subjOrphans=Array.isArray(d&&d.orphans)?d.orphans:[];');
++  });
++  it('有重建入口，且代码用孤儿的原始代码（改一个字就归不了位）', () => {
++    expect(settings).toContain('async subjRestoreOrphan(o)');
++    expect(settings).toContain('code:o.code');
++  });
++  it('重建前告知会归位多少内容', () => {
++    expect(settings).toContain('这些内容目前挂在一个不存在的科目上');
++  });
++  it('设置页有告警区块', () => {
++    expect(tpl).toContain('subjOrphans && subjOrphans.length');
++    expect(tpl).toContain('无主内容');
++    expect(tpl).toContain('subjRestoreOrphan(o)');
++  });
++  it('说明里点破「重建同名代码即可归位」', () => {
++    expect(tpl).toContain('重建同名代码的科目即可自动归位');
++  });
++});
++
++describe('内置科目的一键重建 chip', () => {
++  const settings = read('js/views/settings.js');
++  const tpl = read('js/tpl/view-settings.js');
++  const css = read('css/style.css');
++
++  const DEFAULTS = [
++    { code: 'politics', name: '政治理论', sort: 1, keywords: '马克思,毛概' },
++    { code: 'english', name: '英语', sort: 2, keywords: '阅读理解,完形' },
++  ];
++  const mkCtx = (subjects, orphans = []) => {
++    const calls = [];
++    return {
++      calls, flashes: [], subjects, subjOrphans: orphans,
++      flash(m) { this.flashes.push(String(m)); },
++      loadSubjects: async () => {}, loadMeta() {},
++      async api(p, o) { calls.push(JSON.parse(o.body)); return { ok: true }; },
++    };
++  };
++  const restore = (c, d) => Settings.methods.subjRestoreDefault.call(c, d);
++
++  it('后端把默认定义下发给前端（不让前端再抄一份）', () => {
++    expect(read('functions/api/subjects.js')).toContain('defaults: DEFAULT_SUBJECTS.map');
++    expect(settings).toContain('this.subjDefaults=Array.isArray(d&&d.defaults)?d.defaults:[];');
++  });
++  it('重建时用内置代码，并带回默认名称和关键词', async () => {
++    global.confirm = () => true;
++    const c = mkCtx([{ v: 'english', t: '英语' }]);
++    await restore(c, DEFAULTS[0]);
++    expect(c.calls[0]).toMatchObject({ code: 'politics', name: '政治理论', keywords: '马克思,毛概' });
++  });
++  it('挂在这个代码下的内容会归位，提示要说出来', async () => {
++    global.confirm = () => true;
++    const c = mkCtx([], [{ code: 'politics', questions: 0, materials: 278 }]);
++    await restore(c, DEFAULTS[0]);
++    expect(c.flashes.join('')).toMatch(/278 页教材 已归位/);
++  });
++  it('已存在的科目不重复创建', async () => {
++    const c = mkCtx([{ v: 'english', t: '英语' }]);
++    await restore(c, DEFAULTS[1]);
++    expect(c.calls).toHaveLength(0);
++    expect(c.flashes.join('')).toMatch(/已存在/);
++  });
++  it('取消确认就不发请求', async () => {
++    global.confirm = () => false;
++    const c = mkCtx([]);
++    await restore(c, DEFAULTS[0]);
++    expect(c.calls).toHaveLength(0);
++  });
++  it('chip 按「是否已存在」区分状态：已存在灰且禁用，缺失才可点', () => {
++    expect(tpl).toContain("{gone: !subjects.some(x=>x.v===d.code)}");
++    expect(tpl).toContain(':disabled="subjects.some(x=>x.v===d.code)"');
++    expect(css).toContain('.def-chip{');
++    expect(css).toContain('.def-chip.gone{');
++  });
++  it('chip 上显示代码，用户才知道「代码必须一致」', () => {
++    expect(tpl).toContain('<code>{{ d.code }}</code>');
++    expect(tpl).toMatch(/灰色＝已存在/);
 +  });
 +});

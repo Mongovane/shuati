@@ -1,6 +1,17 @@
 import { json, checkAuth } from './_utils.js';
 
 // subjects 表：code 科目代码 / name 中文名 / sort 排序 / keywords 术语关键词（逗号分隔，供自动判断科目用）
+
+// 内置科目的默认值。种子只在【表完全为空】时才灌（见 ensure），
+// 所以删掉某个内置科目再重建，关键词是空的 —— 用户会以为「加了科目但关键词没了」。
+// 现在 POST 新建时若代码命中这里且没填关键词，就自动回填默认值。
+export const DEFAULT_SUBJECTS = [
+  ['politics', '政治理论', 1, '马克思,马克思主义,毛泽东,邓小平,习近平,社会主义,中国共产党,中国特色,辩证唯物,历史唯物,生产关系,生产力,无产阶级,资本主义,党的领导,毛概,马原,史纲,思修,科学发展观,三个代表,实事求是,改革开放,新民主主义'],
+  ['english', '英语', 2, '阅读理解,完形,词汇,语法,写作,四级,六级'],
+  ['math', '高等数学', 3, '导数,积分,极限,微分,矩阵,行列式,向量,特征值,定积分,不定积分,级数,偏导,微分方程,连续函数,可导,渐近线'],
+  ['computer', '计算机基础与程序设计', 4, '算法,数据结构,时间复杂度,空间复杂度,链表,二叉树,操作系统,数据库,指针,数组,哈希,递归,进制转换,源程序,伪代码'],
+];
+const DEFAULT_BY_CODE = new Map(DEFAULT_SUBJECTS.map(([c, n, s, k]) => [c, { name: n, sort: s, keywords: k }]));
 async function ensure(env) {
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS subjects (
@@ -12,13 +23,7 @@ async function ensure(env) {
   ).run();
   const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM subjects`).first();
   if (!c || !c.n) {
-    const seed = [
-      ['politics', '政治理论', 1, '马克思,马克思主义,毛泽东,邓小平,习近平,社会主义,中国共产党,中国特色,辩证唯物,历史唯物,生产关系,生产力,无产阶级,资本主义,党的领导,毛概,马原,史纲,思修,科学发展观,三个代表,实事求是,改革开放,新民主主义'],
-      ['english', '英语', 2, '阅读理解,完形,词汇,语法,写作,四级,六级'],
-      ['math', '高等数学', 3, '导数,积分,极限,微分,矩阵,行列式,向量,特征值,定积分,不定积分,级数,偏导,微分方程,连续函数,可导,渐近线'],
-      ['computer', '计算机基础与程序设计', 4, '算法,数据结构,时间复杂度,空间复杂度,链表,二叉树,操作系统,数据库,指针,数组,哈希,递归,进制转换,源程序,伪代码'],
-    ];
-    for (const [code, name, sort, kw] of seed) {
+    for (const [code, name, sort, kw] of DEFAULT_SUBJECTS) {
       await env.DB.prepare(`INSERT OR IGNORE INTO subjects (code,name,sort,keywords) VALUES (?,?,?,?)`).bind(code, name, sort, kw).run();
     }
   }
@@ -32,7 +37,38 @@ export async function onRequestGet({ request, env }) {
   try {
     await ensure(env);
     const r = await env.DB.prepare(`SELECT code, name, sort, keywords FROM subjects ORDER BY sort ASC, code ASC`).all();
-    return json({ items: (r.results || []).map((x) => ({ v: x.code, t: x.name, sort: x.sort || 0, keywords: x.keywords || '' })) });
+    const items = (r.results || []).map((x) => ({ v: x.code, t: x.name, sort: x.sort || 0, keywords: x.keywords || '' }));
+
+    // 孤儿科目：题目 / 教材里引用了某个 subject，但 subjects 表里没有这一行。
+    // 成因：科目被删（内容没跟着删或没转移），或者手工改过 subject 字段。
+    // 表现是教材列表的分组标题直接显示原始代码（比如「politics 1 本」）而不是中文名，
+    // 用户完全看不出发生了什么、更不知道怎么恢复。
+    const known = new Set(items.map((x) => x.v));
+    const orphans = new Map();
+    const scan = async (table, key) => {
+      try {
+        const rs = await env.DB.prepare(
+          `SELECT subject AS s, COUNT(*) AS n FROM ${table} WHERE subject IS NOT NULL AND subject <> '' GROUP BY subject`
+        ).all();
+        for (const row of (rs && rs.results) || []) {
+          const code = String(row.s || '');
+          if (!code || known.has(code)) continue;
+          const cur = orphans.get(code) || { code, questions: 0, materials: 0 };
+          cur[key] = (row.n | 0);
+          // 内置代码能给出建议的中文名，方便一键恢复
+          const d = DEFAULT_BY_CODE.get(code);
+          if (d) { cur.suggestName = d.name; cur.suggestKeywords = d.keywords; }
+          orphans.set(code, cur);
+        }
+      } catch (_) { /* 表可能还没建，忽略 */ }
+    };
+    await scan('questions', 'questions');
+    await scan('materials', 'materials');
+
+    // 把内置科目的默认值也发给前端：设置页要渲染一排「一键重建」的 chip。
+    // 从后端取而不是前端再写一份，避免两处定义漂移。
+    return json({ items, orphans: [...orphans.values()],
+      defaults: DEFAULT_SUBJECTS.map(([code, name, sort, keywords]) => ({ code, name, sort, keywords })) });
   } catch (e) {
     return json({ error: '读取科目失败：' + e.message }, 500);
   }
@@ -46,7 +82,10 @@ export async function onRequestPost({ request, env }) {
   const code = normCode(body.code || body.v);
   const name = String(body.name || body.t || '').trim();
   const sort = Number.isFinite(+body.sort) ? +body.sort : 0;
-  const keywords = String(body.keywords || '').trim();
+  let keywords = String(body.keywords || '').trim();
+  // 重建内置科目时把默认关键词补回来（用户没填的话）。
+  // 删科目会连关键词一起删，而种子只在表为空时灌一次，重建就是一片空白。
+  if (!keywords) { const d = DEFAULT_BY_CODE.get(code); if (d) keywords = d.keywords; }
   if (!code) return json({ error: '科目代码只能用小写字母/数字/下划线，且不能为空' }, 400);
   if (!name) return json({ error: '请填写科目名称' }, 400);
   try {
@@ -92,27 +131,40 @@ export async function onRequestDelete({ request, env }) {
   if (!code) return json({ error: '缺少科目代码' }, 400);
   try {
     await ensure(env);
-    // 统计该科目下的题目数（判断能否直接删）
-    let qCount = 0;
+    // 统计该科目下的题目数和教材页数（判断能否直接删）
+    let qCount = 0, mCount = 0;
     try { const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM questions WHERE subject = ?`).bind(code).first(); qCount = (c && c.n) || 0; } catch (_) {}
+    // 教材也要数。以前只数题目：一个「0 道题但有 278 页教材」的科目会被判成空，
+    // 直接删掉科目行，而 materials 既没删也没转移 —— 那些页面 subject 指向一个
+    // 已经不存在的科目，在教材列表里按科目分组时就成了孤儿。
+    try { const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM materials WHERE subject = ?`).bind(code).first(); mCount = (c && c.n) || 0; } catch (_) {}
     const moveTo = normCode(body.moveTo);
     const force = !!body.force;
-    // 有题目且既不转移、也未确认强删 → 拒绝，返回题目数让前端提示
-    if (qCount > 0 && !moveTo && !force) {
-      return json({ error: 'subject_not_empty', count: qCount }, 409);
+    // 试探模式：只回报数量，不做任何删除。
+    // 前端需要「先知道有多少东西，再决定怎么问用户」，如果靠发一次真删来探测，
+    // 空科目就会在用户还没确认的时候直接消失 —— 线上就是这么丢掉两个科目的。
+    if (body.dry_run) return json({ ok: true, dryRun: true, questions: qCount, materials: mCount });
+    // 有题目或有教材，且既不转移、也未确认强删 → 拒绝，把两个数都返回给前端提示
+    if ((qCount > 0 || mCount > 0) && !moveTo && !force) {
+      return json({ error: 'subject_not_empty', count: qCount, questions: qCount, materials: mCount }, 409);
     }
     if (moveTo) {
       // 转移：题目改挂到目标科目
       await env.DB.prepare(`UPDATE questions SET subject = ? WHERE subject = ?`).bind(moveTo, code).run();
       try { await env.DB.prepare(`UPDATE materials SET subject = ? WHERE subject = ?`).bind(moveTo, code).run(); } catch (_) {}
-    } else if (force && qCount > 0) {
-      // 强制删除：连同该科目下的题目一并删除
-      await env.DB.prepare(`DELETE FROM questions WHERE subject = ?`).bind(code).run();
-      try { await env.DB.prepare(`DELETE FROM materials WHERE subject = ?`).bind(code).run(); } catch (_) {}
+    } else if (force) {
+      // 强制删除：连同该科目下的题目和教材一并删除。
+      // 条件从 `force && qCount > 0` 放宽成 `force`：原来只有「有题目」才清教材，
+      // 于是 0 题 + 有教材的科目被删后会留下一堆孤儿页。
+      if (qCount > 0) await env.DB.prepare(`DELETE FROM questions WHERE subject = ?`).bind(code).run();
+      if (mCount > 0) { try { await env.DB.prepare(`DELETE FROM materials WHERE subject = ?`).bind(code).run(); } catch (_) {} }
     }
     const r = await env.DB.prepare(`DELETE FROM subjects WHERE code = ?`).bind(code).run();
     const deleted = (r && r.meta && r.meta.changes != null) ? r.meta.changes : 0;
-    return json({ ok: true, deleted, moved: moveTo || null, removedQuestions: (force && !moveTo) ? qCount : 0 });
+    return json({ ok: true, deleted, moved: moveTo || null,
+      removedQuestions: (force && !moveTo) ? qCount : 0,
+      removedMaterials: (force && !moveTo) ? mCount : 0,
+      movedQuestions: moveTo ? qCount : 0, movedMaterials: moveTo ? mCount : 0 });
   } catch (e) {
     return json({ error: '删除科目失败：' + e.message }, 500);
   }
