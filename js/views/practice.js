@@ -20,7 +20,9 @@ async startSession(keep){ if(!this.token||this.loading)return;
       if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
       const dedup=(arr)=>{ const m=new Map(); for(const q of (arr||[])){ if(q&&q.id!=null&&!m.has(q.id))m.set(q.id,q); } return [...m.values()]; };
       try{
-        const extra={limit:30}; if(keep && this.sessionMode!=='wrong' && this.sessionMode!=='due')extra.nocount=1; /* 复习视图(wrong/due)保持计数新鲜（集小，COUNT 便宜）*/
+        // light=1：不取 analysis / ai_cards。答题阶段不显示它们，揭晓时再按 id 补
+        //（实测 30 题响应 220KB 里这两样占 94KB，骨架屏转很久主要是被它们拖的）
+        const extra={limit:30, light:1}; if(keep && this.sessionMode!=='wrong' && this.sessionMode!=='due')extra.nocount=1; /* 复习视图(wrong/due)保持计数新鲜（集小，COUNT 便宜）*/
         const d=await this.api('/api/questions?'+this.qs(extra));
         if(this.view!==forView){ this.loading=false; return; }
         this.queue=dedup(d.items);
@@ -33,6 +35,20 @@ async startSession(keep){ if(!this.token||this.loading)return;
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.loading=false;
     },
+// 按需补齐当前题的 analysis / ai_cards（列表用 light=1 没取）。
+// 只在真的要看时发一次小请求，比每批多传 94KB 划算得多。
+async ensureFullQuestion(q){
+  if(!q || !q._lite || q._fullLoading || q._full)return;
+  if(!q.has_analysis && !q.has_cards){ q._full=true; return; }   // 本来就没有，不用跑一趟
+  q._fullLoading=true;
+  try{
+    const d=await this.api('/api/questions?ids='+encodeURIComponent(q.id)+'&limit=1');
+    const full=(d.items||[])[0];
+    if(full){ q.analysis=full.analysis||''; q.ai_cards=full.ai_cards||null; }
+    q._full=true;
+  }catch(e){ if(e.message==='unauth')throw e; }
+  finally{ q._fullLoading=false; }
+},
 srcBook(s){ const t=String(s||'').split(' · ')[0].trim(); return t || '未知来源'; },
 cleanPageMd(md){
       if(!md)return '';
@@ -127,6 +143,9 @@ findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(
 async onAnswered(p){
       // 取消自评：清除本题作答记录（答题卡圆点恢复灰色）
       if(p.cancel){ delete this.sessionAns[p.id]; return; }
+      // 揭晓答案 = 马上要看参考解析了，这时才把 analysis / ai_cards 取回来。
+      // 不 await：让计分和界面先走，解析到了自然渲染出来。
+      { const q=(this.queue||[]).find(x=>x&&x.id===p.id); if(q)this.ensureFullQuestion(q).catch(()=>{}); }
       this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
       if(p.partial) this.flash('多选少选：按半分计，已计入错题复习');
       this.countNewToday(p.id);

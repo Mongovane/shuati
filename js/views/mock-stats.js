@@ -47,7 +47,7 @@ async restoreBackup(ev){ const f=ev&&ev.target&&ev.target.files&&ev.target.files
         this.flash('恢复完成：题目 '+(c.questions||0)+' · 进度 '+(c.progress||0)+' · 教材 '+(c.materials||0)+' · 模考 '+(c.mock_results||0));
         if(Array.isArray(r.notes)&&r.notes.length)alert('恢复提示：\n\n· '+r.notes.join('\n· '));
         // 恢复后各处缓存全部标脏并重拉
-        this.statsDirty=true; this.bankDirty=true;
+        this.statsDirty=true; this.bankDirty=true; this.queueDirty=true;
         try{ localStorage.removeItem('zb_meta_cache'); }catch(_){ }
         this.loadSubjects(); this.loadMeta(true); this.loadMaterials&&this.loadMaterials(); this.loadStats();
       }catch(e){ if(e.message!=='unauth')this.flash('恢复失败：'+e.message,true); }

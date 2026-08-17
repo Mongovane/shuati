@@ -226,8 +226,11 @@ export function rowToQuestion(r) {
     stem: r.stem,
     options: parse(r.options, []),
     answer: parse(r.answer, []),
+    // 轻量投影（light=1）下这两列没查出来。必须能区分「本来就没有」和「这次没取」，
+    // 否则前端会把「未取回」当成「没有解析」，用户点解析看到一片空白。
     analysis: r.analysis || '',
     ai_cards: parse(r.ai_cards, null),
+    ...(r.has_analysis !== undefined ? { _lite: true, has_analysis: !!r.has_analysis, has_cards: !!r.has_cards } : {}),
     tags: parse(r.tags, []),
     wrong_count: r.wrong_count || 0,
     right_count: r.right_count || 0,

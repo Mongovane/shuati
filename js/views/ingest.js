@@ -60,7 +60,7 @@ async importXlsx(){ const rows=(this.ingest.xl&&this.ingest.xl.rows)||[]; if(!ro
       try{ const r=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,questions:rows})});
         this.flash('已导入 '+(r.inserted_questions||r.inserted||rows.length)+' 题');
         this.ingest.xl.done=true; this.ingest.xl.rows=[]; this.ingest.xl.issues=[];
-        this.bankDirty=true; this.statsDirty=true; this.loadMeta(true);
+        this.bankDirty=true; this.queueDirty=true; this.statsDirty=true; this.loadMeta(true);
       }catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); }
       this.ingest.busy=false; },
 // 「原地更新」= 按题干形状指纹认领到了已有行（插图形态变了也算同一道题），
@@ -94,7 +94,7 @@ async saveManual(){ if(!this.token){ this.flash('请先在设置中填写访问�
       if(q.type==='multiple_choice' && q.answer.length<2){ this.flash('多选题至少要 2 个答案（如 A,C）',true); return; }
       if((q.type==='single_choice'||q.type==='multiple_choice')){ const keys=q.options.map(o=>o.key); const bad=q.answer.filter(a=>!keys.includes(a)); if(bad.length){ this.flash('答案 '+bad.join('/')+' 不在选项里，请检查',true); return; } }
       this.ingest.busy=true; this.ingest.result=null;
-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('已免费保存 1 题'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }
+      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('已免费保存 1 题'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.ingest.busy=false;
     },
@@ -102,14 +102,14 @@ async saveManual(){ if(!this.token){ this.flash('请先在设置中填写访问�
 addManualOption(){ const o=this.ingest.manual.options; if(o.length>=8){ this.flash('最多 8 个选项',true); return; } const key=String.fromCharCode(65+o.length); o.push({key,text:''}); },
 delManualOption(i){ const o=this.ingest.manual.options; if(o.length<=2){ this.flash('至少保留 2 个选项',true); return; } o.splice(i,1); o.forEach((x,idx)=>{ x.key=String.fromCharCode(65+idx); }); },
 onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ this.ingest.photoDataUrl=String(rd.result||''); this.ingest.photoUrl=this.ingest.photoDataUrl; this.flash('图片已加载，点「AI 识图填入」自动识别题目'); }; rd.onerror=()=>this.flash('图片读取失败',true); rd.readAsDataURL(file); },
-async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(true),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
+async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(true),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
 async doIngest(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
       const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.currentSource() };
       if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON parse failed: '+e.message,true); return; }
         if(!Array.isArray(arr)||!arr.length){ this.flash('请粘贴非空 JSON 数组',true); return; } body.questions=arr;
       } else { if(!this.ingest.raw.trim()){ this.flash('请先粘贴原始文本',true); return; } body.raw_text=this.ingest.raw; body.kind=this.ingest.kind; }
       this.ingest.busy=true; this.ingest.result=null;
-      try{ Object.assign(body, this.aiOv(false)); const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.loadMaterials();
+      try{ Object.assign(body, this.aiOv(false)); const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.loadMaterials();
         if(this.ingest.tab==='ai')this.ingest.raw=''; else this.ingest.json=''; }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.ingest.busy=false;
@@ -469,7 +469,7 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
       else { type='short_answer'; if(solPart){ answer=[solPart]; analysis=solPart; } }
       const stem=(stemPart||'').trim(); if(!stem)return null;
       return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:(it.passage||''), stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[], page:(ctx.page!=null?ctx.page:null) }; },
-async _postQuestions(arr, subject, source){ let inserted=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } if(inserted>0)this.bankDirty=true; return inserted; },
+async _postQuestions(arr, subject, source){ let inserted=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } if(inserted>0)this.bankDirty=true; this.queueDirty=true; return inserted; },
 _openPreview(arr, title, subject, source){ const seen=new Set(); const uniq=[]; let dup=0; for(const q of arr){ const k=String(q.stem||'').replace(/\s+/g,' ').trim(); if(!k)continue; if(seen.has(k)){ dup++; continue; } seen.add(k); uniq.push(q); }
       // 分页渲染：题量大时全量渲染 rich-text(marked+KaTeX) 会卡死浏览器，只渲染当前页
       this.extractPreview={ open:true, items:uniq.map((q,i)=>Object.assign({_use:true,_k:i},q)), title, subject, source, dup, page:1, pageSize:40 }; },
@@ -724,7 +724,7 @@ async _localExtractBookInner(){
 async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
       this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
       try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length+' 题…'; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
-        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.extractClose(); }
+        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.extractClose(); }
       catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
 saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },
 logPage(p,t,msg){ const arr=this.ingest.local.log; arr.push({p,t,msg}); if(arr.length>500)arr.splice(0,arr.length-500); },
@@ -751,7 +751,7 @@ async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); ret
           const page=await doc.getPage(p); const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',Number(this.ingest.pdf.quality)||0.72);
           const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(true),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),kind:this.ingest.kind,images:[dataUrl]})}); total+=(d.inserted_questions??d.inserted)||0; mats+=d.inserted_materials||0; this.ingest.pdf.inserted=total; this.ingest.pdf.done=(p-st+1); if(d.sample) samples.push(...d.sample);
         }
-        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.loadMaterials();
+        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.loadMaterials();
       }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
       this.ingest.pdf.busy=false; }
 } };

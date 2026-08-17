@@ -191,7 +191,7 @@ async bankAiFillAnswers(){
           +(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')
           +(f.failed?('；失败 '+f.failed+' 题'):'')
           +'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
-        this.bankDirty=true; this.statsDirty=true;
+        this.bankDirty=true; this.statsDirty=true; this.queueDirty=true;
       }catch(e){ if(e.message!=='unauth')this.flash('AI 补答案失败：'+e.message,true); }
       if(this._aiFillCtrl===ctrl)this._aiFillCtrl=null;
       this.bankAiFill.busy=false; this.bankAiFill.prog=''; },

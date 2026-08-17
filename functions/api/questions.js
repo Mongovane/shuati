@@ -68,7 +68,19 @@ export async function onRequestGet({ request, env }) {
     return { w, b };
   };
 
-  const baseSelect = `SELECT q.*, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.due_at, pr.note AS user_note
+  // —— 轻量投影（light=1）——
+  // 刷题页取一批 30 题时，analysis（参考解析）和 ai_cards（知识点卡片）加起来能占
+  // 整个响应的 40%（实测 220KB 里 analysis 88KB + ai_cards 6KB），
+  // 而这两样在「答题阶段」根本不显示 —— 用户揭晓答案时才需要，那时按 id 单独取更划算。
+  // 骨架屏转很久的主因就是这坨用不上的负载。
+  const light = p.get('light') === '1';
+  const qCols = light
+    ? `q.id, q.subject, q.chapter, q.type, q.difficulty, q.source, q.page, q.passage, q.stem,
+       q.options, q.answer, q.tags, q.status, q.created_at,
+       (CASE WHEN IFNULL(q.analysis,'') <> '' THEN 1 ELSE 0 END) AS has_analysis,
+       (CASE WHEN IFNULL(q.ai_cards,'') NOT IN ('','[]') THEN 1 ELSE 0 END) AS has_cards`
+    : 'q.*';
+  const baseSelect = `SELECT ${qCols}, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.due_at, pr.note AS user_note
                       FROM questions q
                       LEFT JOIN progress pr ON pr.question_id = q.id`;
 

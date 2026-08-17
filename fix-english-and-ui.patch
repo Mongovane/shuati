@@ -766,7 +766,7 @@ index 0000000..de183b2
 +  return isEnglish(subject) ? EN_EXPLAIN : GEN_EXPLAIN;
 +}
 diff --git a/functions/api/_utils.js b/functions/api/_utils.js
-index 697edbb..328149a 100644
+index 697edbb..bf2ab54 100644
 --- a/functions/api/_utils.js
 +++ b/functions/api/_utils.js
 @@ -177,10 +177,38 @@ export function ftsQuote(kw) {
@@ -811,6 +811,18 @@ index 697edbb..328149a 100644
  }
  
  // 把数据库行还原成前端可用的题目对象
+@@ -198,8 +226,11 @@ export function rowToQuestion(r) {
+     stem: r.stem,
+     options: parse(r.options, []),
+     answer: parse(r.answer, []),
++    // 轻量投影（light=1）下这两列没查出来。必须能区分「本来就没有」和「这次没取」，
++    // 否则前端会把「未取回」当成「没有解析」，用户点解析看到一片空白。
+     analysis: r.analysis || '',
+     ai_cards: parse(r.ai_cards, null),
++    ...(r.has_analysis !== undefined ? { _lite: true, has_analysis: !!r.has_analysis, has_cards: !!r.has_cards } : {}),
+     tags: parse(r.tags, []),
+     wrong_count: r.wrong_count || 0,
+     right_count: r.right_count || 0,
 diff --git a/functions/api/answerfill.js b/functions/api/answerfill.js
 index 70d3c1a..a31fb70 100644
 --- a/functions/api/answerfill.js
@@ -1062,10 +1074,31 @@ index f360f8d..737d183 100644
    } catch (e) {
      return json({ error: '写入数据库失败：' + e.message }, 500);
 diff --git a/functions/api/questions.js b/functions/api/questions.js
-index 84cdf6f..da8fce7 100644
+index 84cdf6f..89dcb13 100644
 --- a/functions/api/questions.js
 +++ b/functions/api/questions.js
-@@ -189,10 +189,76 @@ export async function onRequestPatch({ request, env }) {
+@@ -68,7 +68,19 @@ export async function onRequestGet({ request, env }) {
+     return { w, b };
+   };
+ 
+-  const baseSelect = `SELECT q.*, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.due_at, pr.note AS user_note
++  // —— 轻量投影（light=1）——
++  // 刷题页取一批 30 题时，analysis（参考解析）和 ai_cards（知识点卡片）加起来能占
++  // 整个响应的 40%（实测 220KB 里 analysis 88KB + ai_cards 6KB），
++  // 而这两样在「答题阶段」根本不显示 —— 用户揭晓答案时才需要，那时按 id 单独取更划算。
++  // 骨架屏转很久的主因就是这坨用不上的负载。
++  const light = p.get('light') === '1';
++  const qCols = light
++    ? `q.id, q.subject, q.chapter, q.type, q.difficulty, q.source, q.page, q.passage, q.stem,
++       q.options, q.answer, q.tags, q.status, q.created_at,
++       (CASE WHEN IFNULL(q.analysis,'') <> '' THEN 1 ELSE 0 END) AS has_analysis,
++       (CASE WHEN IFNULL(q.ai_cards,'') NOT IN ('','[]') THEN 1 ELSE 0 END) AS has_cards`
++    : 'q.*';
++  const baseSelect = `SELECT ${qCols}, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.due_at, pr.note AS user_note
+                       FROM questions q
+                       LEFT JOIN progress pr ON pr.question_id = q.id`;
+ 
+@@ -189,10 +201,76 @@ export async function onRequestPatch({ request, env }) {
    if (!auth.ok) return auth.resp;
    let body;
    try { body = await request.json(); } catch { return json({ error: '请求体解析失败' }, 400); }
@@ -1298,16 +1331,21 @@ index a798014..285dcd8 100644
      return json({ error: '删除科目失败：' + e.message }, 500);
    }
 diff --git a/js/app.js b/js/app.js
-index 51b2a7f..1c04efe 100644
+index 51b2a7f..d340ae1 100644
 --- a/js/app.js
 +++ b/js/app.js
-@@ -55,12 +55,12 @@ const App={
+@@ -55,12 +55,16 @@ const App={
      queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
      sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
      ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
 -    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
+-    stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
 +    aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
-     stats:null, statsDirty:true, statsLoading:false, bankDirty:true, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
++    stats:null, statsDirty:true, statsLoading:false, bankDirty:true,
++    // 题目内容脏标记：AI 补答案、批量改科目这类「改的是题目本身」的操作要置位。
++    // bankDirty 只让题库页重拉，Home 的活会话/缓存快照不受它影响 ——
++    // 于是补完答案回 Home，看到的还是补之前那批题（线上实测）。
++    queueDirty:false, /* 题库脏标记：首次 true，此后仅题目增删改后置位 */ settFold:{ token:false, aicfg:true, mineru:true, offline:true, subjects:true, prefs:true },
      ai:{ model:'', visionModel:'', hasAI:false, hasCfAI:false, hasMineru:false },
      cfocr:{ used:0, limit:70, budget:10000, npp:115 },
      ocrCfg:{ model:'', base:'', key:'' },
@@ -1316,7 +1354,7 @@ index 51b2a7f..1c04efe 100644
      autoSaveAi:false,  // 自动保存 AI 解析/知识点卡片到题目（默认关：手动保存更省存储/额度）
      modelPick:{ busy:false, list:[] }, modelBoxOpen:false, aiTestBusy:false,  // 「从端点拉取」到的模型候选列表
      explainStable:false,  // 稳定模式：关闭流式改用一次性返回（流式易断的模型/网络下更稳）
-@@ -74,12 +74,17 @@ const App={
+@@ -74,12 +78,17 @@ const App={
      mineruCfg:{ pageLimit:1000, fileLimit:5000, tokenExp:'', token:'' },  // token：用户自己的 MinerU API Token，留空用服务端
      mineruUsageView:{ date:'', pages:0, files:0 },
      mineruTokenBad:false,
@@ -1336,7 +1374,7 @@ index 51b2a7f..1c04efe 100644
      subjMgr:{ code:'', name:'', sort:'', keywords:'', busy:false },
      bankEdit:{ open:false, q:null, stem:'', analysis:'', subject:'', type:'', options:[], answerText:'', busy:false },
      pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
-@@ -148,7 +153,12 @@ const App={
+@@ -148,7 +157,12 @@ const App={
      mockResult(){ const v=Object.values(this.mock.answers); const correct=v.filter(x=>x===true).length; const half=v.filter(x=>x===0.5).length;
        return { graded:v.filter(x=>x!==null).length, correct, half, score:correct+half*0.5, total:this.mock.questions.length }; },
      curAiText(){ const q=this.cur; return (q && this.aiX.id===q.id && this.aiX.view==='explain') ? this.aiX.text : ''; },
@@ -1350,7 +1388,7 @@ index 51b2a7f..1c04efe 100644
      curAiChat(){ const q=this.cur; return (q && this.aiX.id===q.id && (this.aiX.view==='explain'||this.aiX.view==='concept')) ? (this.aiX.chat||[]) : []; },
      readerCanAi(){ return (this.ai.hasAI || !!(this.explainCfg.base&&this.explainCfg.key)) && !this.offline; },
      // 刷题类视图且有当前题时，移动端底部有固定「上/下一题」栏；回顶按钮需上移避开它
-@@ -199,7 +209,7 @@ const App={
+@@ -199,7 +213,7 @@ const App={
        if(s){
          const view=s.view|| (genC?'concept':'explain');
          const busy=(view==='concept'&&genC)||(view==='explain'&&genE);
@@ -1359,7 +1397,7 @@ index 51b2a7f..1c04efe 100644
        } else {
          // 无会话缓存：从题目已存的 ai_cards 和 analysis 同时恢复（两者可共存）
          const savedCards = nc && Array.isArray(nc.ai_cards) && nc.ai_cards.length ? nc.ai_cards.slice() : [];
-@@ -227,7 +237,11 @@ const App={
+@@ -227,7 +241,11 @@ const App={
      'ingest.bookMode'(v){ if(v)this.ingest.source=this.makeSource(); },
      view(v){ try{ localStorage.setItem('zb_view', v); }catch(_){ } this._syncHash(v); this.$nextTick(()=>this._syncTabStrip()); },
      mineruCfg:{ handler(){ this.saveMineruCfg(); }, deep:true },
@@ -1372,7 +1410,7 @@ index 51b2a7f..1c04efe 100644
        // 书架只载入了元信息，翻到这本书才把它的正文补齐（目录标题/阅读/抽题都依赖 content_md）
        if(v)this.ensureBookContent(); },
      bookIdx(v){ this.genq.result=null; try{ if(this.currentBookId)localStorage.setItem('zb_readpos:'+this.currentBookId, String(v)); }catch(_){ } },
-@@ -313,6 +327,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -313,6 +331,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
          if(useStream && ct.includes('text/event-stream') && res.body){
            let acc=''; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
            try{
@@ -1381,7 +1419,7 @@ index 51b2a7f..1c04efe 100644
              while(true){ const {done,value}=await reader.read(); if(done)break;
                buf+=dec.decode(value,{stream:true});
                let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
-@@ -320,6 +336,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -320,6 +340,16 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                  if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
                  if(j.error) throw new Error(j.error.message||String(j.error));
                  if(j.model && onDelta) onDelta({model:j.model});
@@ -1398,7 +1436,7 @@ index 51b2a7f..1c04efe 100644
                  const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
                  const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
                  if(fr && onDelta) onDelta({finish_reason:fr});
-@@ -340,7 +366,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -340,7 +370,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                      else { this._thinkBuf+=t.replace('<think>',''); if(onDelta)onDelta({reasoning:t.replace('<think>','')}); }
                    } else { acc+=t; if(onDelta)onDelta({text:t, acc}); }
                  } else if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); }
@@ -1415,7 +1453,7 @@ index 51b2a7f..1c04efe 100644
              return { res, text:acc, ok:true };
            }catch(e){
              if(signal && signal.aborted) throw e;
-@@ -353,6 +387,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -353,6 +391,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
            if(d && d.error) return { res, text:'', ok:false, errText:d.error };
            const txt = (d && d.text) || '';
            if(d && d.model && onDelta) onDelta({model:d.model});
@@ -1430,7 +1468,7 @@ index 51b2a7f..1c04efe 100644
            if(txt && onDelta) onDelta({text:txt, acc:txt, full:true});
            return { res, text:txt, ok:true };
          }catch(e){
-@@ -362,10 +404,32 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -362,10 +408,32 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
        };
        return attempt(!stable, 2);
      },
@@ -1463,7 +1501,7 @@ index 51b2a7f..1c04efe 100644
    if(vision && this.ocrCfg && (this.ocrCfg.model||'').trim()) o.vision_model=this.ocrCfg.model.trim();
    return o; },
  flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
-@@ -386,6 +450,8 @@ go(v){
+@@ -386,6 +454,8 @@ go(v){
          qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
        }
        this.view=v;
@@ -1472,6 +1510,17 @@ index 51b2a7f..1c04efe 100644
        this._syncHash(v);
        try{ localStorage.setItem('zb_view',v); }catch(_){}
        if(v==='favorite' && this.fav.listMode){
+@@ -395,7 +465,9 @@ go(v){
+       } else if(['practice','wrong','favorite'].includes(v)){
+         if(v==='practice'&&!this.meta.subjects.length)this.loadMeta();
+         const c=qCache[v];
+-        if(this.sessionView===v && this.queue.length){
++        // 题目内容在别处被改过（如题库里 AI 补答案）→ 缓存和活会话都作废，重新取一批
++        if(this.queueDirty){ this.queueDirty=false; delete qCache[v]; this.queue=[]; this.startSession(); }
++        else if(this.sessionView===v && this.queue.length){
+           // 内存里就是本视图的活会话（比任何缓存快照都新，如「错题回顾」直接写入的队列）：
+           // 原地保留当前题目与作答进度，并丢弃已过期的缓存快照
+           this.loading=false; delete qCache[v];
 diff --git a/js/components/question-card.js b/js/components/question-card.js
 index 87b62bc..eb170bc 100644
 --- a/js/components/question-card.js
@@ -1911,7 +1960,7 @@ index e0a075c..44b3d38 100644
            <div class="subj-row">
              <span class="subj-move"><button class="subj-mv-btn" :disabled="si===0" @click="subjMove(si,-1)" title="上移">▲</button><button class="subj-mv-btn" :disabled="si===subjects.length-1" @click="subjMove(si,1)" title="下移">▼</button></span>
 diff --git a/js/views/bank.js b/js/views/bank.js
-index a007d78..dae8278 100644
+index a007d78..f25e706 100644
 --- a/js/views/bank.js
 +++ b/js/views/bank.js
 @@ -71,40 +71,132 @@ async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fl
@@ -2053,13 +2102,14 @@ index a007d78..dae8278 100644
          }
          const f=this.bankAiFill;
 -        this.flash('已补 '+f.filled+' 题'+(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')+(f.failed?('；失败 '+f.failed+' 题'):'')+'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
+-        this.bankDirty=true; this.statsDirty=true;
 +        const done=f.filled+f.skipped+f.failed;
 +        this.flash((f.canceled?'已停止（处理了 '+done+' / '+f.total+' 题）：':'')
 +          +'已补 '+f.filled+' 题'
 +          +(f.skipped?('；跳过 '+f.skipped+' 题（依赖插图或题干不全）'):'')
 +          +(f.failed?('；失败 '+f.failed+' 题'):'')
 +          +'。补出来的都在「待审」里，请过一遍再发布', f.failed>0);
-         this.bankDirty=true; this.statsDirty=true;
++        this.bankDirty=true; this.statsDirty=true; this.queueDirty=true;
        }catch(e){ if(e.message!=='unauth')this.flash('AI 补答案失败：'+e.message,true); }
 +      if(this._aiFillCtrl===ctrl)this._aiFillCtrl=null;
        this.bankAiFill.busy=false; this.bankAiFill.prog=''; },
@@ -2069,7 +2119,7 @@ index a007d78..dae8278 100644
          // 合并交给服务端（addTags）：一个请求搞定任意条数，
          // 也不再依赖「这一页 items 里有没有这道题」——跨页勾选以前会被静默跳过。
 diff --git a/js/views/books.js b/js/views/books.js
-index 9f08e09..6a2aa46 100644
+index 9f08e09..bf208a9 100644
 --- a/js/views/books.js
 +++ b/js/views/books.js
 @@ -33,7 +33,20 @@ async deleteCurrentBook(){ return this.deleteBook(this.currentBook); },
@@ -2111,6 +2161,15 @@ index 9f08e09..6a2aa46 100644
  async ensureBookContent(book){
        book=book||this.currentBook; if(!book||!book.pages||!book.pages.length)return;
        for(let round=0;round<3;round++){          // 拉完自己那批，再回头确认没有别人漏下的
+@@ -178,7 +201,7 @@ parseBookOutline(tocText){ if(!tocText)return []; const items=[]; const re=/((?:
+       // 点线式没解析出东西（或极少）时，退回「空格 leader」那一套再试一次
+       if(items.length<5){ const sp=this._parseTocSpaced(tocText); if(sp.length>items.length)return sp.slice(0,400); }
+       return items; },
+-async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI && !(this.explainCfg&&this.explainCfg.base&&this.explainCfg.key)){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; } if(this._genqCtrl){ try{ this._genqCtrl.abort(); }catch(_){} } const ctrl=new AbortController(); this._genqCtrl=ctrl; this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',signal:ctrl.signal,body:JSON.stringify({...this.aiOv(false),subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }catch(e){ if(e.name!=='AbortError' && e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; if(this._genqCtrl===ctrl)this._genqCtrl=null; },
++async genQuestionsFromMaterial(){ const m=this.currentPageMat; if(!m){ this.flash('请先选择教材页',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } if(!this.ai.hasAI && !(this.explainCfg&&this.explainCfg.base&&this.explainCfg.key)){ this.flash('未配置 AI 中转站：可在设置中填入你自己的',true); return; } if(this._genqCtrl){ try{ this._genqCtrl.abort(); }catch(_){} } const ctrl=new AbortController(); this._genqCtrl=ctrl; this.genq.busy=true; this.genq.result=null; try{ const d=await this.api('/api/process',{method:'POST',signal:ctrl.signal,body:JSON.stringify({...this.aiOv(false),subject:m.subject,chapter:m.summary||'',source:'教材出题-'+(m.title||''),kind:'questions',raw_text:String(m.content_md||'').slice(0,8000)})}); this.genq.result=d; this.flash('已根据本页教材生成 '+(d.inserted_questions??d.inserted??0)+' 道题'); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; }catch(e){ if(e.name!=='AbortError' && e.message!=='unauth')this.flash('生成题目失败：'+e.message,true); } this.genq.busy=false; if(this._genqCtrl===ctrl)this._genqCtrl=null; },
+ // 停止 AI 出题
+ genqStop(){ if(this._genqCtrl){ try{ this._genqCtrl.abort(); }catch(_){} } this.genq.busy=false; this.flash('已停止出题'); },
+ async pdfvPageText(n){ try{ const doc=this._pdfvDoc; if(!doc)return ''; const page=await doc.getPage(n||this.pdfv.cur);
 @@ -221,7 +244,18 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
            question:{ stem:'（针对 PDF《'+(this.pdfv.title||'')+'》第 '+pageNo+' 页的图片提问，请先识别图中文字再回答）', type:'short_answer', subject:'教材' },
            analysis:'', history, ask:q };
@@ -2132,9 +2191,44 @@ index 9f08e09..6a2aa46 100644
        if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
        if(!entry.a) entry.a='_（模型没有返回内容）_';
 diff --git a/js/views/ingest.js b/js/views/ingest.js
-index 209d29a..eea48f8 100644
+index 209d29a..028e91d 100644
 --- a/js/views/ingest.js
 +++ b/js/views/ingest.js
+@@ -60,7 +60,7 @@ async importXlsx(){ const rows=(this.ingest.xl&&this.ingest.xl.rows)||[]; if(!ro
+       try{ const r=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,questions:rows})});
+         this.flash('已导入 '+(r.inserted_questions||r.inserted||rows.length)+' 题');
+         this.ingest.xl.done=true; this.ingest.xl.rows=[]; this.ingest.xl.issues=[];
+-        this.bankDirty=true; this.statsDirty=true; this.loadMeta(true);
++        this.bankDirty=true; this.queueDirty=true; this.statsDirty=true; this.loadMeta(true);
+       }catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); }
+       this.ingest.busy=false; },
+ // 「原地更新」= 按题干形状指纹认领到了已有行（插图形态变了也算同一道题），
+@@ -94,7 +94,7 @@ async saveManual(){ if(!this.token){ this.flash('请先在设置中填写访问
+       if(q.type==='multiple_choice' && q.answer.length<2){ this.flash('多选题至少要 2 个答案（如 A,C）',true); return; }
+       if((q.type==='single_choice'||q.type==='multiple_choice')){ const keys=q.options.map(o=>o.key); const bad=q.answer.filter(a=>!keys.includes(a)); if(bad.length){ this.flash('答案 '+bad.join('/')+' 不在选项里，请检查',true); return; } }
+       this.ingest.busy=true; this.ingest.result=null;
+-      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('已免费保存 1 题'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; }
++      try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),questions:[q]})}); this.ingest.result=d; this.flash('已免费保存 1 题'); const n=parseInt(this.ingest.questionNo,10); this.resetManual(); if(Number.isFinite(n))this.ingest.questionNo=String(n+1); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; }
+       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
+       this.ingest.busy=false;
+     },
+@@ -102,14 +102,14 @@ async saveManual(){ if(!this.token){ this.flash('请先在设置中填写访问
+ addManualOption(){ const o=this.ingest.manual.options; if(o.length>=8){ this.flash('最多 8 个选项',true); return; } const key=String.fromCharCode(65+o.length); o.push({key,text:''}); },
+ delManualOption(i){ const o=this.ingest.manual.options; if(o.length<=2){ this.flash('至少保留 2 个选项',true); return; } o.splice(i,1); o.forEach((x,idx)=>{ x.key=String.fromCharCode(65+idx); }); },
+ onPhotoFile(e){ const file=e.target.files&&e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ this.ingest.photoDataUrl=String(rd.result||''); this.ingest.photoUrl=this.ingest.photoDataUrl; this.flash('图片已加载，点「AI 识图填入」自动识别题目'); }; rd.onerror=()=>this.flash('图片读取失败',true); rd.readAsDataURL(file); },
+-async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(true),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
++async aiPhotoImport(){ if(!this.ingest.photoDataUrl){ this.flash('请先选择照片',true); return; } if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } this.ingest.busy=true; this.ingest.result=null; try{ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(true),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.currentSource(),kind:this.ingest.kind,images:[this.ingest.photoDataUrl]})}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.loadMaterials(); }catch(e){ if(e.message!=='unauth')this.flash(e.message,true); } this.ingest.busy=false; },
+ async doIngest(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
+       const body={ subject:this.ingest.subject, chapter:this.ingest.chapter, source:this.currentSource() };
+       if(this.ingest.tab==='json'){ let arr; try{ arr=JSON.parse(this.ingest.json); }catch(e){ this.flash('JSON parse failed: '+e.message,true); return; }
+         if(!Array.isArray(arr)||!arr.length){ this.flash('请粘贴非空 JSON 数组',true); return; } body.questions=arr;
+       } else { if(!this.ingest.raw.trim()){ this.flash('请先粘贴原始文本',true); return; } body.raw_text=this.ingest.raw; body.kind=this.ingest.kind; }
+       this.ingest.busy=true; this.ingest.result=null;
+-      try{ Object.assign(body, this.aiOv(false)); const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.loadMaterials();
++      try{ Object.assign(body, this.aiOv(false)); const d=await this.api('/api/process',{method:'POST',body:JSON.stringify(body)}); this.ingest.result=d; this.flash(this.importMsg(d)); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.loadMaterials();
+         if(this.ingest.tab==='ai')this.ingest.raw=''; else this.ingest.json=''; }
+       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
+       this.ingest.busy=false;
 @@ -205,19 +205,48 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
        let curAns=null; let answerMarkerStreak=0;   // 连续答案标记计数(无标题切区用)
        let answerMissStreak=0;                      // 中间夹了几行"不像答案"的噪声(水印/页码)
@@ -2323,6 +2417,15 @@ index 209d29a..eea48f8 100644
        // 独占一行的选项没找到时，再试同一行内的 A./B./C./D.
        if(opts.length<2){ const inl=this._splitInlineOptions(keep.join('\n').trim()||stemPart);
          if(inl){ opts.length=0; for(const o of inl.options)opts.push(o); keep.length=0;
+@@ -386,7 +469,7 @@ _buildQuestionFromItem(it, ctx){ const body=it.lines.join('\n').trim(); if(!body
+       else { type='short_answer'; if(solPart){ answer=[solPart]; analysis=solPart; } }
+       const stem=(stemPart||'').trim(); if(!stem)return null;
+       return { subject:ctx.subject||'', chapter:it.chapter||ctx.chapter||'', type, difficulty:3, source:ctx.source||'', passage:(it.passage||''), stem, options, answer, analysis, tags:it.chapter?[it.chapter]:[], page:(ctx.page!=null?ctx.page:null) }; },
+-async _postQuestions(arr, subject, source){ let inserted=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } if(inserted>0)this.bankDirty=true; return inserted; },
++async _postQuestions(arr, subject, source){ let inserted=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject, source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); } if(inserted>0)this.bankDirty=true; this.queueDirty=true; return inserted; },
+ _openPreview(arr, title, subject, source){ const seen=new Set(); const uniq=[]; let dup=0; for(const q of arr){ const k=String(q.stem||'').replace(/\s+/g,' ').trim(); if(!k)continue; if(seen.has(k)){ dup++; continue; } seen.add(k); uniq.push(q); }
+       // 分页渲染：题量大时全量渲染 rich-text(marked+KaTeX) 会卡死浏览器，只渲染当前页
+       this.extractPreview={ open:true, items:uniq.map((q,i)=>Object.assign({_use:true,_k:i},q)), title, subject, source, dup, page:1, pageSize:40 }; },
 @@ -414,17 +497,34 @@ _stripPageFurniture(texts){ const arr=(texts||[]).map(t=>String(t||''));
        const norm=(s)=>s.replace(/[#*>`\s]/g,'').trim();
        if(arr.filter(t=>t.trim()).length<4)return arr;
@@ -2464,7 +2567,7 @@ index 209d29a..eea48f8 100644
          if(this._looksLikeTocPage(m.content_md)){ this.flash('这一页是书本目录，不是习题页（目录行会被误判成题目，已跳过）',true); return; }
          this.bookExtract.prog='正在解析本页…'; await this._yieldToPaint();
          const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
-@@ -526,36 +666,64 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写
+@@ -526,37 +666,65 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写
        // 必须有 catch：只有 try/finally 的话异常会变成 unhandled rejection，
        // busy 复位了、界面却一个字都不说 —— 用户看到的就是「点了没反应」。
        } catch(e){ if(e.message!=='unauth')this.flash('本页抽题失败：'+e.message,true); }
@@ -2531,15 +2634,81 @@ index 209d29a..eea48f8 100644
  async extractDoImport(){ const p=this.extractPreview; const arr=p.items.filter(q=>q._use).map(q=>{ const c=Object.assign({},q); delete c._use; return c; }); if(!arr.length){ this.flash('没有勾选要导入的题',true); return; }
        this.bookExtract.busy=true; this.bookExtract.done=0; this.bookExtract.total=arr.length;
 -      try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
+-        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.extractClose(); }
 +      try{ let inserted=0, updated=0, dup=0; const CH=80; for(let i=0;i<arr.length;i+=CH){ this.bookExtract.prog='正在导入 '+Math.min(i+CH,arr.length)+' / '+arr.length+' 题…'; const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({ subject:p.subject, source:p.source, questions:arr.slice(i,i+CH) })}); inserted+=(d.inserted_questions??d.inserted??0); updated+=(d.updated_in_place||0); dup+=(d.dup_total||0); this.bookExtract.done=Math.min(i+CH,arr.length); }
-         this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.extractClose(); }
++        this.flash('已导入 '+inserted+' 道题到题库（未用 AI）'+this._dupNote({updated_in_place:updated,dup_total:dup}), dup>0); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.extractClose(); }
        catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
  saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },
+ logPage(p,t,msg){ const arr=this.ingest.local.log; arr.push({p,t,msg}); if(arr.length>500)arr.splice(0,arr.length-500); },
+@@ -583,7 +751,7 @@ async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); ret
+           const page=await doc.getPage(p); const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',Number(this.ingest.pdf.quality)||0.72);
+           const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(true),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),kind:this.ingest.kind,images:[dataUrl]})}); total+=(d.inserted_questions??d.inserted)||0; mats+=d.inserted_materials||0; this.ingest.pdf.inserted=total; this.ingest.pdf.done=(p-st+1); if(d.sample) samples.push(...d.sample);
+         }
+-        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.loadMaterials();
++        this.ingest.result={inserted:total,inserted_questions:total,inserted_materials:mats,sample:samples.slice(0,8)}; this.ingest.pdf.prog=''; this.flash('AI OCR 处理完成，已导入 '+total+' 题'+(mats?('、'+mats+' 段教材'):'')); this.loadMeta(true); this.statsDirty=true; this.bankDirty=true; this.queueDirty=true; this.loadMaterials();
+       }catch(e){ if(e.message!=='unauth')this.flash('OCR 导入失败：'+e.message,true); }
+       this.ingest.pdf.busy=false; }
+ } };
+diff --git a/js/views/mock-stats.js b/js/views/mock-stats.js
+index e27ecdd..f8db580 100644
+--- a/js/views/mock-stats.js
++++ b/js/views/mock-stats.js
+@@ -47,7 +47,7 @@ async restoreBackup(ev){ const f=ev&&ev.target&&ev.target.files&&ev.target.files
+         this.flash('恢复完成：题目 '+(c.questions||0)+' · 进度 '+(c.progress||0)+' · 教材 '+(c.materials||0)+' · 模考 '+(c.mock_results||0));
+         if(Array.isArray(r.notes)&&r.notes.length)alert('恢复提示：\n\n· '+r.notes.join('\n· '));
+         // 恢复后各处缓存全部标脏并重拉
+-        this.statsDirty=true; this.bankDirty=true;
++        this.statsDirty=true; this.bankDirty=true; this.queueDirty=true;
+         try{ localStorage.removeItem('zb_meta_cache'); }catch(_){ }
+         this.loadSubjects(); this.loadMeta(true); this.loadMaterials&&this.loadMaterials(); this.loadStats();
+       }catch(e){ if(e.message!=='unauth')this.flash('恢复失败：'+e.message,true); }
 diff --git a/js/views/practice.js b/js/views/practice.js
-index 905810d..c300c53 100644
+index 905810d..448bfa2 100644
 --- a/js/views/practice.js
 +++ b/js/views/practice.js
-@@ -222,30 +222,73 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
+@@ -20,7 +20,9 @@ async startSession(keep){ if(!this.token||this.loading)return;
+       if(!keep){ this.sessionStart=Date.now(); this.streak=0; this.bestStreak=0; }
+       const dedup=(arr)=>{ const m=new Map(); for(const q of (arr||[])){ if(q&&q.id!=null&&!m.has(q.id))m.set(q.id,q); } return [...m.values()]; };
+       try{
+-        const extra={limit:30}; if(keep && this.sessionMode!=='wrong' && this.sessionMode!=='due')extra.nocount=1; /* 复习视图(wrong/due)保持计数新鲜（集小，COUNT 便宜）*/
++        // light=1：不取 analysis / ai_cards。答题阶段不显示它们，揭晓时再按 id 补
++        //（实测 30 题响应 220KB 里这两样占 94KB，骨架屏转很久主要是被它们拖的）
++        const extra={limit:30, light:1}; if(keep && this.sessionMode!=='wrong' && this.sessionMode!=='due')extra.nocount=1; /* 复习视图(wrong/due)保持计数新鲜（集小，COUNT 便宜）*/
+         const d=await this.api('/api/questions?'+this.qs(extra));
+         if(this.view!==forView){ this.loading=false; return; }
+         this.queue=dedup(d.items);
+@@ -33,6 +35,20 @@ async startSession(keep){ if(!this.token||this.loading)return;
+       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
+       this.loading=false;
+     },
++// 按需补齐当前题的 analysis / ai_cards（列表用 light=1 没取）。
++// 只在真的要看时发一次小请求，比每批多传 94KB 划算得多。
++async ensureFullQuestion(q){
++  if(!q || !q._lite || q._fullLoading || q._full)return;
++  if(!q.has_analysis && !q.has_cards){ q._full=true; return; }   // 本来就没有，不用跑一趟
++  q._fullLoading=true;
++  try{
++    const d=await this.api('/api/questions?ids='+encodeURIComponent(q.id)+'&limit=1');
++    const full=(d.items||[])[0];
++    if(full){ q.analysis=full.analysis||''; q.ai_cards=full.ai_cards||null; }
++    q._full=true;
++  }catch(e){ if(e.message==='unauth')throw e; }
++  finally{ q._fullLoading=false; }
++},
+ srcBook(s){ const t=String(s||'').split(' · ')[0].trim(); return t || '未知来源'; },
+ cleanPageMd(md){
+       if(!md)return '';
+@@ -127,6 +143,9 @@ findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(
+ async onAnswered(p){
+       // 取消自评：清除本题作答记录（答题卡圆点恢复灰色）
+       if(p.cancel){ delete this.sessionAns[p.id]; return; }
++      // 揭晓答案 = 马上要看参考解析了，这时才把 analysis / ai_cards 取回来。
++      // 不 await：让计分和界面先走，解析到了自然渲染出来。
++      { const q=(this.queue||[]).find(x=>x&&x.id===p.id); if(q)this.ensureFullQuestion(q).catch(()=>{}); }
+       this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
+       if(p.partial) this.flash('多选少选：按半分计，已计入错题复习');
+       this.countNewToday(p.id);
+@@ -222,30 +241,73 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
    if(isConcept){ st.cards=[]; st.cardsModel=''; st.flip={}; } else { st.text=''; st.chat=[]; st.model=''; }
    // 若当前正显示这道题，把显示切过去并标记生成中
    const showing=()=> this.cur && this.cur.id===qid;
@@ -2624,7 +2793,7 @@ index 905810d..c300c53 100644
      if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
      if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
      if(isConcept){
-@@ -259,7 +302,16 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
+@@ -259,7 +321,16 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
        if(!cards.length) throw new Error('知识点卡片生成失败，可点重试');
        st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards;
      }
@@ -2642,7 +2811,7 @@ index 905810d..c300c53 100644
    }catch(e){ if(e.name!=='AbortError'){ this._conceptRetried=false; let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
    if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
    // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
-@@ -298,28 +350,68 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
+@@ -298,28 +369,68 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
    if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
    const ctrl=new AbortController(); this._aiCtrl=ctrl;
    if(!Array.isArray(this.aiX.chat))this.aiX.chat=[];
@@ -2718,7 +2887,7 @@ index 905810d..c300c53 100644
        if(!entry.a){ entry.a='_（模型没有返回内容）_'; }
        done=true;
      }catch(e){ if(e.name==='AbortError'){ done=true; break; }
-@@ -341,7 +433,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
+@@ -341,7 +452,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
  
  ,
  aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
@@ -2735,7 +2904,7 @@ index 905810d..c300c53 100644
    if(!c || this.aiX.asking) return;
    const q=c.q; list.splice(i,1);
 diff --git a/js/views/settings.js b/js/views/settings.js
-index 9bd9152..dff4b49 100644
+index 9bd9152..7a1a6f0 100644
 --- a/js/views/settings.js
 +++ b/js/views/settings.js
 @@ -8,36 +8,172 @@ classifySubject(t){ const s=String(t||''); const has=c=>this.subjects.some(x=>x.
@@ -2819,7 +2988,7 @@ index 9bd9152..dff4b49 100644
 +      code:d.code, name:d.name, sort:d.sort||((this.subjects.length+1)*10), keywords:d.keywords||'' })});
 +    this.flash('已重建科目「'+d.name+'」'+(what?('，'+what+' 已归位'):''));
 +    await this.loadSubjects(true); this.loadMeta&&this.loadMeta(true);
-+    if(what){ this.bankDirty=true; this.statsDirty=true; }
++    if(what){ this.bankDirty=true; this.queueDirty=true; this.statsDirty=true; }
 +  }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
 +  finally{ this.subjChipBusy=''; }
 +},
@@ -2835,7 +3004,7 @@ index 9bd9152..dff4b49 100644
 +      code:o.code, name, sort:(this.subjects.length+1)*10, keywords:o.suggestKeywords||'' })});
 +    this.flash('已重建科目「'+name+'」，'+what+' 已归位');
 +    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
-+    this.bankDirty=true; this.statsDirty=true;
++    this.bankDirty=true; this.queueDirty=true; this.statsDirty=true;
 +  }catch(e){ if(e.message!=='unauth')this.flash('重建失败：'+e.message,true); }
 +},
  async subjAdd(){ const m=this.subjMgr; const code=String(m.code||'').trim().toLowerCase().replace(/[^a-z0-9_]/g,''); const name=String(m.name||'').trim(); if(!code){ this.flash('科目代码只能用小写字母/数字/下划线',true); return; } if(!name){ this.flash('请填写科目名称',true); return; } m.busy=true; try{ await this.api('/api/subjects',{method:'POST',body:JSON.stringify({code,name,sort:Number(m.sort)||(this.subjects.length+1),keywords:m.keywords||''})}); this.flash('已新增科目「'+name+'」'); this.subjMgr={ code:'', name:'', sort:'', keywords:'', busy:false }; await this.loadSubjects(); }catch(e){ if(e.message!=='unauth')this.flash('新增失败：'+e.message,true); } m.busy=false; },
@@ -2910,7 +3079,7 @@ index 9bd9152..dff4b49 100644
 +      const r=await doDelete({moveTo:target.v});
 +      this.flash('已把 '+what+' 转移到「'+target.t+'」，并删除科目「'+s.t+'」');
 +      await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
-+      this.bankDirty=true; this.statsDirty=true;
++      this.bankDirty=true; this.queueDirty=true; this.statsDirty=true;
 +      void r;
 +    }catch(e){ if(e.message!=='unauth')this.flash('转移失败：'+e.message,true); }
 +    return;
@@ -2927,7 +3096,7 @@ index 9bd9152..dff4b49 100644
 +                (r&&r.removedMaterials)?((r.removedMaterials)+' 页教材'):''].filter(Boolean).join('、');
 +    this.flash('已删除科目「'+s.t+'」'+(done?('及其下 '+done):''));
 +    await this.loadSubjects(); this.loadMeta&&this.loadMeta(true);
-+    this.bankDirty=true; this.statsDirty=true;
++    this.bankDirty=true; this.queueDirty=true; this.statsDirty=true;
 +  }catch(e){ if(e.message!=='unauth')this.flash('删除失败：'+e.message,true); }
  },
  guessSubject(name,content){ const s=String(name||''); if(/高\s*等?\s*数学|高数|微积分|线性代数|概率|数学分析|离散数学/.test(s))return'math'; if(/英语|阅读理解|完形|词汇|语法|写作|四级|六级|English/i.test(s))return'english'; if(/毛泽东|思想政治|马克思|马原|毛概|史纲|思修|中国特色|理论体系|政治/.test(s))return'politics'; if(/数据结构|程序设计|C\s*语言|C\+\+|计算机|算法|操作系统|数据库|Java|Python|软件|编程/i.test(s))return'computer'; return this.classifySubject(s+'  '+String(content||'').slice(0,1200)); },
@@ -5314,6 +5483,149 @@ index 0000000..cc8ee25
 +    const res = await call({ chapter: 'x' }, new FakeDB([]));
 +    expect(res.status).toBe(400);
 +    expect((await res.json()).error).toMatch(/缺少题目 id/);
++  });
++});
+diff --git a/tests/queue-perf-freshness.test.mjs b/tests/queue-perf-freshness.test.mjs
+new file mode 100644
+index 0000000..54fcb51
+--- /dev/null
++++ b/tests/queue-perf-freshness.test.mjs
+@@ -0,0 +1,137 @@
++// 两个线上问题：
++//
++// 一、564 道题时 Home 骨架屏转很久。实测一批 30 题的响应是 220KB / 1.1~3.3 秒，
++//    其中 analysis 88KB + ai_cards 6KB = 43% —— 而这两样在【答题阶段根本不显示】，
++//    要等用户揭晓答案才用得上。改成 light=1 不取，揭晓时按 id 单独补。
++//    （基线延迟本身就有 ~800ms：一个 3KB 的 meta 查询也要 829ms，那部分动不了。）
++//
++// 二、题库里 AI 补答案补完，回 Home 看到的还是补之前那批题。
++//    bankDirty 只让题库页重拉，Home 的活会话和缓存快照不受它影响。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { FakeDB, authedReq, makeEnv, ROOT } from './helpers.mjs';
++import { onRequestGet as getQuestions } from '../functions/api/questions.js';
++import { rowToQuestion } from '../functions/api/_utils.js';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++
++describe('light=1：列表不带解析和卡片', () => {
++  const grab = async (qs) => {
++    const db = new FakeDB([{ match: /FROM questions q/i, value: [] }]);
++    await getQuestions({ request: authedReq('http://x/api/questions?' + qs), env: Object.assign(makeEnv(db), { DB: db }) });
++    return db.log.filter((r) => /FROM questions q/i.test(r.sql)).map((r) => r.sql).join('\n');
++  };
++  it('默认仍然取全部列（其它页面依赖）', async () => {
++    expect(await grab('limit=30')).toMatch(/SELECT q\.\*/);
++  });
++  it('light=1 时不查 analysis / ai_cards', async () => {
++    const sql = await grab('limit=30&light=1');
++    expect(sql).not.toMatch(/SELECT q\.\*/);
++    // 注意：has_* 的 CASE 表达式里会出现 q.analysis / q.ai_cards（只读它们判空，不返回内容），
++    // 所以断言要针对「选取列」而不是整条 SQL 里的字面量。
++    const cols = sql.slice(sql.indexOf('SELECT') + 6, sql.indexOf('FROM questions'));
++    const selected = cols.split(',').map((x) => x.trim()).filter((x) => /^q\.[a-z_]+$/.test(x));
++    expect(selected).not.toContain('q.analysis');
++    expect(selected).not.toContain('q.ai_cards');
++  });
++  it('但要带回「有没有」的标记，否则前端分不清「没有」和「没取」', async () => {
++    const sql = await grab('limit=30&light=1');
++    expect(sql).toContain('AS has_analysis');
++    expect(sql).toContain('AS has_cards');
++  });
++  it('答题必需的列一个不能少', async () => {
++    const sql = await grab('limit=30&light=1');
++    for (const c of ['q.id', 'q.stem', 'q.options', 'q.answer', 'q.type', 'q.passage', 'q.subject']) {
++      expect(sql).toContain(c);
++    }
++  });
++});
++
++describe('rowToQuestion 要能区分「没有」和「没取」', () => {
++  it('轻量行带 _lite 标记和两个 has_*', () => {
++    const q = rowToQuestion({ id: 'a', stem: 's', has_analysis: 1, has_cards: 0 });
++    expect(q._lite).toBe(true);
++    expect(q.has_analysis).toBe(true);
++    expect(q.has_cards).toBe(false);
++  });
++  it('完整行不带这些标记（老调用方不受影响）', () => {
++    const q = rowToQuestion({ id: 'a', stem: 's', analysis: '解析内容' });
++    expect(q._lite).toBeUndefined();
++    expect(q.analysis).toBe('解析内容');
++  });
++});
++
++describe('前端：按需补齐', () => {
++  const Practice = new Function(read('js/views/practice.js') + ';return PracticeMixin;')();
++  const mk = (reply) => {
++    const calls = [];
++    return Object.assign(Object.create(Practice.methods), {
++      calls, async api(p) { calls.push(p); return reply; },
++    });
++  };
++  it('取队列时带 light=1', () => {
++    expect(read('js/views/practice.js')).toContain('const extra={limit:30, light:1};');
++  });
++  it('本来就没有解析和卡片时不白跑一趟', async () => {
++    const c = mk({ items: [] });
++    const q = { id: 'x', _lite: true, has_analysis: false, has_cards: false };
++    await c.ensureFullQuestion(q);
++    expect(c.calls).toHaveLength(0);
++    expect(q._full).toBe(true);
++  });
++  it('有解析时按 id 取一次并填回去', async () => {
++    const c = mk({ items: [{ id: 'x', analysis: '参考解析', ai_cards: [{ term: 'T' }] }] });
++    const q = { id: 'x', _lite: true, has_analysis: true, has_cards: true };
++    await c.ensureFullQuestion(q);
++    expect(c.calls[0]).toContain('ids=x');
++    expect(q.analysis).toBe('参考解析');
++    expect(q.ai_cards).toHaveLength(1);
++  });
++  it('已经补过就不重复请求', async () => {
++    const c = mk({ items: [{ id: 'x', analysis: 'a' }] });
++    const q = { id: 'x', _lite: true, has_analysis: true };
++    await c.ensureFullQuestion(q);
++    await c.ensureFullQuestion(q);
++    expect(c.calls).toHaveLength(1);
++  });
++  it('完整记录（非 light）不会被误补', async () => {
++    const c = mk({ items: [] });
++    await c.ensureFullQuestion({ id: 'x', analysis: '已有' });
++    expect(c.calls).toHaveLength(0);
++  });
++  it('揭晓答案时触发补齐，且不阻塞计分', () => {
++    const src = read('js/views/practice.js');
++    expect(src).toContain('if(q)this.ensureFullQuestion(q).catch(()=>{});');
++    expect(src).not.toContain('await this.ensureFullQuestion(q);');
++  });
++  it('取失败不影响答题（吞掉错误）', async () => {
++    const c = Object.assign(Object.create(Practice.methods), { async api() { throw new Error('boom'); } });
++    const q = { id: 'x', _lite: true, has_analysis: true };
++    await expect(c.ensureFullQuestion(q)).resolves.toBeUndefined();
++  });
++});
++
++describe('题目内容改过要让 Home 重新取题', () => {
++  const app = read('js/app.js');
++  it('有独立的 queueDirty，不跟 bankDirty 混用', () => {
++    expect(app).toContain('queueDirty:false,');
++    expect(app).toContain('if(this.queueDirty){ this.queueDirty=false;');
++  });
++  it('置位后连活会话一起作废（否则原地不动）', () => {
++    expect(app).toContain('delete qCache[v]; this.queue=[]; this.startSession();');
++  });
++  it('AI 补答案完成后置位 —— 这正是线上没刷新的那条路', () => {
++    expect(read('js/views/bank.js')).toContain('this.bankDirty=true; this.statsDirty=true; this.queueDirty=true;');
++  });
++  it('导入题目 / 教材出题 / 恢复备份 / 科目变更都置位', () => {
++    for (const f of ['js/views/ingest.js', 'js/views/books.js', 'js/views/mock-stats.js', 'js/views/settings.js']) {
++      expect(read(f)).toContain('this.queueDirty=true;');
++    }
++  });
++  it('刷题页内改当前题不置位（自己已经就地更新，重取反而丢进度）', () => {
++    const src = read('js/views/practice.js');
++    const idx = src.indexOf('async setQuestionSubject');
++    expect(src.slice(idx, idx + 500)).not.toContain('queueDirty');
 +  });
 +});
 diff --git a/tests/real-textbook-formats.test.mjs b/tests/real-textbook-formats.test.mjs
