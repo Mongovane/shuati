@@ -903,7 +903,7 @@ index 70d3c1a..a31fb70 100644
    }
    if (!resp.ok) {
 diff --git a/functions/api/explain.js b/functions/api/explain.js
-index 536fd4a..fb5a9b1 100644
+index 536fd4a..3999051 100644
 --- a/functions/api/explain.js
 +++ b/functions/api/explain.js
 @@ -1,4 +1,5 @@
@@ -932,7 +932,7 @@ index 536fd4a..fb5a9b1 100644
  
    const base = effBase;
    // reading 模式：用「材料 + 选段」的自然表述做上下文，不套题目/选项/参考答案模板（否则模型误以为在解题而非阅读辅导）
-@@ -81,27 +77,80 @@ export async function onRequestPost({ request, env }) {
+@@ -81,27 +77,83 @@ export async function onRequestPost({ request, env }) {
      ? { role: 'user', content: [ { type: 'text', text: (userText || '（请阅读下图这一页教材内容）') }, { type: 'image_url', image_url: { url: pageImage } } ] }
      : { role: 'user', content: userText };
    const messages = [ { role: 'system', content: sys }, firstUser ];
@@ -985,6 +985,9 @@ index 536fd4a..fb5a9b1 100644
 +  // 上游若因 max_tokens 过大而 400，自动降档重试一次。
 +  // 各家模型的输出上限差别很大（8K / 16K / 32K+），把默认值调高就必然会撞到一些，
 +  // 报错甩给用户不如自己退一步。
++  // 配额/余额耗尽：单独用 402 区分。上游常把它塞在 429 或 502 里，
++// 前端如果只看状态码会当成限流去重试 —— 重试没有任何意义，还继续耗额度。
++const isQuota = (t) => /quota|insufficient|balance|欠费|余额|额度|配额|billing|exceeded your current/i.test(String(t || ''));
 +  const tooLarge = (t) => /max[_\s-]*(?:completion[_\s-]*)?tokens|maximum.*tokens|too large|exceeds?.*(?:limit|maximum)|超过.*(?:上限|最大)/i.test(String(t||''));
 +  // 只有用户显式设过上限时才有「降档」可言；没设的情况下这类 400 说明是别的原因，直接透传
 +  let outCap = payload.max_tokens || 0;
@@ -1016,7 +1019,12 @@ index 536fd4a..fb5a9b1 100644
        if (up.ok && up.body) {
          // SSE 原样透传 + 附带 Gateway 降级信息供前端显示实际模型
          const served = up.headers.get('X-Served-Model') || up.headers.get('x-served-model') || '';
-@@ -126,7 +175,7 @@ export async function onRequestPost({ request, env }) {
+@@ -122,21 +174,21 @@ export async function onRequestPost({ request, env }) {
+       if (!up2.ok) {
+         let msg = '上游 HTTP ' + up2.status;
+         try { const d = await up2.json(); msg = (d.error && (d.error.message || d.error)) || msg; } catch (_) {}
+-        return json({ error: 'AI 中转站错误：' + msg }, 502);
++        return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
        }
        const d = await up2.json();
        const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
@@ -1025,7 +1033,10 @@ index 536fd4a..fb5a9b1 100644
      }
      const up = await call(false);
      if (!up.ok) {
-@@ -136,7 +185,7 @@ export async function onRequestPost({ request, env }) {
+       let msg = '上游 HTTP ' + up.status;
+       try { const d = await up.json(); msg = (d.error && (d.error.message || d.error)) || msg; } catch (_) {}
+-      return json({ error: 'AI 中转站错误：' + msg }, 502);
++      return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
      }
      const d = await up.json();
      const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
@@ -1331,7 +1342,7 @@ index a798014..285dcd8 100644
      return json({ error: '删除科目失败：' + e.message }, 500);
    }
 diff --git a/js/app.js b/js/app.js
-index 51b2a7f..d340ae1 100644
+index 51b2a7f..d22aac0 100644
 --- a/js/app.js
 +++ b/js/app.js
 @@ -55,12 +55,16 @@ const App={
@@ -1468,7 +1479,7 @@ index 51b2a7f..d340ae1 100644
            if(txt && onDelta) onDelta({text:txt, acc:txt, full:true});
            return { res, text:txt, ok:true };
          }catch(e){
-@@ -362,10 +408,32 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
+@@ -362,10 +408,44 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
        };
        return attempt(!stable, 2);
      },
@@ -1492,6 +1503,18 @@ index 51b2a7f..d340ae1 100644
 +      }
 +      return false;
 +    },
++    // 配额/余额耗尽的识别。这类错误【重试没有任何意义】，而且它常以 429 返回，
++    // 会命中「限流重试」的条件被反复打好几次 —— 既拖时间，又可能继续消耗额度。
++    // 也不能触发自动续写：续写就是再发一次请求。
++    _isQuotaErr(msg){
++      const t=String(msg||'');
++      return /quota|insufficient|balance|欠费|余额|额度|配额|billing|payment|exceeded your current/i.test(t);
++    },
++    // 把上游那句英文换成能照着做的中文
++    _quotaHint(msg){
++      return 'AI 额度用完了：中转站返回「'+String(msg||'').slice(0,80)+'」。\n'
++        +'这是中转站账号的配额，不是本站的限制 —— 去中转站后台加额度，或在「设置 → AI 解析」换一个还有额度的 Key/模型。';
++    },
      aiOv(vision){ // 全局 AI 中转站覆盖：随所有 AI 请求携带（成对生效；拍照/看图另带视觉模型）
    const e=this.explainCfg||{}; const o={};
    if(e.base&&e.key){ o.base_url=e.base; o.api_key=e.key; }
@@ -1501,7 +1524,7 @@ index 51b2a7f..d340ae1 100644
    if(vision && this.ocrCfg && (this.ocrCfg.model||'').trim()) o.vision_model=this.ocrCfg.model.trim();
    return o; },
  flash(msg,err){ this.toast={msg,err:!!err}; clearTimeout(this.toastTimer); this.toastTimer=setTimeout(()=>this.toast=null,2600); },
-@@ -386,6 +454,8 @@ go(v){
+@@ -386,6 +466,8 @@ go(v){
          qCache[prev]={ q:this.queue.slice(), i:this.qi, t:this.queueTotal, a:Object.assign({},this.sessionAns), bo:this.batchDone, lo:this.loadedOnce };
        }
        this.view=v;
@@ -1510,7 +1533,7 @@ index 51b2a7f..d340ae1 100644
        this._syncHash(v);
        try{ localStorage.setItem('zb_view',v); }catch(_){}
        if(v==='favorite' && this.fav.listMode){
-@@ -395,7 +465,9 @@ go(v){
+@@ -395,7 +477,9 @@ go(v){
        } else if(['practice','wrong','favorite'].includes(v)){
          if(v==='practice'&&!this.meta.subjects.length)this.loadMeta();
          const c=qCache[v];
@@ -1960,10 +1983,10 @@ index e0a075c..44b3d38 100644
            <div class="subj-row">
              <span class="subj-move"><button class="subj-mv-btn" :disabled="si===0" @click="subjMove(si,-1)" title="上移">▲</button><button class="subj-mv-btn" :disabled="si===subjects.length-1" @click="subjMove(si,1)" title="下移">▼</button></span>
 diff --git a/js/views/bank.js b/js/views/bank.js
-index a007d78..f25e706 100644
+index a007d78..c5f72ac 100644
 --- a/js/views/bank.js
 +++ b/js/views/bank.js
-@@ -71,40 +71,132 @@ async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fl
+@@ -71,40 +71,133 @@ async bankBatchChapter(){ const ids=[...this.bank.sel]; if(!ids.length){ this.fl
  async bankAiFillAnswers(){
        if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
        if(this.offline){ this.flash('离线状态下无法调用 AI',true); return; }
@@ -2047,7 +2070,8 @@ index a007d78..f25e706 100644
 +            }catch(e){ if(e.message==='unauth')throw e;
 +              lastErr=e;
 +              if(e.name==='AbortError'||ctrl.signal.aborted)break;
-+              const retryable=/429|限流|rate.?limit|50[234]|timeout|超时|网关/i.test(String(e.message||''));
++              const quota=this._isQuotaErr&&this._isQuotaErr((e&&e.message)||'');
++              const retryable=!quota && /429|限流|rate.?limit|50[234]|timeout|超时|网关/i.test(String((e&&e.message)||''));
 +              if(!retryable || attempt===2)break;
 +              const wait=[1500,4000][attempt];
 +              this.bankAiFill.prog='被限流，'+(wait/1000)+' 秒后重试（第 '+(attempt+2)+' 次）…';
@@ -2191,7 +2215,7 @@ index 9f08e09..bf208a9 100644
        if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
        if(!entry.a) entry.a='_（模型没有返回内容）_';
 diff --git a/js/views/ingest.js b/js/views/ingest.js
-index 209d29a..028e91d 100644
+index 209d29a..a3ea44f 100644
 --- a/js/views/ingest.js
 +++ b/js/views/ingest.js
 @@ -60,7 +60,7 @@ async importXlsx(){ const rows=(this.ingest.xl&&this.ingest.xl.rows)||[]; if(!ro
@@ -2477,7 +2501,7 @@ index 209d29a..028e91d 100644
        if(q&&Array.isArray(q.options))for(const o of q.options)scan(o&&o.text);
        if(q&&Array.isArray(q.answer))for(const a of q.answer)if(typeof a==='string')scan(a);
        return out; },
-@@ -476,24 +578,56 @@ async _hoistImages(arr){
+@@ -476,24 +578,58 @@ async _hoistImages(arr){
        for(const q of (arr||[]))for(const u of this._collectDataImages(q))seen.add(u);
        const stat={ total:seen.size, uploaded:0, inlined:0, failed:0 };
        if(!seen.size)return stat;
@@ -2526,7 +2550,9 @@ index 209d29a..028e91d 100644
 +            map.set(task.u, d.url); stat.uploaded++; return;
 +          }catch(e){
 +            // 限流/网关/网络抖动重试一次；其余（如 413 图太大）重试也没用
-+            const retryable=/429|50[234]|Failed to fetch|NetworkError|timeout|超时/i.test(String((e&&e.message)||''));
++            // 配额耗尽常以 429 返回，会命中下面的限流重试被反复打 —— 重试没意义，还费额度
++            const quota=this._isQuotaErr&&this._isQuotaErr((e&&e.message)||'');
++            const retryable=!quota && /429|50[234]|Failed to fetch|NetworkError|timeout|超时/i.test(String((e&&e.message)||''));
 +            if(!retryable || attempt===1){ stat.failed++; return; }   // 保留内嵌，图不能丢
 +            await new Promise(r=>setTimeout(r,800));
 +          }
@@ -2547,7 +2573,7 @@ index 209d29a..028e91d 100644
            if(Array.isArray(q.options))q.options=q.options.map(o=>Object.assign({},o,{text:swap(o.text)}));
            if(Array.isArray(q.answer))q.answer=q.answer.map(a=>typeof a==='string'?swap(a):a); }
        }
-@@ -511,11 +645,17 @@ _yieldToPaint(){ return new Promise(r=>{ let done=false;
+@@ -511,11 +647,17 @@ _yieldToPaint(){ return new Promise(r=>{ let done=false;
        try{ requestAnimationFrame(()=>requestAnimationFrame(fin)); }catch(_){ fin(); } }); },
  async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
        if(this.bookExtract.busy)return;                            // 防重入：慢的时候用户会连点
@@ -2567,7 +2593,7 @@ index 209d29a..028e91d 100644
          if(this._looksLikeTocPage(m.content_md)){ this.flash('这一页是书本目录，不是习题页（目录行会被误判成题目，已跳过）',true); return; }
          this.bookExtract.prog='正在解析本页…'; await this._yieldToPaint();
          const src=this.currentBook?this.currentBook.title:(m.source||''); const arr=this.mdToQuestions(m.content_md,{subject:m.subject,source:src,page:m.page});
-@@ -526,37 +666,65 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写
+@@ -526,37 +668,65 @@ async localExtractPage(){ if(!this.token){ this.flash('请先在设置中填写
        // 必须有 catch：只有 try/finally 的话异常会变成 unhandled rejection，
        // busy 复位了、界面却一个字都不说 —— 用户看到的就是「点了没反应」。
        } catch(e){ if(e.message!=='unauth')this.flash('本页抽题失败：'+e.message,true); }
@@ -2640,7 +2666,7 @@ index 209d29a..028e91d 100644
        catch(e){ if(e.message!=='unauth')this.flash('导入失败：'+e.message,true); } this.bookExtract.busy=false; this.bookExtract.prog=''; },
  saveOcrCfg(){ try{ localStorage.setItem('zb_ocrcfg', JSON.stringify(this.ocrCfg)); }catch(_){} },
  logPage(p,t,msg){ const arr=this.ingest.local.log; arr.push({p,t,msg}); if(arr.length>500)arr.splice(0,arr.length-500); },
-@@ -583,7 +751,7 @@ async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); ret
+@@ -583,7 +753,7 @@ async pdfByImages(){ if(!this._pdfDoc){ this.flash('请先选择 PDF',true); ret
            const page=await doc.getPage(p); const scale=Number(this.ingest.pdf.scale)||1.7; const vp=page.getViewport({scale}); const cv=document.createElement('canvas'); cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height); await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; const dataUrl=cv.toDataURL('image/jpeg',Number(this.ingest.pdf.quality)||0.72);
            const d=await this.api('/api/process',{method:'POST',body:JSON.stringify({...this.aiOv(true),subject:this.ingest.subject,chapter:this.ingest.chapter,source:this.sourceForPage(p),kind:this.ingest.kind,images:[dataUrl]})}); total+=(d.inserted_questions??d.inserted)||0; mats+=d.inserted_materials||0; this.ingest.pdf.inserted=total; this.ingest.pdf.done=(p-st+1); if(d.sample) samples.push(...d.sample);
          }
@@ -2663,7 +2689,7 @@ index e27ecdd..f8db580 100644
          this.loadSubjects(); this.loadMeta(true); this.loadMaterials&&this.loadMaterials(); this.loadStats();
        }catch(e){ if(e.message!=='unauth')this.flash('恢复失败：'+e.message,true); }
 diff --git a/js/views/practice.js b/js/views/practice.js
-index 905810d..448bfa2 100644
+index 905810d..fd28064 100644
 --- a/js/views/practice.js
 +++ b/js/views/practice.js
 @@ -20,7 +20,9 @@ async startSession(keep){ if(!this.token||this.loading)return;
@@ -2708,7 +2734,7 @@ index 905810d..448bfa2 100644
        this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
        if(p.partial) this.flash('多选少选：按半分计，已计入错题复习');
        this.countNewToday(p.id);
-@@ -222,30 +241,73 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
+@@ -222,30 +241,75 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
    if(isConcept){ st.cards=[]; st.cardsModel=''; st.flip={}; } else { st.text=''; st.chat=[]; st.model=''; }
    // 若当前正显示这道题，把显示切过去并标记生成中
    const showing=()=> this.cur && this.cur.id===qid;
@@ -2780,6 +2806,8 @@ index 905810d..448bfa2 100644
        });
 +      if(r.res && r.res.status===401)break;
 +      if(!r.ok)break;
++      // 额度用完时绝不能续写 —— 续写就是再发一次请求，只会再失败一次
++      if(this._isQuotaErr && this._isQuotaErr(r.errText||'' ))break;
 +      if(!truncated || cont>=MAX_CONT)break;
 +      // 正文一个字都没有 = 预算被思维链吃光，下一轮让它跳过思考直接给结论
 +      kickoff = isConcept ? !acc : !st.text;
@@ -2793,11 +2821,14 @@ index 905810d..448bfa2 100644
      if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
      if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
      if(isConcept){
-@@ -259,7 +321,16 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
+@@ -259,7 +323,19 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
        if(!cards.length) throw new Error('知识点卡片生成失败，可点重试');
        st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards;
      }
 -    else if(!st.text) throw new Error('模型没有返回内容，可换个模型再试');
++    else if(this._isQuotaErr && this._isQuotaErr((r&&r.errText)||'')){
++      throw new Error(this._quotaHint((r&&r.errText)||''));
++    }
 +    else if(!st.text){
 +      // 区分「真没输出」和「思考占满预算」——后者续写 MAX_CONT 轮仍为空才算失败，
 +      // 提示也要说清是哪种情况，否则用户只会反复换模型而问题依旧。
@@ -2811,7 +2842,7 @@ index 905810d..448bfa2 100644
    }catch(e){ if(e.name!=='AbortError'){ this._conceptRetried=false; let msg=e.message||'未知错误'; if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试'; this.flash((isConcept?'知识点生成失败：':'AI 解析失败：')+msg,true); if(showing()&&this.aiX.busy)this.aiX.busy=false; if(this._aiJobs[jobKey]===ctrl)delete this._aiJobs[jobKey]; return; } }
    if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
    // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
-@@ -298,28 +369,68 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
+@@ -298,35 +374,79 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
    if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} }
    const ctrl=new AbortController(); this._aiCtrl=ctrl;
    if(!Array.isArray(this.aiX.chat))this.aiX.chat=[];
@@ -2870,7 +2901,7 @@ index 905810d..448bfa2 100644
          if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试
          throw new Error(msg); }
 +      // 追问同样自动续写：被 token 上限截断就接着写，不要求用户手动打「请继续」
-+      while(askTruncated && askCont<ASK_MAX_CONT && !ctrl.signal.aborted){
++      while(askTruncated && askCont<ASK_MAX_CONT && !ctrl.signal.aborted && !(this._isQuotaErr && this._isQuotaErr((entry.a)||''))){
 +        askCont++; askTruncated=false;
 +        this.flash('回答较长，正在自动续写…（'+askCont+'/'+ASK_MAX_CONT+'）');
 +        const base=entry.a||'';
@@ -2887,7 +2918,19 @@ index 905810d..448bfa2 100644
        if(!entry.a){ entry.a='_（模型没有返回内容）_'; }
        done=true;
      }catch(e){ if(e.name==='AbortError'){ done=true; break; }
-@@ -341,7 +452,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
+       let msg=e.message||'未知错误';
+       if(isCtxErr(msg) && trimLevel<2){ continue; }
+       if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试';
+-      entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('追问失败：'+msg,true); done=true;
++      if(this._isQuotaErr && this._isQuotaErr(msg)){
++        const hint=this._quotaHint(msg);
++        entry.a='_'+hint.replace(/\n/g,'  \n')+'_'; entry.err=true; this.flash('AI 额度用完了',true);
++      } else { entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('追问失败：'+msg,true); }
++      done=true;
+     }
+   }
+   if(this.aiX.id===q.id) this.aiX.asking=false;
+@@ -341,7 +461,14 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
  
  ,
  aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
@@ -3474,6 +3517,117 @@ index 0000000..344a678
 +  });
 +  it('reading 模式的系统提示词与学科无关，英语也走教材辅导那条', () => {
 +    expect(read('functions/api/_prompts.js')).toContain('if (reading) return READ_ASK;');
++  });
++});
+diff --git a/tests/ai-quota.test.mjs b/tests/ai-quota.test.mjs
+new file mode 100644
+index 0000000..741cc0a
+--- /dev/null
++++ b/tests/ai-quota.test.mjs
+@@ -0,0 +1,105 @@
++// 线上现象：解析和追问都报「Workspace allocated quota exceeded, please increase your quota limit.」
++//
++// 这条错误来自【中转站账号的配额】，不是本站的限制。用户以为「不设 max_tokens = 无限制」——
++// 那只是去掉了【我们这边】的单次输出上限，中转站/模型厂商的账号额度还在。
++// 而且去掉上限之后每次生成的 token 更多，反而烧得更快。
++//
++// 代码上有三个真问题要修：
++//  ① 配额耗尽常以 429 返回 → 命中「限流重试」被反复打。重试不可能成功，还继续耗额度。
++//  ② 自动续写会在失败后再发请求 —— 同理，只会再失败一次。
++//  ③ 直接把英文原文甩给用户，没告诉他该去哪儿加额度。
++import { describe, it, expect } from 'vitest';
++import fs from 'node:fs';
++import path from 'node:path';
++import { ROOT } from './helpers.mjs';
++
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const app = read('js/app.js');
++
++const pick = (name) => {
++  const SIG = name + '(msg){';
++  const i = app.indexOf(SIG);
++  const st = i + SIG.length - 1;
++  let d = 0, j = st;
++  for (; j < app.length; j++) { if (app[j] === '{') d++; else if (app[j] === '}') { d--; if (!d) break; } }
++  return eval('(function(msg)' + app.slice(st, j + 1) + ')');
++};
++const isQuota = pick('_isQuotaErr');
++const quotaHint = pick('_quotaHint');
++
++describe('配额错误的识别', () => {
++  it('线上那条原文', () => {
++    expect(isQuota('Workspace allocated quota exceeded, please increase your quota limit.')).toBe(true);
++  });
++  it('各家常见说法都认', () => {
++    for (const m of ['Insufficient balance', 'You exceeded your current quota', '账户余额不足', '额度已用完', '配额不足', 'billing hard limit reached']) {
++      expect(isQuota(m)).toBe(true);
++    }
++  });
++  it('普通限流不能误判成配额（那个该重试）', () => {
++    for (const m of ['429 Too Many Requests', 'rate limit exceeded', '当前分组上游负载已饱和']) {
++      expect(isQuota(m)).toBe(false);
++    }
++  });
++  it('网络错误、空值不误判', () => {
++    for (const m of ['Failed to fetch', 'NetworkError', '', null, undefined]) expect(isQuota(m)).toBe(false);
++  });
++});
++
++describe('提示要能照着做', () => {
++  const t = quotaHint('Workspace allocated quota exceeded, please increase your quota limit.');
++  it('点明这是中转站的配额，不是本站限制', () => {
++    expect(t).toContain('中转站账号的配额');
++    expect(t).toContain('不是本站的限制');
++  });
++  it('给出两条出路', () => {
++    expect(t).toContain('加额度');
++    expect(t).toMatch(/换一个还有额度的/);
++  });
++  it('保留原文供排查，但截断避免刷屏', () => {
++    expect(t).toContain('Workspace allocated quota');
++    expect(quotaHint('x'.repeat(500)).length).toBeLessThan(300);
++  });
++});
++
++describe('配额耗尽时不能重试、不能续写', () => {
++  it('题库 AI 补答案：配额错误排除在重试之外', () => {
++    const src = read('js/views/bank.js');
++    expect(src).toContain('const quota=this._isQuotaErr&&this._isQuotaErr((e&&e.message)||\'\');');
++    expect(src).toMatch(/const retryable=!quota &&/);
++  });
++  it('插图转存：同样排除', () => {
++    const src = read('js/views/ingest.js');
++    expect(src).toMatch(/const retryable=!quota &&/);
++  });
++  it('解析的自动续写：配额错误直接跳出循环', () => {
++    expect(read('js/views/practice.js')).toContain("if(this._isQuotaErr && this._isQuotaErr(r.errText||'' ))break;");
++  });
++  it('追问的自动续写：同样不继续', () => {
++    expect(read('js/views/practice.js')).toMatch(/!\(this\._isQuotaErr && this\._isQuotaErr\(\(entry\.a\)\|\|''\)\)/);
++  });
++});
++
++describe('服务端用 402 把配额和普通错误区分开', () => {
++  const src = read('functions/api/explain.js');
++  it('有独立的识别函数', () => {
++    expect(src).toContain('const isQuota = (t) =>');
++  });
++  it('配额走 402，其余保持 502', () => {
++    expect(src.match(/isQuota\(msg\) \? 402 : 502/g)).toHaveLength(2);
++  });
++  it('响应体带 quota 标记，前端不用再猜', () => {
++    expect(src).toContain('quota: isQuota(msg)');
++  });
++});
++
++describe('前端把配额错误单独呈现', () => {
++  const src = read('js/views/practice.js');
++  it('解析失败时给的是可操作提示，不是英文原文', () => {
++    expect(src).toContain("throw new Error(this._quotaHint((r&&r.errText)||''));");
++  });
++  it('追问失败时同样', () => {
++    expect(src).toContain("if(this._isQuotaErr && this._isQuotaErr(msg)){");
++    expect(src).toContain("this.flash('AI 额度用完了',true)");
 +  });
 +});
 diff --git a/tests/ai-runaway-guard.test.mjs b/tests/ai-runaway-guard.test.mjs

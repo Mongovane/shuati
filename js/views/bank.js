@@ -138,7 +138,8 @@ async bankAiFillAnswers(){
             }catch(e){ if(e.message==='unauth')throw e;
               lastErr=e;
               if(e.name==='AbortError'||ctrl.signal.aborted)break;
-              const retryable=/429|限流|rate.?limit|50[234]|timeout|超时|网关/i.test(String(e.message||''));
+              const quota=this._isQuotaErr&&this._isQuotaErr((e&&e.message)||'');
+              const retryable=!quota && /429|限流|rate.?limit|50[234]|timeout|超时|网关/i.test(String((e&&e.message)||''));
               if(!retryable || attempt===2)break;
               const wait=[1500,4000][attempt];
               this.bankAiFill.prog='被限流，'+(wait/1000)+' 秒后重试（第 '+(attempt+2)+' 次）…';

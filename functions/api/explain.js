@@ -125,6 +125,9 @@ export async function onRequestPost({ request, env }) {
   // 上游若因 max_tokens 过大而 400，自动降档重试一次。
   // 各家模型的输出上限差别很大（8K / 16K / 32K+），把默认值调高就必然会撞到一些，
   // 报错甩给用户不如自己退一步。
+  // 配额/余额耗尽：单独用 402 区分。上游常把它塞在 429 或 502 里，
+// 前端如果只看状态码会当成限流去重试 —— 重试没有任何意义，还继续耗额度。
+const isQuota = (t) => /quota|insufficient|balance|欠费|余额|额度|配额|billing|exceeded your current/i.test(String(t || ''));
   const tooLarge = (t) => /max[_\s-]*(?:completion[_\s-]*)?tokens|maximum.*tokens|too large|exceeds?.*(?:limit|maximum)|超过.*(?:上限|最大)/i.test(String(t||''));
   // 只有用户显式设过上限时才有「降档」可言；没设的情况下这类 400 说明是别的原因，直接透传
   let outCap = payload.max_tokens || 0;
@@ -171,7 +174,7 @@ export async function onRequestPost({ request, env }) {
       if (!up2.ok) {
         let msg = '上游 HTTP ' + up2.status;
         try { const d = await up2.json(); msg = (d.error && (d.error.message || d.error)) || msg; } catch (_) {}
-        return json({ error: 'AI 中转站错误：' + msg }, 502);
+        return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
       }
       const d = await up2.json();
       const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
@@ -181,7 +184,7 @@ export async function onRequestPost({ request, env }) {
     if (!up.ok) {
       let msg = '上游 HTTP ' + up.status;
       try { const d = await up.json(); msg = (d.error && (d.error.message || d.error)) || msg; } catch (_) {}
-      return json({ error: 'AI 中转站错误：' + msg }, 502);
+      return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
     }
     const d = await up.json();
     const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';

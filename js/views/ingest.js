@@ -610,7 +610,9 @@ async _hoistImages(arr){
             map.set(task.u, d.url); stat.uploaded++; return;
           }catch(e){
             // 限流/网关/网络抖动重试一次；其余（如 413 图太大）重试也没用
-            const retryable=/429|50[234]|Failed to fetch|NetworkError|timeout|超时/i.test(String((e&&e.message)||''));
+            // 配额耗尽常以 429 返回，会命中下面的限流重试被反复打 —— 重试没意义，还费额度
+            const quota=this._isQuotaErr&&this._isQuotaErr((e&&e.message)||'');
+            const retryable=!quota && /429|50[234]|Failed to fetch|NetworkError|timeout|超时/i.test(String((e&&e.message)||''));
             if(!retryable || attempt===1){ stat.failed++; return; }   // 保留内嵌，图不能丢
             await new Promise(r=>setTimeout(r,800));
           }

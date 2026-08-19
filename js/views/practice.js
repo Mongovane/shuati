@@ -298,6 +298,8 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
       });
       if(r.res && r.res.status===401)break;
       if(!r.ok)break;
+      // 额度用完时绝不能续写 —— 续写就是再发一次请求，只会再失败一次
+      if(this._isQuotaErr && this._isQuotaErr(r.errText||'' ))break;
       if(!truncated || cont>=MAX_CONT)break;
       // 正文一个字都没有 = 预算被思维链吃光，下一轮让它跳过思考直接给结论
       kickoff = isConcept ? !acc : !st.text;
@@ -320,6 +322,9 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
       this._conceptRetried=false;
       if(!cards.length) throw new Error('知识点卡片生成失败，可点重试');
       st.cards=cards; if(showing()&&this.aiX.view==='concept')this.aiX.cards=cards;
+    }
+    else if(this._isQuotaErr && this._isQuotaErr((r&&r.errText)||'')){
+      throw new Error(this._quotaHint((r&&r.errText)||''));
     }
     else if(!st.text){
       // 区分「真没输出」和「思考占满预算」——后者续写 MAX_CONT 轮仍为空才算失败，
@@ -417,7 +422,7 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
         if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试
         throw new Error(msg); }
       // 追问同样自动续写：被 token 上限截断就接着写，不要求用户手动打「请继续」
-      while(askTruncated && askCont<ASK_MAX_CONT && !ctrl.signal.aborted){
+      while(askTruncated && askCont<ASK_MAX_CONT && !ctrl.signal.aborted && !(this._isQuotaErr && this._isQuotaErr((entry.a)||''))){
         askCont++; askTruncated=false;
         this.flash('回答较长，正在自动续写…（'+askCont+'/'+ASK_MAX_CONT+'）');
         const base=entry.a||'';
@@ -437,7 +442,11 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
       let msg=e.message||'未知错误';
       if(isCtxErr(msg) && trimLevel<2){ continue; }
       if(/429/.test(msg))msg+='（中转站限流，稍等几秒再重试）'; else if(/Failed to fetch|NetworkError|HTTP2|PROTOCOL|stream/i.test(msg))msg='网络异常，请检查网络后重试';
-      entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('追问失败：'+msg,true); done=true;
+      if(this._isQuotaErr && this._isQuotaErr(msg)){
+        const hint=this._quotaHint(msg);
+        entry.a='_'+hint.replace(/\n/g,'  \n')+'_'; entry.err=true; this.flash('AI 额度用完了',true);
+      } else { entry.a='_回答失败：'+msg+'_'; entry.err=true; this.flash('追问失败：'+msg,true); }
+      done=true;
     }
   }
   if(this.aiX.id===q.id) this.aiX.asking=false;

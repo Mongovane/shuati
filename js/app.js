@@ -428,6 +428,18 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
       }
       return false;
     },
+    // 配额/余额耗尽的识别。这类错误【重试没有任何意义】，而且它常以 429 返回，
+    // 会命中「限流重试」的条件被反复打好几次 —— 既拖时间，又可能继续消耗额度。
+    // 也不能触发自动续写：续写就是再发一次请求。
+    _isQuotaErr(msg){
+      const t=String(msg||'');
+      return /quota|insufficient|balance|欠费|余额|额度|配额|billing|payment|exceeded your current/i.test(t);
+    },
+    // 把上游那句英文换成能照着做的中文
+    _quotaHint(msg){
+      return 'AI 额度用完了：中转站返回「'+String(msg||'').slice(0,80)+'」。\n'
+        +'这是中转站账号的配额，不是本站的限制 —— 去中转站后台加额度，或在「设置 → AI 解析」换一个还有额度的 Key/模型。';
+    },
     aiOv(vision){ // 全局 AI 中转站覆盖：随所有 AI 请求携带（成对生效；拍照/看图另带视觉模型）
   const e=this.explainCfg||{}; const o={};
   if(e.base&&e.key){ o.base_url=e.base; o.api_key=e.key; }
