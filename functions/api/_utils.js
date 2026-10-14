@@ -243,6 +243,8 @@ export function rowToQuestion(r) {
     favorited: !!r.favorited,
     mastered: !!r.mastered,
     due_at: r.due_at != null ? r.due_at : null,
+    interval_days: r.interval_days != null ? Number(r.interval_days) : 0,
+    ease: r.ease != null ? Number(r.ease) : 2.5,
     note: r.user_note || r.note || '',
   };
 }

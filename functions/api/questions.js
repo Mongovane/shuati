@@ -86,7 +86,7 @@ export async function onRequestGet({ request, env }) {
        (CASE WHEN IFNULL(q.analysis,'') <> '' THEN 1 ELSE 0 END) AS has_analysis,
        (CASE WHEN IFNULL(q.ai_cards,'') NOT IN ('','[]') THEN 1 ELSE 0 END) AS has_cards`
     : 'q.*';
-  const baseSelect = `SELECT ${qCols}, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.due_at, pr.note AS user_note
+  const baseSelect = `SELECT ${qCols}, pr.wrong_count, pr.right_count, pr.favorited, pr.mastered, pr.due_at, pr.interval_days, pr.ease, pr.note AS user_note
                       FROM questions q
                       LEFT JOIN progress pr ON pr.question_id = q.id`;
 

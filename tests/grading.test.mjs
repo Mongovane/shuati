@@ -173,3 +173,34 @@ describe('参考解析提取（baseAnalysis）与刷题快捷模式（studyMode 
       cleanChapter: '习题5-1 定积分的概念与性质',
     })).toEqual(['定积分几何意义']);
   });
+
+  it('srsLabels 实时计算 Anki 四档下次复习间隔（新题 / 复习中 / 成熟题）', () => {
+    const fn = QC.computed.srsLabels;
+    expect(fn.call({ q: { interval_days: 0, ease: 2.5 } })).toEqual({
+      again: '10分钟', hard: '1天', good: '1天', easy: '2天',
+    });
+    expect(fn.call({ q: { interval_days: 1, ease: 2.5 } })).toEqual({
+      again: '10分钟', hard: '2天', good: '3天', easy: '5天',
+    });
+    expect(fn.call({ q: { interval_days: 10, ease: 2.5 } })).toEqual({
+      again: '10分钟', hard: '12天', good: '25天', easy: '1月',
+    });
+  });
+
+  it('cleanSource 提取干净书名，displayOptions 支持选项乱序且不破坏判分', () => {
+    expect(QC.computed.cleanSource.call({ q: { source: '高等数学（第七版）上册 · P235' } })).toBe('高等数学（第七版）上册');
+    const opts = [{ key: 'A', text: '1' }, { key: 'B', text: '2' }, { key: 'C', text: '3' }, { key: 'D', text: '4' }];
+    const normal = QC.computed.displayOptions.call({ q: { id: 'q1', options: opts }, shuffleOpts: false, mode: 'practice', t0: 12345 });
+    expect(normal.map((o) => o.key)).toEqual(['A', 'B', 'C', 'D']);
+    const shuffled = QC.computed.displayOptions.call({ q: { id: 'q1', options: opts }, shuffleOpts: true, mode: 'practice', t0: 987654321 });
+    expect(shuffled.length).toBe(4);
+    expect([...shuffled.map((o) => o.key)].sort()).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('onCardClick 点击插图触发 zoomImg 全屏预览，reset 自动关闭', () => {
+    const ctx = { zoomImg: '', q: { note: '' }, blankCount: 1, segMode: false, segCount: 0, sel: [], blanksArr: [] };
+    QC.methods.onCardClick.call(ctx, { target: { tagName: 'IMG', src: 'https://example.com/fig3-6.png', closest: () => null } });
+    expect(ctx.zoomImg).toBe('https://example.com/fig3-6.png');
+    QC.methods.reset.call(ctx);
+    expect(ctx.zoomImg).toBe('');
+  });
