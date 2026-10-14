@@ -53,7 +53,7 @@ const App={
     reviewSession:null,  // 「回顾某次模考错题」独立会话：{title, count} —— 非空时 wrong 视图显示横幅、不被常规队列覆盖
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
-    sessionStart:0, streak:0, bestStreak:0, qnavOpen:true, studyMode:localStorage.getItem('zb_studymode')==='1', instantSubmit:localStorage.getItem('zb_instantsubmit')==='1', autoNext:localStorage.getItem('zb_autonext')==='1',
+    sessionStart:0, streak:0, bestStreak:0, qnavOpen:true, studyMode:localStorage.getItem('zb_studymode')==='1', instantSubmit:localStorage.getItem('zb_instantsubmit')==='1', autoNext:localStorage.getItem('zb_autonext')==='1', shuffleOpts:localStorage.getItem('zb_shuffleopts')==='1',
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
     aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true,
@@ -107,7 +107,7 @@ const App={
     qimgInline:false,   /* 插图：小图内嵌 dataURL */
     mockSaved:null,               // 未完成模考的快照（供「继续上次考试」横幅）
     restoring:false, restoreReplace:false,  // 备份恢复：进行中标记 / 覆盖式开关
-    toast:null, toastTimer:null, showTop:false, scrollDown:false, segActive:false,
+    toast:null, toastTimer:null, showTop:false, scrollDown:false, segActive:false, scratch:{ open:false, tool:'pen', color:'#1A1F2B', strokes:[], drawing:false },
     fav:{ items:[], total:0, loading:false, offset:0, limit:30, sel:[], listMode:true, loadedOnce:false }, favDirty:false,
     reviewScope:'due',   // 错题页范围：due=今日到期(SRS) / all=全部错题
     bookSubjPick:{ open:false, book:null, custom:'' },
@@ -143,6 +143,7 @@ const App={
     wrongTotal(){ if(this.stats&&Array.isArray(this.stats.bySubject))return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); return (this.meta&&this.meta.wrong_open)||0; },
     cur(){ return this.queue[this.qi]||null; },
     curIsAuto(){ return !!(this.cur && AUTO.includes(this.cur.type)); },
+    curIsInstantCapable(){ return !!(this.cur && (this.cur.type==='single_choice' || this.cur.type==='true_false')); },
     // 版本号只有 js/constants.js 的 APP_VERSION 一份（npm run bump 会同步它）。
     // 以前这里另有一个手写的 APP_VER 常量，bump 不管它，界面版本号从 v4.4 起就冻住了。
     appVer(){ return APP_VERSION; },
@@ -228,6 +229,7 @@ const App={
         }
       }
       if(nc && nc._lite && !nc._full && !nc._fullLoading && (this.studyMode || (this.qStates[nc.id] && this.qStates[nc.id].revealed))){ this.ensureFullQuestion(nc).catch(()=>{}); }
+      if(nid && oid && nid!==oid && typeof this._scrollQuestionTop==='function'){ this.$nextTick(()=>this._scrollQuestionTop()); }
       if(this._persistSoon)this._persistSoon();
     },
     theme(v){ localStorage.setItem('zb_theme',v); this.applyTheme(); },
@@ -235,6 +237,7 @@ const App={
     dailyNewLimit(v){ try{ localStorage.setItem('zb_newlimit',String(v|0)); }catch(_){ } },
     appName(v){ const n=(v||'').trim()||'刷题文档'; document.title=n; localStorage.setItem('zb_appname',n); },
     'stealth.autoHide'(v){ localStorage.setItem('zb_autohide', v?'1':'0'); },
+    shuffleOpts(v){ try{ localStorage.setItem('zb_shuffleopts', v?'1':'0'); }catch(_){} },
     'f.subject'(){ this.f.chapter=''; },
     'ingest.subject'(){ this.ingest.chapter=''; if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },
     'ingest.chapter'(){ if(this.ingest.bookMode)this.ingest.source=this.makeSource(); },

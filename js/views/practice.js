@@ -122,6 +122,116 @@ cleanPageMd(md){
       return lines.slice(start,end).join('\n').trim();
     },
 prev(){ if(this.qi>0)this.qi--; },
+_scrollQuestionTop(){ try{
+  const y=window.pageYOffset||document.documentElement.scrollTop||0;
+  if(y>90) window.scrollTo({ top:0, behavior:'auto' });
+}catch(_){} },
+toggleQnav(){
+  this.qnavOpen=!this.qnavOpen;
+  if(this.qnavOpen){
+    this.$nextTick(()=>{ try{
+      const el=document.querySelector('.qnav-wrap');
+      if(el && el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }catch(_){} });
+  }
+},
+jumpToQuestion(i){
+  if(i>=0 && i<this.queue.length){
+    this.qi=i;
+    this.$nextTick(()=>this._scrollQuestionTop());
+  }
+},
+async openQuestionSource(q){
+  if(!q)return;
+  const bookName=this.srcBook(q.source);
+  const pg=Number(q.page)||0;
+  try{
+    if(!this.materials.loaded && !this.materials.loading && typeof this.loadMaterials==='function'){
+      await this.loadMaterials();
+    }
+    const books=this.materialBooks||[];
+    const hit=books.find(b=>b.title===bookName || b.key===bookName || (bookName && (b.title.includes(bookName)||bookName.includes(b.title)))) || (books.length===1?books[0]:null);
+    if(hit){
+      this.booksMode='notes';
+      this.currentBookId=hit.key;
+      this.go('books');
+      if(pg>0 && typeof this.bookGotoBookPage==='function'){
+        this.$nextTick(()=>{ this.bookGotoBookPage(pg); this.flash('已定位到《'+hit.title+'》第 '+pg+' 页'); });
+      } else {
+        this.flash('已打开教材《'+hit.title+'》');
+      }
+    } else {
+      this.flash('本题出自《'+(bookName||'教材')+'》'+(pg?(' 第 '+pg+' 页'):'')+'（书架中暂未导入同名教材）');
+    }
+  }catch(e){ if(e.message!=='unauth')this.flash('打开来源教材失败：'+e.message,true); }
+},
+toggleScratch(){
+  this.scratch.open=!this.scratch.open;
+  if(this.scratch.open){ this.$nextTick(()=>this._scratchRedraw()); }
+},
+scratchSetTool(t){ this.scratch.tool=t; },
+scratchSetColor(c){ this.scratch.color=c; this.scratch.tool='pen'; },
+scratchUndo(){ if(this.scratch.strokes.length){ this.scratch.strokes.pop(); this._scratchRedraw(); } },
+scratchClear(){ this.scratch.strokes=[]; this._scratchRedraw(); },
+_scratchPos(e){
+  const cv=this.$refs.scratchCv; if(!cv)return {x:0,y:0};
+  const r=cv.getBoundingClientRect();
+  const pt=(e.touches&&e.touches[0])||(e.changedTouches&&e.changedTouches[0])||e;
+  return { x:(pt.clientX-r.left), y:(pt.clientY-r.top) };
+},
+scratchDown(e){
+  try{
+    if(e.cancelable)e.preventDefault();
+    const p=this._scratchPos(e);
+    const st={ tool:this.scratch.tool, color:this.scratch.color, pts:[p] };
+    this.scratch.strokes.push(st);
+    this.scratch.drawing=true;
+    this._scratchRedraw();
+  }catch(_){}
+},
+scratchMove(e){
+  try{
+    if(!this.scratch.drawing || !this.scratch.strokes.length)return;
+    if(e.cancelable)e.preventDefault();
+    const p=this._scratchPos(e);
+    const st=this.scratch.strokes[this.scratch.strokes.length-1];
+    st.pts.push(p);
+    this._scratchRedraw();
+  }catch(_){}
+},
+scratchUp(){ this.scratch.drawing=false; },
+_scratchRedraw(){
+  try{
+    const cv=this.$refs.scratchCv; if(!cv)return;
+    const dpr=Math.min(window.devicePixelRatio||1, 2);
+    const w=cv.clientWidth||600, h=cv.clientHeight||220;
+    if(cv.width!==Math.floor(w*dpr) || cv.height!==Math.floor(h*dpr)){
+      cv.width=Math.floor(w*dpr); cv.height=Math.floor(h*dpr);
+    }
+    const ctx=cv.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    for(const st of (this.scratch.strokes||[])){
+      const pts=st.pts||[]; if(!pts.length)continue;
+      ctx.save();
+      ctx.lineCap='round'; ctx.lineJoin='round';
+      if(st.tool==='eraser'){
+        ctx.globalCompositeOperation='destination-out';
+        ctx.lineWidth=18;
+      } else {
+        ctx.globalCompositeOperation='source-over';
+        ctx.strokeStyle=st.color||'#1A1F2B';
+        ctx.lineWidth=2.4;
+      }
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+      if(pts.length===1) ctx.lineTo(pts[0].x+0.5, pts[0].y+0.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }catch(_){}
+},
 onSaveState(p){ if(p&&p.id){ this.qStates[p.id]=p.state; } },
 // —— 会话持久化：PWA 被系统在后台重载后，恢复队列/进度/作答/AI 内容 ——
 persistSession(){

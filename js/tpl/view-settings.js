@@ -184,6 +184,7 @@ const TPL_VIEW_SETTINGS = `
         <div class="row" style="justify-content:space-between;margin-bottom:12px"><span style="font-weight:600">外观</span>
           <select class="bk-mini" v-model="theme"><option value="light">浅色 <icon name="sun" :size="15" /></option><option value="dark">深色 <icon name="moon" :size="15" /></option><option value="auto">跟随系统 <icon name="sun-moon" :size="15" /></option></select>
         </div>
+        <label class="row" style="cursor:pointer;margin-bottom:8px"><input type="checkbox" v-model="shuffleOpts" /> <span class="muted">选择题选项乱序（重刷错题时防止因记住选项位置而假性掌握）</span></label>
         <label class="row" style="cursor:pointer"><input type="checkbox" v-model="stealth.autoHide" /> <span class="muted">窗口失焦时自动隐藏（返回时恢复）</span></label>
         </div>
       </div>

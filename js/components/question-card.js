@@ -6,7 +6,7 @@ const normAns=(v)=>String(v==null?'':v)
 
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, studyMode:{type:Boolean,default:false}, instantSubmit:{type:Boolean,default:false}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiUsage:{type:Object,default:null}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
+  props:{ q:Object, mode:{type:String,default:'practice'}, studyMode:{type:Boolean,default:false}, instantSubmit:{type:Boolean,default:false}, shuffleOpts:{type:Boolean,default:false}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiUsage:{type:Object,default:null}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop','ai-clear-chat'],
   // 这里原来有两个 watch:{}（一个在 computed 前、一个在 mounted 前），
   // 后者把前者整个覆盖掉，aiReasoning / aiText / aiChat / aiBusy 四个监听全部不生效：
@@ -22,7 +22,7 @@ const QuestionCard={
     aiBusy(v){ if(v){ this.localReasonOpen=true; this._reasonAutoCollapsed=false; this.stickBottom=true; } },
     aiAsking(v){ if(v)this.stickBottom=true; },
   },
-  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false, passageOpen:false, chatReasonOpen:{}, stickBottom:true }; },
+  data(){ return { sel:[], blanks:'', blanksArr:[], text:'', localRevealed:false, self:null, selfGrade:null, t0:Date.now(), showNote:false, noteEdit:false, noteDraft:'', askInput:'', copied:'', segMode:false, segCount:0, showRaw:false, kcardMode:'grid', kcardIdx:0, localReasonOpen:true, _reasonAutoCollapsed:false, passageOpen:false, chatReasonOpen:{}, stickBottom:true, zoomImg:'' }; },
   computed:{
     // 阅读材料很长时（截图里那篇 side jobs 有 1600+ 字符）整屏都被材料占满，
     // 题干和选项被顶到折叠线以下，必须先滚很久才能看到在问什么。
@@ -77,12 +77,14 @@ const QuestionCard={
       const raw = i===0 ? '' : (i>0 ? a.slice(0,i).replace(/\n*---\s*$/,'').trim() : a);
       if(!raw)return '';
       if(!AUTO.includes(this.q&&this.q.type)){
-        const ref = (this.q&&this.q.type==='fill_blank') ? this.ansDisplay : this.refText;
+        const fallbackRef = ((this.q&&this.q.answer)||[]).join('\n');
+        const ref = (this.q&&this.q.type==='fill_blank') ? (this.ansDisplay ?? fallbackRef) : (this.refText ?? fallbackRef);
         const nr = normAns(raw), nf = normAns(ref);
         if(!nr) return '';
         if(nf && (nr===nf || nf.includes(nr) || nr.includes(nf))) return '';
       } else {
-        if(normAns(raw)===normAns(this.answerKeys.join(','))) return '';
+        const ak = this.answerKeys || ((this.q&&this.q.answer)||[]);
+        if(normAns(raw)===normAns(ak.join(','))) return '';
       }
       return raw;
     },
@@ -91,6 +93,21 @@ const QuestionCard={
       if(!c)return '';
       if(/^\s*[0-9０-９]+\s*[.．、]/.test(c) || /\$|\\frac|\\int|\\lim|\\mathrm|试利用|讨论函数|求下列/.test(c) || c.length>28) return '';
       return c;
+    },
+    cleanSource(){
+      const s=String((this.q&&this.q.source)||'').split(' · ')[0].trim();
+      if(!s || s.length>28 || /\$|\\/.test(s)) return '';
+      return s;
+    },
+    srsLabels(){
+      const q=this.q||{};
+      const ease=Number(q.ease)||2.5;
+      const iv=Number(q.interval_days)||0;
+      const fmt=(d)=>{ const r=Math.max(1,Math.round(d)); return r>=30?(Math.round(r/30)+'月'):(r+'天'); };
+      const hardIv = iv<1 ? 1 : Math.min(365, Math.max(iv+1, iv*1.2));
+      const goodIv = iv<1 ? 1 : (iv<3 ? 3 : Math.min(365, iv*ease));
+      const easyIv = iv<1 ? 2 : (iv<3 ? 5 : Math.min(365, iv*ease*1.3));
+      return { again:'10分钟', hard:fmt(hardIv), good:fmt(goodIv), easy:fmt(easyIv) };
     },
     displayTags(){
       const tags=Array.isArray(this.q&&this.q.tags)?this.q.tags:[];
@@ -104,6 +121,18 @@ const QuestionCard={
     isObjective(){ return OBJECTIVE.includes(this.q.type); },
     isChoice(){ return this.q.type==='single_choice'||this.q.type==='multiple_choice'; },
     isMulti(){ return this.q.type==='multiple_choice'; },
+    displayOptions(){
+      const opts = Array.isArray(this.q&&this.q.options) ? this.q.options : [];
+      if(!this.shuffleOpts || opts.length<=1 || this.mode==='exam') return opts;
+      const copy = opts.slice();
+      let seed = (this.t0||1) ^ String((this.q&&this.q.id)||'').split('').reduce((a,c)=>((a<<5)-a+c.charCodeAt(0))|0, 0);
+      for(let i=copy.length-1;i>0;i--){
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const j = seed % (i + 1);
+        const tmp = copy[i]; copy[i] = copy[j]; copy[j] = tmp;
+      }
+      return copy;
+    },
     answerKeys(){ return (this.q.answer||[]).map(x=>String(x).toUpperCase()); },
     blankCount(){ if(this.q.type!=='fill_blank')return 1; let n=1; for(const a of (this.q.answer||[])){ const k=String(a).split('||').length; if(k>n)n=k; } return n; },
     isMultiBlank(){ return this.q.type==='fill_blank' && this.blankCount>1; },
@@ -142,6 +171,8 @@ const QuestionCard={
     window.removeEventListener('scroll',this._scroll);
   },
   methods:{
+    onCardClick(e){ const t=e&&e.target; if(t&&t.tagName==='IMG'&&t.src&&!t.closest('.img-lightbox')){ this.zoomImg=t.src; } },
+    onSourceClick(){ if(this.$root && typeof this.$root.openQuestionSource==='function') this.$root.openQuestionSource(this.q); },
     taGrow(e){ const el=e&&e.target; if(!el)return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight+2, Math.round(window.innerHeight*0.5))+'px'; },
     segToggle(){ this.segMode=!this.segMode; if(!this.segMode)this._segClear(); },
     _segBox(){ return this.$refs.aiBox; },
@@ -195,7 +226,7 @@ const QuestionCard={
     // 英语卡片的 formula 放的是句型结构（not only ... but also ...），不是 LaTeX，
     // 拿不到 .kcard-formula .katex 那个高亮胶囊，单独标一下好上样式
     isTextFormula(f){ return !!String(f||'').trim() && !/\$/.test(f); },
-    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; this.stickBottom=true; this.chatReasonOpen={}; if(this.segMode){ this.segMode=false; this.segCount=0; } },
+    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; this.stickBottom=true; this.chatReasonOpen={}; this.zoomImg=''; if(this.segMode){ this.segMode=false; this.segCount=0; } },
     // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
     snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
     restoreState(s){ if(!s||typeof s!=='object')return;
@@ -238,11 +269,12 @@ const QuestionCard={
     canSubmit(){ if(this.isChoice||this.q.type==='true_false')return this.sel.length>0; if(this.q.type==='fill_blank')return this.isMultiBlank ? this.blanksArr.every(x=>String(x).trim().length>0) : this.blanks.trim().length>0; return true; },
   },
   template:`
-  <div class="card card-q">
+  <div class="card card-q" @click="onCardClick($event)">
     <div class="q-head">
       <span class="chip accent">{{ subjMap[q.subject]||q.subject }}</span>
       <span class="chip">{{ typeMap[q.type]||q.type }}</span>
       <span v-if="cleanChapter" class="chip chip-chap">{{ cleanChapter }}</span>
+      <button v-if="cleanSource || q.page" type="button" class="chip chip-src" @click.stop="onSourceClick" :title="q.page ? '点击跳转到《'+(cleanSource||'教材')+'》第 '+q.page+' 页' : ('来源：'+cleanSource)"><icon name="book" :size="12" /> {{ cleanSource || '教材' }}<template v-if="q.page"> · P{{ q.page }}</template></button>
       <span v-if="displayTags.length" class="q-tags"><span v-for="tg in displayTags" :key="tg" class="tag">#{{ tg }}</span></span>
       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
       <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
@@ -256,7 +288,7 @@ const QuestionCard={
     </div>
     <div class="stem"><rich-text :content="q.stem" /></div>
     <template v-if="isChoice">
-      <div v-for="o in q.options" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
+      <div v-for="o in displayOptions" :key="o.key" class="opt" :class="optClass(o.key)" @click="pick(o.key)">
         <span class="key">{{ o.key }}</span>
         <span class="opt-body"><rich-text :content="o.text" /></span>
         <span class="mark" v-if="revealed && answerKeys.includes(o.key)"><icon name="check" :size="16" /></span>
@@ -277,23 +309,24 @@ const QuestionCard={
       <input v-else class="inp" style="width:100%" v-model="blanks" :disabled="revealed" placeholder="输入答案（大小写、全半角、空格不影响判分）" @keyup.enter="!revealed && canSubmit() && submit()" />
     </template>
     <template v-else>
-      <textarea :class="{code:q.type==='code'}" v-model="text" :disabled="revealed" :placeholder="q.type==='code' ? '在这里写代码（对照参考答案自查）' : '写下答题要点（对照参考答案自查）'"></textarea>
+      <textarea :class="{code:q.type==='code', 'sa-ta':q.type!=='code'}" v-model="text" :disabled="revealed" @input="taGrow($event)" @focus="taGrow($event)" :placeholder="q.type==='code' ? '在这里写代码（对照参考答案自查）' : '写下答题要点（可选，也可点上方「草稿」手写演算或直接点下方看参考答案）'"></textarea>
     </template>
     <template v-if="revealed">
       <div v-if="AUTO.includes(q.type)" class="verdict" :class="(studyMode && !localRevealed) ? 'ok' : (autoCorrect?'ok':(mcPartial?'part':'bad'))">
         <span>{{ (studyMode && !localRevealed) ? '背题模式' : (autoCorrect ? '正确' : (mcPartial ? '部分正确 · 少选' : '错误')) }}</span>
         <span v-if="mcPartial && localRevealed" class="tag">半分计，已进复习</span>
         <span class="tag">正确答案： {{ answerKeys.join(', ') }}</span>
+        <button v-if="autoCorrect && localRevealed && mode!=='exam'" type="button" class="btn subtle xs verdict-re" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="这道题是蒙对或排除法猜对的？点此标为需复习（10分钟后回炉）">{{ selfGrade==='again' ? '已加复习 ✓' : '蒙对？加复习' }}</button>
       </div>
       <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="q.type==='fill_blank' ? ansDisplay : refText" /></div>
       <div v-if="baseAnalysis" class="ref" style="margin-top:10px"><h5>参考解析</h5><rich-text :content="baseAnalysis" /></div>
       <div v-else-if="q._fullLoading" class="ref muted" style="margin-top:10px;font-size:12.5px"><span class="spin"></span> 正在加载参考解析…</div>
       <div v-if="!AUTO.includes(q.type) && !studyMode" class="selfgrade">
         <span class="q">掌握程度？</span>
-        <button class="btn subtle sg sg-again" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="没答上来，10 分钟后回炉"><icon name="x" :size="15" /> 重来</button>
-        <button class="btn subtle sg sg-hard" :class="{on:selfGrade==='hard'}" @click="grade4('hard')" title="勉强想起，间隔小步前进">困难</button>
-        <button class="btn subtle sg sg-good" :class="{on:selfGrade==='good'}" @click="grade4('good')" title="正常想起"><icon name="check" :size="15" /> 良好</button>
-        <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单</button>
+        <button class="btn subtle sg sg-again" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="没答上来，10 分钟后回炉"><icon name="x" :size="15" /> 重来 <em class="sg-iv">{{ srsLabels.again }}</em></button>
+        <button class="btn subtle sg sg-hard" :class="{on:selfGrade==='hard'}" @click="grade4('hard')" title="勉强想起，间隔小步前进">困难 <em class="sg-iv">{{ srsLabels.hard }}</em></button>
+        <button class="btn subtle sg sg-good" :class="{on:selfGrade==='good'}" @click="grade4('good')" title="正常想起"><icon name="check" :size="15" /> 良好 <em class="sg-iv">{{ srsLabels.good }}</em></button>
+        <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单 <em class="sg-iv">{{ srsLabels.easy }}</em></button>
       </div>
       <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
         <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span><span v-if="usageText" class="muted usage-chip" :title="usageTitle">{{ usageText }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
@@ -431,6 +464,10 @@ const QuestionCard={
         <button v-if="mode!=='exam'" class="btn" @click="$emit('next')">下一题 <icon name="arrow-right" :size="15" /></button>
         <button class="btn subtle" :style="q.mastered?'border-color:var(--ok);color:var(--ok)':''" @click="markMastered">{{ q.mastered?'已掌握 ✓':'标记为已掌握' }}</button>
       </template>
+    </div>
+    <div v-if="zoomImg" class="img-lightbox" @click.stop="zoomImg=''">
+      <img :src="zoomImg" alt="放大预览" />
+      <span class="img-lightbox-tip">点击任意处关闭</span>
     </div>
   </div>`
 };

@@ -110,19 +110,34 @@ const TPL_VIEW_PRACTICE = `
             <span v-if="streak>=2" class="streak" :class="{hot:streak>=5}"><icon name="flame" :size="15" /> 连对 {{ streak }}</span>
             <div class="q-info-ops" style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <button class="filter-chip" :class="{on:studyMode}" @click="toggleStudyMode" title="背题模式：直接展开参考答案与解析，无需逐题作答"><icon name="book-open" :size="13" /> 背题</button>
-              <button v-if="!studyMode && curIsAuto" class="filter-chip" :class="{on:instantSubmit}" @click="toggleInstantSubmit" title="单选/判断题点选选项后立即判分，省去点提交按钮">点选即交</button>
+              <button class="filter-chip" :class="{on:scratch.open}" @click="toggleScratch" title="演算草稿纸：支持手指/触控笔/鼠标手写列式演算"><icon name="pen-line" :size="13" /> 草稿</button>
+              <button v-if="!studyMode && curIsInstantCapable" class="filter-chip" :class="{on:instantSubmit}" @click="toggleInstantSubmit" title="单选/判断题点选选项后立即判分，省去点提交按钮">点选即交</button>
               <button v-if="!studyMode && curIsAuto" class="filter-chip" :class="{on:autoNext}" @click="toggleAutoNext" title="客观题答对后自动切到下一题（答错则停留在当前题看解析）">答对下题</button>
               <select class="bk-mini" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="发现分类错了？直接改，立即生效"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
               <button class="btn subtle xs" v-if="view==='wrong'" @click="dropFromReview" title="标记为已掌握，从待复习队列移除；题目仍保留在题库"><icon name="check" :size="15" /> 移出复习</button>
               <button class="bk-del-min" @click="deleteCurrentQuestion" title="从题库彻底删除本题（用于清理 OCR 坏题，不可恢复）">删除</button>
             </div>
           </div>
+          <div v-if="scratch.open" class="scratch-pad">
+            <div class="scratch-bar">
+              <span class="scratch-title"><icon name="pen-line" :size="14" /> 演算草稿纸</span>
+              <button type="button" class="filter-chip" :class="{on:scratch.tool==='pen'}" @click="scratchSetTool('pen')"><icon name="pen-line" :size="12" /> 画笔</button>
+              <button type="button" class="filter-chip" :class="{on:scratch.tool==='eraser'}" @click="scratchSetTool('eraser')"><icon name="eraser" :size="12" /> 橡皮</button>
+              <span class="scratch-colors">
+                <i v-for="c in ['#1A1F2B','#2E45C4','#C5362E','#1B7A47']" :key="c" class="scratch-swatch" :class="{on:scratch.tool==='pen'&&scratch.color===c}" :style="{background:c}" @click="scratchSetColor(c)"></i>
+              </span>
+              <button type="button" class="btn subtle xs" :disabled="!scratch.strokes.length" @click="scratchUndo" title="撤销上一笔">撤销</button>
+              <button type="button" class="btn subtle xs" :disabled="!scratch.strokes.length" @click="scratchClear" title="清空画布"><icon name="trash-2" :size="13" /> 清空</button>
+              <button type="button" class="btn subtle xs" style="margin-left:auto" @click="toggleScratch"><icon name="x" :size="14" /> 收起</button>
+            </div>
+            <canvas ref="scratchCv" class="scratch-cv" @mousedown="scratchDown($event)" @mousemove="scratchMove($event)" @mouseup="scratchUp" @mouseleave="scratchUp" @touchstart="scratchDown($event)" @touchmove="scratchMove($event)" @touchend="scratchUp"></canvas>
+          </div>
           <transition name="qfade" mode="out-in">
-          <question-card ref="curCard" :q="cur" :key="cur.id" :study-mode="studyMode" :instant-submit="instantSubmit" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-reasoning="curAiReasoning" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" :ai-usage="curAiUsage" :ai-kind="aiX.id===cur.id ? (aiX.view||'') : ''" :ai-cards="aiX.id===cur.id && aiX.view==='concept' ? (aiX.cards||[]) : []" :ai-flip="aiX.id===cur.id ? (aiX.flip||{}) : {}" :has-explain="aiX.id===cur.id && !!aiX.text" :has-concept="aiX.id===cur.id && !!(aiX.cards&&aiX.cards.length)" :all-flipped="curAllFlipped" :init-state="qStates[cur.id]||null" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain()" @ai-concept="aiExplain('concept')" @ai-explain-redo="aiExplain('',true)" @ai-concept-redo="aiExplain('concept',true)" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" @ai-stop="aiStopAsk" @ai-clear-chat="aiClearChat" @seg-mode="segActive=$event" @card-flip="toggleCard" @cards-flip-all="toggleAllCards" @save-state="onSaveState" />
+          <question-card ref="curCard" :q="cur" :key="cur.id" :study-mode="studyMode" :instant-submit="instantSubmit" :shuffle-opts="shuffleOpts" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-reasoning="curAiReasoning" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" :ai-usage="curAiUsage" :ai-kind="aiX.id===cur.id ? (aiX.view||'') : ''" :ai-cards="aiX.id===cur.id && aiX.view==='concept' ? (aiX.cards||[]) : []" :ai-flip="aiX.id===cur.id ? (aiX.flip||{}) : {}" :has-explain="aiX.id===cur.id && !!aiX.text" :has-concept="aiX.id===cur.id && !!(aiX.cards&&aiX.cards.length)" :all-flipped="curAllFlipped" :init-state="qStates[cur.id]||null" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain()" @ai-concept="aiExplain('concept')" @ai-explain-redo="aiExplain('',true)" @ai-concept-redo="aiExplain('concept',true)" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" @ai-stop="aiStopAsk" @ai-clear-chat="aiClearChat" @seg-mode="segActive=$event" @card-flip="toggleCard" @cards-flip-all="toggleAllCards" @save-state="onSaveState" />
           </transition>
           <div class="q-nav-bar">
             <button class="btn subtle" :disabled="qi<=0" @click="prev"><icon name="arrow-left" :size="15" /> 上一题</button>
-            <div class="q-nav-prog" v-if="queue.length>1" @click="qnavOpen=!qnavOpen" title="点击展开/收起答题卡"><div class="q-nav-prog-fill" :style="{width:Math.round((qi+1)/queue.length*100)+'%'}"></div><span class="q-nav-prog-txt">{{ qi+1 }}/{{ queue.length }}</span></div>
+            <div class="q-nav-prog" v-if="queue.length>1" @click="toggleQnav" title="点击展开/定位答题卡"><div class="q-nav-prog-fill" :style="{width:Math.round((qi+1)/queue.length*100)+'%'}"></div><span class="q-nav-prog-txt">{{ qi+1 }}/{{ queue.length }}</span></div>
             <button class="btn" @click="next">{{ qi>=queue.length-1 ? (reviewSession ? '完成回顾 ✓' : '换一批 ↻') : '下一题 →' }}</button>
           </div>
           <div class="kbd-hint muted">快捷键：A–D / 1–4 选选项（判断题 1=对 2=错）· Enter 提交/下一题 · ← → 切题 · 揭晓后 F 收藏 · M 掌握 · E 解析 · K 卡片 · 自评 1 重来 2 困难 3 良好 4 简单</div>
@@ -133,7 +148,7 @@ const TPL_VIEW_PRACTICE = `
               <span class="qnav-caret">{{ qnavOpen?'收起 ▴':'展开 ▾' }}</span>
             </button>
             <div v-if="qnavOpen" class="qnav">
-              <button v-for="(q,i) in queue" :key="q.id" class="qnav-dot" :class="qnavCls(q,i)" @click="qi=i" :title="'第'+(i+1)+'题'">{{ i+1 }}</button>
+              <button v-for="(q,i) in queue" :key="q.id" class="qnav-dot" :class="qnavCls(q,i)" @click="jumpToQuestion(i)" :title="'第'+(i+1)+'题'">{{ i+1 }}</button>
             </div>
           </div>
         </div>
