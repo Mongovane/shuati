@@ -153,3 +153,23 @@ describe('参考解析提取（baseAnalysis）与刷题快捷模式（studyMode 
     expect(submitted).toBe(1);
   });
 });
+
+  it('简答题参考答案与解析完全相同时自动去重（不再双份渲染同一段证明）', () => {
+    const fn = QC.computed.baseAnalysis;
+    const proof = '证 (1) 根据定积分的几何意义，定积分表示三角形面积为 1。';
+    expect(fn.call({ q: { type: 'short_answer', answer: [proof], analysis: proof }, refText: proof })).toBe('');
+    expect(fn.call({ q: { type: 'short_answer', answer: [proof], analysis: '补充考点提示：利用奇偶性简化对称区间定积分' }, refText: proof }))
+      .toBe('补充考点提示：利用奇偶性简化对称区间定积分');
+    expect(fn.call({ q: { type: 'single_choice', answer: ['A'], analysis: '【精析】选 A。' }, answerKeys: ['A'] }))
+      .toBe('【精析】选 A。');
+  });
+
+  it('cleanChapter 与 displayTags 过滤误识别的题干章节与重复标签', () => {
+    const badChap = '5. 试利用习题4的结论，讨论函数 $f(x) = \\mathrm{e}^{x} + \\mathrm{e}^{-x} + 2\\cos x$ 的极值.';
+    expect(QC.computed.cleanChapter.call({ q: { chapter: badChap } })).toBe('');
+    expect(QC.computed.cleanChapter.call({ q: { chapter: '习题5-1 定积分的概念与性质' } })).toBe('习题5-1 定积分的概念与性质');
+    expect(QC.computed.displayTags.call({
+      q: { chapter: '习题5-1 定积分的概念与性质', tags: ['习题5-1 定积分的概念与性质', badChap, '定积分几何意义'] },
+      cleanChapter: '习题5-1 定积分的概念与性质',
+    })).toEqual(['定积分几何意义']);
+  });
