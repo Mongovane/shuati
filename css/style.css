@@ -1098,7 +1098,9 @@ h2{margin:.2em 0 .6em}
   .tb-right .btn{font-size:12px;padding:6px 10px}
 }
 
-/* ---- Saved 标签行溢出修复 ---- */
+/* ---- 题目标签胶丸样式与 Saved 标签行溢出修复 ---- */
+.q-tags{display:inline-flex;flex-wrap:wrap;gap:5px;align-items:center}
+.q-tags .tag{font-size:11.5px;padding:1px 8px;border-radius:99px;background:var(--surface-2);color:var(--ink-soft);border:1px solid var(--line)}
 @media(max-width:420px){
   .q-tags{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;gap:6px}
   .q-tags::-webkit-scrollbar{display:none}
@@ -1131,8 +1133,8 @@ h2{margin:.2em 0 .6em}
 /* ===================== 用户体验打磨（学生日常刷题视角） ===================== */
 
 /* ---- 底栏进度条：prev [===进度===] next ---- */
-.q-nav-prog{flex:1;min-width:60px;max-width:180px;height:6px;background:var(--line);border-radius:3px;position:relative;overflow:hidden}
-.q-nav-prog-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+.q-nav-prog{flex:1;min-width:60px;max-width:180px;height:6px;background:var(--line);border-radius:3px;position:relative;cursor:pointer}
+.q-nav-prog-fill{height:100%;max-width:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
 .q-nav-prog-txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--ink-soft);line-height:1;top:-14px;height:auto}
 
 /* ---- 自评按钮色彩：通过颜色直觉传达记忆程度 ---- */
@@ -1186,7 +1188,8 @@ h2{margin:.2em 0 .6em}
 
 /* ---- 桌面端刷题区域：题卡最大宽度限制，避免长行阅读 ---- */
 @media(min-width:960px){
-  .card-q{max-width:780px}
+  .card-q{max-width:780px;margin-left:auto;margin-right:auto}
+  .q-info-row,.qnav-wrap,.kbd-hint,.review-banner{max-width:780px;margin-left:auto;margin-right:auto}
 }
 
 /* ===================== 知识点卡片：逐张背诵模式 ===================== */

@@ -94,42 +94,48 @@ export async function checkAuth(request, env) {
 }
 
 // —— SRS / 日志相关的懒迁移：旧库自动补列建表，每个 isolate 只跑一次 ——
+// 加在途 Promise 锁（_srsPromise）与并行执行，避免冷启动时 loadMeta 与 startSession 并发进入导致 14 条 DDL 重复跑两遍（28 次 D1 往返）。
 let _srsReady = false;
+let _srsPromise = null;
 export async function ensureSrsSchema(env) {
-  if (_srsReady || !env.DB) return;
-  const alters = [
-    `ALTER TABLE progress ADD COLUMN due_at INTEGER`,
-    `ALTER TABLE progress ADD COLUMN interval_days REAL DEFAULT 0`,
-    `ALTER TABLE progress ADD COLUMN ease REAL DEFAULT 2.5`,
-    `ALTER TABLE answer_log ADD COLUMN duration_ms INTEGER`,   // 每题作答用时（毫秒，可空）
-    `ALTER TABLE questions ADD COLUMN status TEXT`,            // 'draft' = AI 导入待审核；NULL/'ok' = 已发布
-    `ALTER TABLE questions ADD COLUMN page INTEGER`,
-    `ALTER TABLE questions ADD COLUMN ai_cards TEXT`,          // 知识点卡片 JSON（自动保存用，恢复时重建翻转卡片）
-    `ALTER TABLE mock_results ADD COLUMN score REAL`,          // 多选半分制得分（可空，旧记录无）
-    `ALTER TABLE questions ADD COLUMN shape_key TEXT`,         // 题干「剥掉插图后」的指纹，见 process.js stemShape
-  ];
-  for (const sql of alters) { try { await env.DB.prepare(sql).run(); } catch (_) { /* duplicate column：已存在 */ } }
-  try { await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_pr_due ON progress(due_at)`).run(); } catch (_) {}
-  try { await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_q_shape ON questions(shape_key)`).run(); } catch (_) {}
-  try {
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS answer_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      question_id TEXT,
-      is_correct INTEGER,
-      duration_ms INTEGER,
-      ts INTEGER DEFAULT (unixepoch())
-    )`).run();
-  } catch (_) {}
-  try {
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mock_answers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      mock_id INTEGER,
-      question_id TEXT,
-      is_correct INTEGER
-    )`).run();
-    await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ma_mock ON mock_answers(mock_id)`).run();
-  } catch (_) {}
-  _srsReady = true;
+  if (_srsReady || !env || !env.DB) return;
+  if (_srsPromise) return _srsPromise;
+  _srsPromise = (async () => {
+    const alters = [
+      `ALTER TABLE progress ADD COLUMN due_at INTEGER`,
+      `ALTER TABLE progress ADD COLUMN interval_days REAL DEFAULT 0`,
+      `ALTER TABLE progress ADD COLUMN ease REAL DEFAULT 2.5`,
+      `ALTER TABLE answer_log ADD COLUMN duration_ms INTEGER`,   // 每题作答用时（毫秒，可空）
+      `ALTER TABLE questions ADD COLUMN status TEXT`,            // 'draft' = AI 导入待审核；NULL/'ok' = 已发布
+      `ALTER TABLE questions ADD COLUMN page INTEGER`,
+      `ALTER TABLE questions ADD COLUMN ai_cards TEXT`,          // 知识点卡片 JSON（自动保存用，恢复时重建翻转卡片）
+      `ALTER TABLE mock_results ADD COLUMN score REAL`,          // 多选半分制得分（可空，旧记录无）
+      `ALTER TABLE questions ADD COLUMN shape_key TEXT`,         // 题干「剥掉插图后」的指纹，见 process.js stemShape
+    ];
+    await Promise.all(alters.map((sql) => env.DB.prepare(sql).run().catch(() => {})));
+    const ddls = [
+      `CREATE INDEX IF NOT EXISTS idx_pr_due ON progress(due_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_q_shape ON questions(shape_key)`,
+      `CREATE INDEX IF NOT EXISTS idx_q_status ON questions(status)`,
+      `CREATE TABLE IF NOT EXISTS answer_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id TEXT,
+        is_correct INTEGER,
+        duration_ms INTEGER,
+        ts INTEGER DEFAULT (unixepoch())
+      )`,
+      `CREATE TABLE IF NOT EXISTS mock_answers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mock_id INTEGER,
+        question_id TEXT,
+        is_correct INTEGER
+      )`,
+    ];
+    await Promise.all(ddls.map((sql) => env.DB.prepare(sql).run().catch(() => {})));
+    try { await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_ma_mock ON mock_answers(mock_id)`).run(); } catch (_) {}
+    _srsReady = true;
+  })().finally(() => { _srsPromise = null; });
+  return _srsPromise;
 }
 
 // —— FTS5 全文检索（trigram 分词，支持中文子串）——

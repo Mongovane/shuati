@@ -20,8 +20,15 @@ function limitOf(env) { const n = parseInt(env.AI_DAILY_PAGE_LIMIT || '70', 10);
 const NEURON_BUDGET = 10000;          
 const EST_NEURONS_PER_PAGE = 115;     
 
+let _ocrReady = false;
+let _ocrPromise = null;
 async function ensureUsage(env) {
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_usage (day TEXT PRIMARY KEY, pages INTEGER DEFAULT 0)`).run();
+  if (_ocrReady || !env || !env.DB) return;
+  if (_ocrPromise) return _ocrPromise;
+  _ocrPromise = env.DB.prepare(`CREATE TABLE IF NOT EXISTS ai_usage (day TEXT PRIMARY KEY, pages INTEGER DEFAULT 0)`).run()
+    .then(() => { _ocrReady = true; })
+    .finally(() => { _ocrPromise = null; });
+  return _ocrPromise;
 }
 async function usedToday(env) {
   const row = await env.DB.prepare(`SELECT pages FROM ai_usage WHERE day = ?`).bind(todayUTC()).first();

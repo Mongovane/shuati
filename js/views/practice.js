@@ -2,8 +2,9 @@
 // —— 由 app.js 按功能域拆分而来；与其余 mixin 合并进同一个 Vue 实例，this.* 跨文件可用 ——
 const PracticeMixin = { methods: {
 async loadMeta(force){ if(!this.token)return;
-      if(!force){ try{ const c=JSON.parse(localStorage.getItem('zb_meta_cache')||'null'); if(c&&c.ts&&Date.now()-c.ts<300000&&c.d){ this.meta=c.d; return; } }catch(_){} }
-      try{ const d=await this.api('/api/questions?meta=1'); this.meta=d; try{localStorage.setItem('zb_meta_cache',JSON.stringify({d,ts:Date.now()}));}catch(_){} }catch(e){} },
+      if(!force){ if(this._metaProm)return this._metaProm; try{ const c=JSON.parse(localStorage.getItem('zb_meta_cache')||'null'); if(c&&c.ts&&Date.now()-c.ts<300000&&c.d){ this.meta=c.d; return; } }catch(_){} }
+      this._metaProm=(async()=>{ try{ const d=await this.api('/api/questions?meta=1'); this.meta=d; try{localStorage.setItem('zb_meta_cache',JSON.stringify({d,ts:Date.now()}));}catch(_){} }catch(e){} finally{ this._metaProm=null; } })();
+      return this._metaProm; },
 qs(extra={}){ const p=new URLSearchParams();
       if(this.f.subject&&this.f.subject!=='all') p.set('subject',this.f.subject);
       if(this.f.chapter) p.set('chapter',this.f.chapter);
@@ -34,6 +35,10 @@ async startSession(keep){ if(!this.token||this.loading)return;
       }
       catch(e){ if(e.message!=='unauth')this.flash(e.message,true); }
       this.loading=false;
+      if(this.queue&&this.queue[0]){
+        this.ensureFullQuestion(this.queue[0]).catch(()=>{});
+        if(this._persistSoon)this._persistSoon();
+      }
     },
 // 按需补齐当前题的 analysis / ai_cards（列表用 light=1 没取）。
 // 只在真的要看时发一次小请求，比每批多传 94KB 划算得多。
@@ -44,11 +49,49 @@ async ensureFullQuestion(q){
   try{
     const d=await this.api('/api/questions?ids='+encodeURIComponent(q.id)+'&limit=1');
     const full=(d.items||[])[0];
-    if(full){ q.analysis=full.analysis||''; q.ai_cards=full.ai_cards||null; }
+    if(full){
+      q.analysis=full.analysis||''; q.ai_cards=full.ai_cards||null;
+      if(typeof this._syncSavedAiForQuestion==='function') this._syncSavedAiForQuestion(q);
+    }
     q._full=true;
   }catch(e){ if(e.message==='unauth')throw e; }
   finally{ q._fullLoading=false; }
 },
+// 当 light=1 按需补回 analysis / ai_cards 后，把已保存的 AI 解析或知识点卡片同步进 aiStates 与当前 aiX
+_syncSavedAiForQuestion(q){
+  if(!q || !q.id || !this.aiStates)return;
+  const qid=q.id;
+  const jobs=this._aiJobs||{};
+  if(jobs[qid+':e'] || jobs[qid+':c'])return;
+  const savedCards=Array.isArray(q.ai_cards)&&q.ai_cards.length ? q.ai_cards.slice() : [];
+  const savedText=typeof this._extractSavedAi==='function' ? (this._extractSavedAi(q)||'') : '';
+  if(!savedCards.length && !savedText)return;
+  const ex=this.aiStates[qid];
+  if(!ex || (!ex.text && !(ex.cards&&ex.cards.length))){
+    const view=savedCards.length ? 'concept' : 'explain';
+    this.aiStates[qid]={ id:qid, view, text:savedText, chat:(ex&&ex.chat)||[], model:(ex&&ex.model)||'', cards:savedCards, cardsModel:(ex&&ex.cardsModel)||'', flip:(ex&&ex.flip)||{} };
+    if(this.cur && this.cur.id===qid && this.aiX && (!this.aiX.text && !(this.aiX.cards&&this.aiX.cards.length))){
+      this.aiX={ id:qid, view, text:savedText, busy:false, chat:[], asking:false, model:'', cards:savedCards, cardsModel:'', flip:{}, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null };
+    }
+  }
+},
+toggleStudyMode(){ this.studyMode=!this.studyMode; try{ localStorage.setItem('zb_studymode',this.studyMode?'1':'0'); }catch(_){} if(this.studyMode && this.cur)this.ensureFullQuestion(this.cur).catch(()=>{}); },
+toggleInstantSubmit(){ this.instantSubmit=!this.instantSubmit; try{ localStorage.setItem('zb_instantsubmit',this.instantSubmit?'1':'0'); }catch(_){} },
+toggleAutoNext(){ this.autoNext=!this.autoNext; try{ localStorage.setItem('zb_autonext',this.autoNext?'1':'0'); }catch(_){} },
+_persistSoon(){ clearTimeout(this._persistTimer); this._persistTimer=setTimeout(()=>{ if(typeof this.persistSession==='function')this.persistSession(); }, 300); },
+onPracTouchStart(e){ try{
+  if(e.target && e.target.closest && e.target.closest('pre, table, .katex-display, textarea, input, select, .kcard-grid, .qnav'))return;
+  const t=e.touches&&e.touches[0]; if(!t)return;
+  this._pracTouch={ x:t.clientX, y:t.clientY, t:Date.now() };
+}catch(_){} },
+onPracTouchEnd(e){ try{
+  const s0=this._pracTouch; this._pracTouch=null; if(!s0)return;
+  const t=e.changedTouches&&e.changedTouches[0]; if(!t)return;
+  const dx=t.clientX-s0.x, dy=t.clientY-s0.y;
+  if(Math.abs(dx)<65 || Math.abs(dx)<Math.abs(dy)*2.2)return;
+  if(Date.now()-s0.t>700)return;
+  if(dx<0){ if(this.qi<this.queue.length-1)this.next(); } else { if(this.qi>0)this.prev(); }
+}catch(_){} },
 srcBook(s){ const t=String(s||'').split(' · ')[0].trim(); return t || '未知来源'; },
 cleanPageMd(md){
       if(!md)return '';
@@ -142,13 +185,19 @@ async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject
 findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
 async onAnswered(p){
       // 取消自评：清除本题作答记录（答题卡圆点恢复灰色）
-      if(p.cancel){ delete this.sessionAns[p.id]; return; }
+      if(p.cancel){ delete this.sessionAns[p.id]; if(this._persistSoon)this._persistSoon(); return; }
       // 揭晓答案 = 马上要看参考解析了，这时才把 analysis / ai_cards 取回来。
       // 不 await：让计分和界面先走，解析到了自然渲染出来。
       { const q=(this.queue||[]).find(x=>x&&x.id===p.id); if(q)this.ensureFullQuestion(q).catch(()=>{}); }
-      this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; }
+      this.sessionAns[p.id]=p.correct; if(p.correct){ this.streak++; if(this.streak>this.bestStreak)this.bestStreak=this.streak; } else { this.streak=0; if(this.meta && typeof this.meta.wrong_open==='number')this.meta.wrong_open++; }
       if(p.partial) this.flash('多选少选：按半分计，已计入错题复习');
       this.countNewToday(p.id);
+      if(this._persistSoon)this._persistSoon();
+      if(this.autoNext && p.correct && !p.partial && this.queue && this.qi < this.queue.length - 1){
+        clearTimeout(this._autoNextTimer);
+        const curId=p.id;
+        this._autoNextTimer=setTimeout(()=>{ if(this.cur && this.cur.id===curId)this.next(); }, 550);
+      }
       try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:p.correct,grade:p.grade||undefined,duration_ms:p.ms||undefined})}); this.statsDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('作答记录保存失败：'+e.message,true); } },
 countNewToday(id){ /* 每日新题软上限：只提醒不硬拦，帮着把节奏留给复习 */
       if(!(this.dailyNewLimit>0))return; const q=this.findQ(id); if(!q||q._seen)return;

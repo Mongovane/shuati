@@ -25,7 +25,7 @@ const TPL_VIEW_BANK = `
             <button :class="{on:bank.status==='draft'}" @click="bank.status='draft';loadBank(true)">待审核<span v-if="meta.drafts" class="seg-badge">{{ meta.drafts }}</span></button>
           </div>
           <label class="bank-check"><input type="checkbox" :checked="bank.items.length && bank.items.every(q=>bank.sel.includes(q.id))" @change="bankAllOnPage" /> 全选本页</label>
-          <label class="bank-check" v-if="bank.sel.length && bank.total>bank.items.length"><input type="checkbox" :checked="bank.sel.length>=bank.total" :disabled="busyOps.bankSelectAllMatching" @change="$event.target.checked ? bankSelectAllMatching() : bankClearSel()" /><span v-if="busyOps.bankSelectAllMatching" class="spin"></span> 全选全部匹配 ({{ bank.total }})</label>
+          <label class="bank-check bank-sel-all-match" v-if="bank.sel.length && bank.total>bank.items.length"><input type="checkbox" :checked="bank.sel.length>=bank.total" :disabled="busyOps.bankSelectAllMatching" @change="$event.target.checked ? bankSelectAllMatching() : bankClearSel()" /><span v-if="busyOps.bankSelectAllMatching" class="spin"></span> 全选全部匹配 ({{ bank.total }})</label>
           <button class="btn sel-clear" v-if="bank.sel.length" @click="bankClearSel" title="取消所有已选题目">
             <icon name="x" :size="14" /> 取消选择
           </button>

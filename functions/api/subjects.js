@@ -12,21 +12,30 @@ export const DEFAULT_SUBJECTS = [
   ['computer', '计算机基础与程序设计', 4, '算法,数据结构,时间复杂度,空间复杂度,链表,二叉树,操作系统,数据库,指针,数组,哈希,递归,进制转换,源程序,伪代码'],
 ];
 const DEFAULT_BY_CODE = new Map(DEFAULT_SUBJECTS.map(([c, n, s, k]) => [c, { name: n, sort: s, keywords: k }]));
+
+const _subjInitMap = new WeakMap();
 async function ensure(env) {
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS subjects (
-       code TEXT PRIMARY KEY,
-       name TEXT NOT NULL,
-       sort INTEGER DEFAULT 0,
-       keywords TEXT DEFAULT ''
-     )`
-  ).run();
-  const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM subjects`).first();
-  if (!c || !c.n) {
-    for (const [code, name, sort, kw] of DEFAULT_SUBJECTS) {
-      await env.DB.prepare(`INSERT OR IGNORE INTO subjects (code,name,sort,keywords) VALUES (?,?,?,?)`).bind(code, name, sort, kw).run();
+  if (!env || !env.DB) return;
+  let p = _subjInitMap.get(env.DB);
+  if (p) return p;
+  p = (async () => {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS subjects (
+         code TEXT PRIMARY KEY,
+         name TEXT NOT NULL,
+         sort INTEGER DEFAULT 0,
+         keywords TEXT DEFAULT ''
+       )`
+    ).run();
+    const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM subjects`).first();
+    if (!c || !c.n) {
+      for (const [code, name, sort, kw] of DEFAULT_SUBJECTS) {
+        await env.DB.prepare(`INSERT OR IGNORE INTO subjects (code,name,sort,keywords) VALUES (?,?,?,?)`).bind(code, name, sort, kw).run();
+      }
     }
-  }
+  })().catch((e) => { _subjInitMap.delete(env.DB); throw e; });
+  _subjInitMap.set(env.DB, p);
+  return p;
 }
 
 const normCode = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -72,8 +81,7 @@ export async function onRequestGet({ request, env }) {
         }
       } catch (_) { /* 表可能还没建，忽略 */ }
     };
-    await scan('questions', 'questions');
-    await scan('materials', 'materials');
+    await Promise.all([scan('questions', 'questions'), scan('materials', 'materials')]);
 
     // 把内置科目的默认值也发给前端：设置页要渲染一排「一键重建」的 chip。
     // 从后端取而不是前端再写一份，避免两处定义漂移。

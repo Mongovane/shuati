@@ -68,7 +68,7 @@ const TPL_VIEW_PRACTICE = `
           <div v-for="q in fav.items" :key="q.id" class="bank-row" :class="{sel:fav.sel.includes(q.id)}">
             <input type="checkbox" class="bank-rowck" :checked="fav.sel.includes(q.id)" @change="favToggleSel(q.id)" />
             <div class="bank-main">
-              <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span v-if="q.chapter" class="muted">{{ q.chapter }}</span></div>
+              <div class="bank-meta"><span class="tag">{{ subjName(q.subject) }}</span><span class="tag2">{{ typeMap[q.type]||q.type }}</span><span v-if="q.chapter" class="muted">{{ q.chapter }}</span><span v-if="q.tags && q.tags.length" class="q-tags"><span v-for="tg in q.tags" :key="tg" class="tag">#{{ tg }}</span></span></div>
               <div class="bank-stem"><rich-text :content="q.stem || '（空题干）'" /></div>
             </div>
             <button class="bk-del-min" @click="favUnstarOne(q)" title="取消收藏" style="color:var(--accent)"><icon name="star" :size="16" /></button>
@@ -94,30 +94,35 @@ const TPL_VIEW_PRACTICE = `
         </div>
       </div>
       <template v-else>
-        <div v-if="cur">
+        <div v-if="cur" @touchstart.passive="onPracTouchStart" @touchend.passive="onPracTouchEnd">
           <div v-if="reviewSession" class="review-banner">
             <span class="rb-dot"></span>
             <span class="rb-txt">错题回顾 · <b>{{ reviewSession.title }}</b> · 共 {{ reviewSession.count }} 题</span>
             <button class="btn subtle xs" @click="exitReviewSession">退出回顾</button>
           </div>
-          <div class="row" style="margin-bottom:12px;align-items:center;gap:10px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
+          <div class="row q-info-row q-meta" style="margin-bottom:12px;align-items:center;gap:8px"><span class="q-counter">第 {{ qi+1 }} / {{ queue.length }} 题</span>
             <span class="muted" v-if="view==='wrong' && !reviewSession">· {{ reviewScope==='due' ? '今日到期（按到期先后）' : '全部错题（最不熟优先）' }}</span>
             <span class="muted" v-if="view==='wrong' && !reviewSession && queueTotal">· {{ reviewScope==='due' ? '今日待复习 ' : '待复习共 ' }}{{ queueTotal }} 题</span>
             <span class="muted" v-if="view==='favorite'">· 收藏</span>
             <button class="btn subtle xs" v-if="view==='favorite'" @click="fav.listMode=true" title="返回收藏清单"><icon name="arrow-left" :size="14" /> 收藏清单</button>
             <span v-if="curStatus" class="q-badge" :style="{color:curStatus.c,borderColor:curStatus.c}">{{ curStatus.t }}</span>
             <span v-if="view==='practice' && queueTotal" class="muted">· {{ f._mode==='unseen'?'未做剩 '+queueTotal:'本范围共 '+queueTotal }} 题</span>
-            <span v-if="streak>=2" style="color:var(--accent);font-weight:600;font-size:13px"><icon name="flame" :size="15" /> 连对 {{ streak }}</span>
-            <span class="muted" style="margin-left:auto;font-size:12px">归类</span><select class="bk-mini" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="发现分类错了？直接改，立即生效"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
-            <button class="btn subtle xs" v-if="view==='wrong'" @click="dropFromReview" title="标记为已掌握，从待复习队列移除；题目仍保留在题库"><icon name="check" :size="15" /> 移出复习</button>
-            <button class="bk-del-min" @click="deleteCurrentQuestion" title="从题库彻底删除本题（用于清理 OCR 坏题，不可恢复）">删除</button>
+            <span v-if="streak>=2" class="streak" :class="{hot:streak>=5}"><icon name="flame" :size="15" /> 连对 {{ streak }}</span>
+            <div class="q-info-ops" style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <button class="filter-chip" :class="{on:studyMode}" @click="toggleStudyMode" title="背题模式：直接展开参考答案与解析，无需逐题作答"><icon name="book-open" :size="13" /> 背题</button>
+              <button class="filter-chip" :class="{on:instantSubmit}" @click="toggleInstantSubmit" title="单选/判断题点选选项后立即判分，省去点提交按钮">点选即交</button>
+              <button class="filter-chip" :class="{on:autoNext}" @click="toggleAutoNext" title="客观题答对后自动切到下一题（答错则停留在当前题看解析）">答对下题</button>
+              <select class="bk-mini" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="发现分类错了？直接改，立即生效"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
+              <button class="btn subtle xs" v-if="view==='wrong'" @click="dropFromReview" title="标记为已掌握，从待复习队列移除；题目仍保留在题库"><icon name="check" :size="15" /> 移出复习</button>
+              <button class="bk-del-min" @click="deleteCurrentQuestion" title="从题库彻底删除本题（用于清理 OCR 坏题，不可恢复）">删除</button>
+            </div>
           </div>
           <transition name="qfade" mode="out-in">
-          <question-card ref="curCard" :q="cur" :key="cur.id" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-reasoning="curAiReasoning" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" :ai-usage="curAiUsage" :ai-kind="aiX.id===cur.id ? (aiX.view||'') : ''" :ai-cards="aiX.id===cur.id && aiX.view==='concept' ? (aiX.cards||[]) : []" :ai-flip="aiX.id===cur.id ? (aiX.flip||{}) : {}" :has-explain="aiX.id===cur.id && !!aiX.text" :has-concept="aiX.id===cur.id && !!(aiX.cards&&aiX.cards.length)" :all-flipped="curAllFlipped" :init-state="qStates[cur.id]||null" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain()" @ai-concept="aiExplain('concept')" @ai-explain-redo="aiExplain('',true)" @ai-concept-redo="aiExplain('concept',true)" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" @ai-stop="aiStopAsk" @ai-clear-chat="aiClearChat" @seg-mode="segActive=$event" @card-flip="toggleCard" @cards-flip-all="toggleAllCards" @save-state="onSaveState" />
+          <question-card ref="curCard" :q="cur" :key="cur.id" :study-mode="studyMode" :instant-submit="instantSubmit" :can-ai="(ai.hasAI || !!(explainCfg.base && explainCfg.key)) && !offline" :ai-text="curAiText" :ai-reasoning="curAiReasoning" :ai-busy="aiX.busy && aiX.id===cur.id" :ai-chat="curAiChat" :ai-asking="aiX.asking && aiX.id===cur.id" :ai-model="curAiModel" :ai-usage="curAiUsage" :ai-kind="aiX.id===cur.id ? (aiX.view||'') : ''" :ai-cards="aiX.id===cur.id && aiX.view==='concept' ? (aiX.cards||[]) : []" :ai-flip="aiX.id===cur.id ? (aiX.flip||{}) : {}" :has-explain="aiX.id===cur.id && !!aiX.text" :has-concept="aiX.id===cur.id && !!(aiX.cards&&aiX.cards.length)" :all-flipped="curAllFlipped" :init-state="qStates[cur.id]||null" @answered="onAnswered" @favorite="onFav" @master="onMaster" @note="onNote" @next="next" @ai-explain="aiExplain()" @ai-concept="aiExplain('concept')" @ai-explain-redo="aiExplain('',true)" @ai-concept-redo="aiExplain('concept',true)" @ai-save="aiSaveToAnalysis" @ai-ask="aiAsk" @ai-note="aiNoteFromChat" @ai-retry="aiRetryAsk" @ai-stop="aiStopAsk" @ai-clear-chat="aiClearChat" @seg-mode="segActive=$event" @card-flip="toggleCard" @cards-flip-all="toggleAllCards" @save-state="onSaveState" />
           </transition>
           <div class="q-nav-bar">
             <button class="btn subtle" :disabled="qi<=0" @click="prev"><icon name="arrow-left" :size="15" /> 上一题</button>
-            <div class="q-nav-prog" v-if="queue.length>1"><div class="q-nav-prog-fill" :style="{width:Math.round((qi+1)/queue.length*100)+'%'}"></div><span class="q-nav-prog-txt">{{ qi+1 }}/{{ queue.length }}</span></div>
+            <div class="q-nav-prog" v-if="queue.length>1" @click="qnavOpen=!qnavOpen" title="点击展开/收起答题卡"><div class="q-nav-prog-fill" :style="{width:Math.round((qi+1)/queue.length*100)+'%'}"></div><span class="q-nav-prog-txt">{{ qi+1 }}/{{ queue.length }}</span></div>
             <button class="btn" @click="next">{{ qi>=queue.length-1 ? (reviewSession ? '完成回顾 ✓' : '换一批 ↻') : '下一题 →' }}</button>
           </div>
           <div class="kbd-hint muted">快捷键：A–D / 1–4 选选项（判断题 1=对 2=错）· Enter 提交/下一题 · ← → 切题 · 揭晓后 F 收藏 · M 掌握 · E 解析 · K 卡片 · 自评 1 重来 2 困难 3 良好 4 简单</div>

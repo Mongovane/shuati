@@ -6,7 +6,7 @@ const normAns=(v)=>String(v==null?'':v)
 
 const QuestionCard={
   components:{ RichText },
-  props:{ q:Object, mode:{type:String,default:'practice'}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiUsage:{type:Object,default:null}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
+  props:{ q:Object, mode:{type:String,default:'practice'}, studyMode:{type:Boolean,default:false}, instantSubmit:{type:Boolean,default:false}, canAi:{type:Boolean,default:false}, aiText:{type:String,default:''}, aiReasoning:{type:String,default:''}, aiBusy:{type:Boolean,default:false}, aiChat:{type:Array,default:()=>[]}, aiAsking:{type:Boolean,default:false}, aiModel:{type:String,default:''}, aiUsage:{type:Object,default:null}, aiKind:{type:String,default:''}, aiCards:{type:Array,default:()=>[]}, aiFlip:{type:Object,default:()=>({})}, hasExplain:{type:Boolean,default:false}, hasConcept:{type:Boolean,default:false}, allFlipped:{type:Boolean,default:false}, initState:{type:Object,default:null}, examReveal:Boolean },
   emits:['answered','favorite','master','note','next','ai-explain','ai-concept','ai-explain-redo','ai-concept-redo','ai-save','ai-ask','ai-note','ai-retry','seg-mode','card-flip','cards-flip-all','save-state','ai-stop','ai-clear-chat'],
   // 这里原来有两个 watch:{}（一个在 computed 前、一个在 mounted 前），
   // 后者把前者整个覆盖掉，aiReasoning / aiText / aiChat / aiBusy 四个监听全部不生效：
@@ -67,7 +67,16 @@ const QuestionCard={
       return p.replace(/\uFF3F\uFF3F([0-9]{1,3})\uFF3F\uFF3F/g,
         (m,n)=>'<span class="cloze'+(parseInt(n,10)===this.clozeNo?' cur':'')+'">'+n+'</span>'); },
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
-    revealed(){ return this.mode==='exam'?this.examReveal:this.localRevealed; },
+    revealed(){ return this.mode==='exam'?this.examReveal:(this.studyMode||this.localRevealed); },
+    // 剥离追加在 analysis 尾部的 "**AI 解析**" / "**知识点卡片**" 块，展示题库自带的参考解析
+    baseAnalysis(){
+      const a=String((this.q&&this.q.analysis)||'').trim();
+      if(!a)return '';
+      const i=a.search(/\*\*(AI 解析|知识点卡片)\*\*/);
+      if(i===0)return '';
+      if(i>0)return a.slice(0,i).replace(/\n*---\s*$/,'').trim();
+      return a;
+    },
     isObjective(){ return OBJECTIVE.includes(this.q.type); },
     isChoice(){ return this.q.type==='single_choice'||this.q.type==='multiple_choice'; },
     isMulti(){ return this.q.type==='multiple_choice'; },
@@ -173,12 +182,13 @@ const QuestionCard={
       this.self=(s.self===true||s.self===false)?s.self:null;
       this.selfGrade=['again','hard','good','easy'].includes(s.selfGrade)?s.selfGrade:null;
       this.localRevealed=!!s.revealed; },
-    pick(k){ if(this.revealed)return; if(this.isMulti){ const i=this.sel.indexOf(k); i>=0?this.sel.splice(i,1):this.sel.push(k); } else this.sel=[k]; },
-    pickTF(v){ if(this.revealed)return; this.sel=[v]; },
+    pick(k){ if(this.revealed)return; if(this.isMulti){ const i=this.sel.indexOf(k); i>=0?this.sel.splice(i,1):this.sel.push(k); } else { this.sel=[k]; if(this.instantSubmit && this.mode!=='exam')this.submit(); } },
+    pickTF(v){ if(this.revealed)return; this.sel=[v]; if(this.instantSubmit && this.mode!=='exam')this.submit(); },
     optClass(k){ if(!this.revealed)return{sel:this.sel.includes(k)}; const a=this.answerKeys.includes(k),c=this.sel.includes(k); return{disabled:true,correct:a,wrong:c&&!a,sel:c&&a}; },
     tfClass(v){ if(!this.revealed)return{sel:this.sel.includes(v)}; const a=this.answerKeys[0]===v,c=this.sel.includes(v); return{correct:a,wrong:c&&!a}; },
     elapsedMs(){ return Math.max(0, Math.min(600000, Date.now()-this.t0)); },
     submit(){ this.localRevealed=true; const ms=this.elapsedMs();
+      if(this.$root && typeof this.$root.ensureFullQuestion==='function') this.$root.ensureFullQuestion(this.q).catch(()=>{});
       if(AUTO.includes(this.q.type)){
         this.$emit('answered',{id:this.q.id,correct:this.autoCorrect,partial:this.mcPartial,ms});
         // 答对/答错动画反馈
@@ -204,11 +214,12 @@ const QuestionCard={
     canSubmit(){ if(this.isChoice||this.q.type==='true_false')return this.sel.length>0; if(this.q.type==='fill_blank')return this.isMultiBlank ? this.blanksArr.every(x=>String(x).trim().length>0) : this.blanks.trim().length>0; return true; },
   },
   template:`
-  <div class="card">
+  <div class="card card-q">
     <div class="q-head">
       <span class="chip accent">{{ subjMap[q.subject]||q.subject }}</span>
       <span class="chip">{{ typeMap[q.type]||q.type }}</span>
       <span v-if="q.chapter" class="chip">{{ q.chapter }}</span>
+      <span v-if="q.tags && q.tags.length" class="q-tags"><span v-for="tg in q.tags" :key="tg" class="tag">#{{ tg }}</span></span>
       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
       <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
     </div>
@@ -245,20 +256,22 @@ const QuestionCard={
       <textarea :class="{code:q.type==='code'}" v-model="text" :disabled="revealed" :placeholder="q.type==='code' ? '在这里写代码（对照参考答案自查）' : '写下答题要点（对照参考答案自查）'"></textarea>
     </template>
     <template v-if="revealed">
-      <div v-if="AUTO.includes(q.type)" class="verdict" :class="autoCorrect?'ok':(mcPartial?'part':'bad')">
-        <span>{{ autoCorrect ? '正确' : (mcPartial ? '部分正确 · 少选' : '错误') }}</span>
-        <span v-if="mcPartial" class="tag">半分计，已进复习</span>
+      <div v-if="AUTO.includes(q.type)" class="verdict" :class="(studyMode && !localRevealed) ? 'ok' : (autoCorrect?'ok':(mcPartial?'part':'bad'))">
+        <span>{{ (studyMode && !localRevealed) ? '背题模式' : (autoCorrect ? '正确' : (mcPartial ? '部分正确 · 少选' : '错误')) }}</span>
+        <span v-if="mcPartial && localRevealed" class="tag">半分计，已进复习</span>
         <span class="tag">正确答案： {{ answerKeys.join(', ') }}</span>
       </div>
       <div v-if="!AUTO.includes(q.type)" class="ref"><h5>参考答案</h5><rich-text :content="q.type==='fill_blank' ? ansDisplay : refText" /></div>
-      <div v-if="!AUTO.includes(q.type)" class="selfgrade">
+      <div v-if="baseAnalysis" class="ref" style="margin-top:10px"><h5>参考解析</h5><rich-text :content="baseAnalysis" /></div>
+      <div v-else-if="q._fullLoading" class="ref muted" style="margin-top:10px;font-size:12.5px"><span class="spin"></span> 正在加载参考解析…</div>
+      <div v-if="!AUTO.includes(q.type) && !studyMode" class="selfgrade">
         <span class="q">掌握程度？</span>
         <button class="btn subtle sg sg-again" :class="{on:selfGrade==='again'}" @click="grade4('again')" title="没答上来，10 分钟后回炉"><icon name="x" :size="15" /> 重来</button>
         <button class="btn subtle sg sg-hard" :class="{on:selfGrade==='hard'}" @click="grade4('hard')" title="勉强想起，间隔小步前进">困难</button>
         <button class="btn subtle sg sg-good" :class="{on:selfGrade==='good'}" @click="grade4('good')" title="正常想起"><icon name="check" :size="15" /> 良好</button>
         <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单</button>
       </div>
-            <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
+      <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
         <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span><span v-if="usageText" class="muted usage-chip" :title="usageTitle">{{ usageText }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <div v-if="aiReasoning" class="reason-box">
           <button class="reason-head" @click.stop="localReasonOpen=!localReasonOpen" :title="localReasonOpen?'收起推理过程':'展开推理过程'">
@@ -397,4 +410,3 @@ const QuestionCard={
     </div>
   </div>`
 };
-

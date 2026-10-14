@@ -23,21 +23,32 @@ function rowToMaterial(r, meta = false) {
   return o;
 }
 
+// 每个 isolate 只初始化一次 materials 表与索引，避免拉取教材分片时每次请求都跑 3 条 DDL 阻塞 D1 队列
+let _matReady = false;
+let _matPromise = null;
 async function ensureMaterialsTable(env) {
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS materials (
-    id TEXT PRIMARY KEY,
-    subject TEXT NOT NULL,
-    title TEXT NOT NULL,
-    source TEXT,
-    page INTEGER,
-    page_image TEXT,
-    content_md TEXT,
-    summary TEXT,
-    tags TEXT,
-    created_at INTEGER DEFAULT (unixepoch())
-  )`).run();
-  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_m_subject ON materials(subject)`).run();
-  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_m_source ON materials(source)`).run();
+  if (_matReady || !env || !env.DB) return;
+  if (_matPromise) return _matPromise;
+  _matPromise = (async () => {
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS materials (
+      id TEXT PRIMARY KEY,
+      subject TEXT NOT NULL,
+      title TEXT NOT NULL,
+      source TEXT,
+      page INTEGER,
+      page_image TEXT,
+      content_md TEXT,
+      summary TEXT,
+      tags TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    )`).run();
+    await Promise.all([
+      env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_m_subject ON materials(subject)`).run(),
+      env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_m_source ON materials(source)`).run(),
+    ]);
+    _matReady = true;
+  })().finally(() => { _matPromise = null; });
+  return _matPromise;
 }
 
 export async function onRequestGet({ request, env }) {
@@ -63,12 +74,14 @@ export async function onRequestGet({ request, env }) {
   const sql = `SELECT ${meta ? 'id, subject, title, source, page, summary, tags, created_at' : '*'} FROM materials
     ${W} ORDER BY created_at DESC, source, page, id LIMIT ? OFFSET ?`;
   try {
-    const rs = await env.DB.prepare(sql).bind(...binds, limit, offset).all();
+    const [rs, c] = await Promise.all([
+      env.DB.prepare(sql).bind(...binds, limit, offset).all(),
+      p.get('count') === '1'
+        ? env.DB.prepare(`SELECT COUNT(*) AS n FROM materials ${W}`).bind(...binds).first()
+        : Promise.resolve(null),
+    ]);
     const out = { items: rs.results.map((r) => rowToMaterial(r, meta)), limit, offset };
-    if (p.get('count') === '1') {
-      const c = await env.DB.prepare(`SELECT COUNT(*) AS n FROM materials ${W}`).bind(...binds).first();
-      if (c && c.n != null) out.total = c.n;
-    }
+    if (c && c.n != null) out.total = c.n;
     return json(out);
   } catch (e) {
     return json({ error: '查询教材失败：' + e.message }, 500);

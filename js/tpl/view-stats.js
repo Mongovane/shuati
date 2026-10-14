@@ -14,10 +14,10 @@ const TPL_VIEW_STATS = `
           <button class="btn subtle" @click="loadStats" :disabled="statsLoading" title="重新拉取最新统计数据"><icon name="refresh-cw" :size="15" /> 刷新</button>
         </div>
         <div class="stat-grid">
-          <div class="stat"><div class="n">{{ statTotals.totalQ }}</div><div class="l">题目总数</div></div>
-          <div class="stat"><div class="n">{{ statTotals.seen }}</div><div class="l">已作答</div></div>
-          <div class="stat"><div class="n" style="color:var(--bad)">{{ statTotals.wrongOpen }}</div><div class="l">待复习</div></div>
-          <div class="stat"><div class="n" style="color:var(--ok)">{{ statTotals.mastered }}</div><div class="l">已掌握</div></div>
+          <div class="stat"><div class="n" :class="{zero:!statTotals.totalQ}">{{ statTotals.totalQ }}</div><div class="l">题目总数</div></div>
+          <div class="stat"><div class="n" :class="{zero:!statTotals.seen}">{{ statTotals.seen }}</div><div class="l">已作答</div></div>
+          <div class="stat"><div class="n" :class="{zero:!statTotals.wrongOpen}" style="color:var(--bad)">{{ statTotals.wrongOpen }}</div><div class="l">待复习</div></div>
+          <div class="stat"><div class="n" :class="{zero:!statTotals.mastered}" style="color:var(--ok)">{{ statTotals.mastered }}</div><div class="l">已掌握</div></div>
         </div>
         <div class="row" style="gap:8px;margin:2px 0 10px;flex-wrap:wrap;align-items:center">
           <span v-if="streakDays>0" class="st-chip hot"><icon name="flame" :size="15" /> 连续学习 {{ streakDays }} 天</span>

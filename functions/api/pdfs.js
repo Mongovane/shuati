@@ -2,14 +2,19 @@ import { json, checkAuth } from './_utils.js';
 
 const VALID_SUBJECTS = ['politics', 'english', 'math', 'computer'];
 
+let _pdfReady = false;
+let _pdfPromise = null;
 async function ensureTable(env) {
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pdfs (
+  if (_pdfReady || !env || !env.DB) return;
+  if (_pdfPromise) return _pdfPromise;
+  _pdfPromise = env.DB.prepare(`CREATE TABLE IF NOT EXISTS pdfs (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     subject TEXT,
     size INTEGER,
     created_at INTEGER DEFAULT (unixepoch())
-  )`).run();
+  )`).run().then(() => { _pdfReady = true; }).finally(() => { _pdfPromise = null; });
+  return _pdfPromise;
 }
 
 function noBucket() {

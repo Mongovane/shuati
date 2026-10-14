@@ -53,7 +53,7 @@ const App={
     reviewSession:null,  // 「回顾某次模考错题」独立会话：{title, count} —— 非空时 wrong 视图显示横幅、不被常规队列覆盖
     meta:{ subjects:[], chapters:[] },
     queue:[], qi:0, loading:false, batchDone:false, loadedOnce:false, queueTotal:0, sessionAns:{}, sessionView:'', qStates:{},
-    sessionStart:0, streak:0, bestStreak:0, qnavOpen:true,
+    sessionStart:0, streak:0, bestStreak:0, qnavOpen:true, studyMode:localStorage.getItem('zb_studymode')==='1', instantSubmit:localStorage.getItem('zb_instantsubmit')==='1', autoNext:localStorage.getItem('zb_autonext')==='1',
     ingest:{ subject:'computer', chapter:'', source:'', kind:'auto', bookTitle:'', bookMode:true, bookName:'小红本', pageNo:'', questionNo:'', raw:'', json:'', busy:false, result:null, tab:'manual', xl:{ busy:false, name:'', rows:[], issues:[], done:false }, photoUrl:'', photoDataUrl:'', manual:{ type:'single_choice', difficulty:3, stem:'', passage:'', options:[{key:'A',text:''},{key:'B',text:''},{key:'C',text:''},{key:'D',text:''}], answer:'', analysis:'', tags:'' }, pdf:{ pages:0, busy:false, prog:'', done:0, total:0, inserted:0, start:1, end:1, scale:1.7, quality:0.72 }, local:{ busy:false, prog:'', done:0, total:0, inserted:0, ocr:false, engine:'relay', cfModel:'', cfPageLimit:50, log:[], stop:false, lastPage:0, endPage:0 }, mineru:{ busy:false, prog:'', pct:0, name:'', log:[], pageRange:'', mode:'agent' } },
     aiX:{ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null }, aiStates:{},  // AI 解析(text/chat)与知识点(cards)各存各的；view 控制当前显示；aiStates 按题缓存已生成内容。reasoning 是「本次生成的思维链」——只活在内存里，不写 aiStates、不落库、切题即弃
     stats:null, statsDirty:true, statsLoading:false, bankDirty:true,
@@ -94,7 +94,7 @@ const App={
     pdfAi:{ open:false, input:'', asking:false, chat:[], pageAtOpen:0, _cacheP:0, _cacheT:'', _cacheImgP:0, _cacheImg:'' },
     pdfv:{ open:false, loading:false, rendering:false, pages:0, cur:1, scale:1, title:'', mode:'scroll', msg:'' , outline:[], invert:false, barsOff:false, curId:''},
     pdfvMobile:false, pdfvSliderTip:'', pdfvTocOpen:false,
-    pdfShelf:{ items:[], loading:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
+    pdfShelf:{ items:[], loading:false, loaded:false, uploading:false, prog:'', pct:0, cloudReady:true, note:'' },
     genq:{ busy:false, result:null },
     mock:{ subject:'computer', count:20, minutes:60, objectiveOnly:true, started:false, finished:false, questions:[], answers:{}, remaining:0, timer:null, elapsed:0,
       bp:{ on:false, rows:[{type:'',chapter:'',count:10}] },   /* 组卷蓝图：章节×题型×数量 */
@@ -140,7 +140,7 @@ const App={
       return out; },
     ingestChapterOptions(){ const preset=(CHAPTER_PRESETS[this.ingest.subject]||[]).map(ch=>({chapter:ch,n:'预设'})); const existing=(this.meta.chapters||[]).filter(c=>c.subject===this.ingest.subject&&!preset.some(p=>p.chapter===c.chapter)); return [...preset,...existing]; },
     sourcePreview(){ return this.makeSource(); },
-    wrongTotal(){ if(!this.stats)return 0; return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); },
+    wrongTotal(){ if(this.stats&&Array.isArray(this.stats.bySubject))return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); return (this.meta&&this.meta.wrong_open)||0; },
     cur(){ return this.queue[this.qi]||null; },
     // 版本号只有 js/constants.js 的 APP_VERSION 一份（npm run bump 会同步它）。
     // 以前这里另有一个手写的 APP_VER 常量，bump 不管它，界面版本号从 v4.4 起就冻住了。
@@ -226,6 +226,8 @@ const App={
           this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true };
         }
       }
+      if(nc && nc._lite && !nc._full && !nc._fullLoading && (this.studyMode || (this.qStates[nc.id] && this.qStates[nc.id].revealed))){ this.ensureFullQuestion(nc).catch(()=>{}); }
+      if(this._persistSoon)this._persistSoon();
     },
     theme(v){ localStorage.setItem('zb_theme',v); this.applyTheme(); },
     examDate(v){ try{ v?localStorage.setItem('zb_examdate',v):localStorage.removeItem('zb_examdate'); }catch(_){ } },
@@ -247,7 +249,7 @@ const App={
       if(this.bookExtract){ this.bookExtract.prog=''; this.bookExtract.phase=''; this.bookExtract.done=0; this.bookExtract.total=0; this.bookExtract.hidden=false; }
       let p=0; try{ const s=localStorage.getItem('zb_readpos:'+v); if(s!=null)p=Math.max(0,parseInt(s,10)||0); }catch(_){ } this.bookIdx=p; this.bookTocOpen=false; this.genq.result=null; this.flashPageRender();
       // 书架只载入了元信息，翻到这本书才把它的正文补齐（目录标题/阅读/抽题都依赖 content_md）
-      if(v)this.ensureBookContent(); },
+      if(v && (this.view==='books' || (this.view==='ingest' && this.ingest && this.ingest.tab==='book')))this.ensureBookContent(); },
     bookIdx(v){ this.genq.result=null; try{ if(this.currentBookId)localStorage.setItem('zb_readpos:'+this.currentBookId, String(v)); }catch(_){ } },
     booksMode(v){ try{ localStorage.setItem('zb_booksmode', v); }catch(_){ } if(v!=='pdf' && this.pdfv.open) this.pdfvClose(); if(v==='pdf' && this.pdfv.open) this.$nextTick(()=>{ if(this.pdfv.mode==='page'){ this.pdfvRenderSingle(); } else { this.pdfvSetupPages(false); } this.pdfvSetupThumbs(); }); },
   },
@@ -489,6 +491,9 @@ go(v){
           this.filterLock=true; this.$nextTick(()=>{ this.filterLock=false; });
         } else { this.startSession(); }
       }
+      if(v==='books' && this.token){ if(!this.materials.loaded && !this.materials.loading)this.loadMaterials(); else if(this.currentBook && this.matMissingCount(this.currentBook)>0)this.ensureBookContent(); if(!this.pdfShelf.loaded && !this.pdfShelf.loading)this.loadPdfShelf(); }
+      if(v==='ingest' && this.token){ if(!this.materials.loaded && !this.materials.loading)this.loadMaterials(); if(!this.pdfShelf.loaded && !this.pdfShelf.loading)this.loadPdfShelf(); this.loadCfUsage(); }
+      if(v==='settings' && this.token){ this.loadCfUsage(); }
       if(v==='stats' && this.statsDirty) this.loadStats();
       if(v==='bank'){ if(!this.meta.subjects.length)this.loadMeta();
         // 惰性加载：仅首次进入或数据改动过(bankDirty)才重拉；单纯来回切导航不再刷新（保住滚动/翻页/勾选）
@@ -586,7 +591,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     try{ const mc=JSON.parse(localStorage.getItem('zb_mineru_cfg')||'null'); if(mc&&typeof mc==='object'){ if(mc.pageLimit!=null)this.mineruCfg.pageLimit=mc.pageLimit; if(mc.fileLimit!=null)this.mineruCfg.fileLimit=mc.fileLimit; this.mineruCfg.tokenExp=mc.tokenExp||''; this.mineruCfg.token=mc.token||''; } }catch(_){}
     this.mineruRefreshUsage();
     try{ if(localStorage.getItem('zb_mineru_tokenbad')==='1')this.mineruTokenBad=true; }catch(_){}
-    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadConfig(); this.loadMaterials(); this.loadPdfShelf(); this.loadCfUsage();
+    if(this.token){ this.loadSubjects(); this.loadMeta(); this.loadConfig();
       const restored=this.restoreSession();
       if(!restored) this.startSession();
       try{ const bm=localStorage.getItem('zb_booksmode'); if(bm==='notes'||bm==='pdf')this.booksMode=bm; }catch(_){ }
@@ -618,7 +623,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     this._offQueueCount().then(n=>{ this.offlineQueued=n; if(n>0)this._offFlush(); }).catch(()=>{});
     this._loadOfflineSynced();
     // 开屏动画：等动画播完 + Vue 渲染完后淡出
-    const sp=document.getElementById('splash'); if(sp){ const dismiss=()=>{ sp.classList.add('out'); setTimeout(()=>sp.remove(),600); }; const elapsed=performance.now(); const minTime=2000; if(elapsed>=minTime)dismiss(); else setTimeout(dismiss,minTime-elapsed); }
+    const sp=document.getElementById('splash'); if(sp){ const dismiss=()=>{ sp.classList.add('out'); setTimeout(()=>sp.remove(),600); }; const elapsed=performance.now(); const minTime=120; if(elapsed>=minTime)dismiss(); else setTimeout(dismiss,minTime-elapsed); }
   },
   beforeUnmount(){ window.removeEventListener('keydown', this.onKey); window.removeEventListener('scroll', this.onScroll); document.removeEventListener('click', this.settBlankClick, true); window.removeEventListener('blur', this.onBlur); window.removeEventListener('focus', this.onFocus); window.removeEventListener('hashchange', this.onHashChange); window.removeEventListener('online', this._onOnline); window.removeEventListener('offline', this._onOffline); window.removeEventListener('pagehide', this._mockPagehide); document.removeEventListener('visibilitychange', this._mockVis); clearInterval(this._flushTimer); },
   template:APP_TEMPLATE

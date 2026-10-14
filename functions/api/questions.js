@@ -8,7 +8,7 @@ export async function onRequestGet({ request, env }) {
 
   const p = new URL(request.url).searchParams;
 
-  // —— meta：给前端筛选器用的科目 / 章节清单（不含待审核草稿；另附草稿数供题库页角标）——
+  // —— meta：给前端筛选器用的科目 / 章节清单（不含待审核草稿；另附草稿数与待复习错题数供顶栏角标实时展示）——
   if (p.get('meta')) {
     const subjStmt = env.DB.prepare(
       `SELECT subject, COUNT(*) AS n FROM questions WHERE IFNULL(status,'') <> 'draft' GROUP BY subject`
@@ -17,10 +17,16 @@ export async function onRequestGet({ request, env }) {
       `SELECT subject, chapter, COUNT(*) AS n FROM questions
        WHERE chapter IS NOT NULL AND chapter <> '' AND IFNULL(status,'') <> 'draft' GROUP BY subject, chapter ORDER BY subject, chapter`
     );
-    let drafts = 0;
-    try { const d = await env.DB.prepare(`SELECT COUNT(*) AS n FROM questions WHERE status = 'draft'`).first(); drafts = (d && d.n) || 0; } catch (_) {}
-    const [subs, chaps] = await Promise.all([subjStmt.all(), chapStmt.all()]);
-    return json({ subjects: subs.results, chapters: chaps.results, drafts });
+    const draftProm = env.DB.prepare(`SELECT COUNT(*) AS n FROM questions WHERE status = 'draft'`).first().catch(() => null);
+    const wrongProm = env.DB.prepare(
+      `SELECT COUNT(*) AS n, SUM(CASE WHEN due_at IS NOT NULL AND due_at <= unixepoch() THEN 1 ELSE 0 END) AS due
+       FROM progress WHERE wrong_count > 0 AND IFNULL(mastered, 0) = 0`
+    ).first().catch(() => null);
+    const [subs, chaps, dRow, wRow] = await Promise.all([subjStmt.all(), chapStmt.all(), draftProm, wrongProm]);
+    const drafts = (dRow && dRow.n) || 0;
+    const wrong_open = (wRow && wRow.n) || 0;
+    const due = (wRow && wRow.due) || 0;
+    return json({ subjects: subs.results, chapters: chaps.results, drafts, wrong_open, due });
   }
 
   const subject = p.get('subject');
@@ -115,15 +121,18 @@ export async function onRequestGet({ request, env }) {
     const where = w, binds = b;
     const conds = draftCond ? [...where, draftCond] : where;      // draftCond 只拼 SQL，不影响快路径判断
     const whereSql = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-    const countSql = `SELECT COUNT(*) AS total FROM questions q
-                    LEFT JOIN progress pr ON pr.question_id = q.id ${whereSql}`;
+    // 当 mode === 'all' 时无需 LEFT JOIN progress，直接走 questions 索引统计总数，省去全表关联扫描
+    const countJoin = mode === 'all' ? '' : 'LEFT JOIN progress pr ON pr.question_id = q.id ';
+    const countSql = `SELECT COUNT(*) AS total FROM questions q ${countJoin}${whereSql}`;
     let rows, total;
     if (order === 'random' && !where.length) {
-      // 全表无筛选时的高效随机：随机取一个 rowid 阈值，从该点起按 rowid 顺序取 limit 条，不足则从头补齐，再打乱。
-      // 避免 ORDER BY RANDOM() 对整张表排序造成的全表扫描与高额 D1 读配额（上万题时尤其明显）。
+      // 全表无筛选时的高效随机：并行查询 MAX(rowid) 与 COUNT(*)，随机取一个 rowid 阈值窗口取 limit 条，不足则从头补齐。
       const draftAnd = draftCond ? ` AND ${draftCond}` : '';
       const draftWhere = draftCond ? `WHERE ${draftCond} ` : '';
-      const mx = await env.DB.prepare('SELECT MAX(rowid) AS m FROM questions').first();
+      const [mx, c] = await Promise.all([
+        env.DB.prepare('SELECT MAX(rowid) AS m FROM questions').first(),
+        noCount ? Promise.resolve(null) : env.DB.prepare(countSql).bind(...binds).first(),
+      ]);
       const maxId = (mx && mx.m) || 0;
       const threshold = maxId > 0 ? Math.floor(Math.random() * maxId) : 0;
       const r1 = await env.DB.prepare(`${baseSelect} WHERE q.rowid >= ?${draftAnd} ORDER BY q.rowid ASC LIMIT ?`).bind(threshold, limit).all();
@@ -134,7 +143,6 @@ export async function onRequestGet({ request, env }) {
         for (const r of (r2.results || [])) { if (!got.has(r.id)) { rows.push(r); got.add(r.id); if (rows.length >= limit) break; } }
       }
       for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = rows[i]; rows[i] = rows[j]; rows[j] = t; }
-      const c = noCount ? null : await env.DB.prepare(countSql).bind(...binds).first();
       total = noCount ? -1 : (c?.total ?? rows.length);
     } else if (order === 'random') {
       // 有筛选条件时命中集较小：直接在子集上 ORDER BY RANDOM()，保证均匀（rowid 阈值法在稀疏子集上会偏向连续区段）

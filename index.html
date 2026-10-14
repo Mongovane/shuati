@@ -19,8 +19,8 @@ html,body{margin:0;background:#F5F6F2}
 @keyframes spR{to{opacity:1;clip-path:inset(0 0 0 0)}}
 </style>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-<link rel="stylesheet" href="css/style.css?v=185">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" />
+<link rel="stylesheet" href="css/style.css?v=186">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" media="print" onload="this.media='all'" />
 <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" /></noscript>
 <link rel="manifest" href="manifest.json">
 <meta id="theme-color-dynamic" name="theme-color" content="#F5F6F2">
@@ -51,43 +51,45 @@ setTimeout(hide,1600);                    /* 兜底：即使应用挂载失败�
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/copy-tex.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
-<script src="js/constants.js?v=185"></script>
-<script src="js/components/rich-text.js?v=185"></script>
-<script src="js/components/icon.js?v=185"></script>
-<script src="js/components/question-card.js?v=185"></script>
-<script src="js/api.js?v=185"></script>
-<script src="js/components/reader.js?v=185"></script>
-<script src="js/views/practice.js?v=185"></script>
-<script src="js/views/bank.js?v=185"></script>
-<script src="js/views/saved.js?v=185"></script>
-<script src="js/views/mock-stats.js?v=185"></script>
-<script src="js/views/ingest.js?v=185"></script>
-<script src="js/views/mineru.js?v=185"></script>
-<script src="js/views/books.js?v=185"></script>
-<script src="js/views/pdftool.js?v=185"></script>
-<script src="js/views/settings.js?v=185"></script>
-<script src="js/tpl/shell-open.js?v=185"></script>
-<script src="js/tpl/view-practice.js?v=185"></script>
-<script src="js/tpl/view-books.js?v=185"></script>
-<script src="js/tpl/view-mock.js?v=185"></script>
-<script src="js/tpl/view-bank.js?v=185"></script>
-<script src="js/tpl/view-stats.js?v=185"></script>
-<script src="js/tpl/view-ingest.js?v=185"></script>
-<script src="js/tpl/view-settings.js?v=185"></script>
-<script src="js/tpl/shell-close.js?v=185"></script>
-<script src="js/app-template.js?v=185"></script>
-<script src="js/app.js?v=185"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/copy-tex.min.js" crossorigin="anonymous" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous" defer></script>
+<script src="js/constants.js?v=186"></script>
+<script src="js/components/rich-text.js?v=186"></script>
+<script src="js/components/icon.js?v=186"></script>
+<script src="js/components/question-card.js?v=186"></script>
+<script src="js/api.js?v=186"></script>
+<script src="js/components/reader.js?v=186"></script>
+<script src="js/views/practice.js?v=186"></script>
+<script src="js/views/bank.js?v=186"></script>
+<script src="js/views/saved.js?v=186"></script>
+<script src="js/views/mock-stats.js?v=186"></script>
+<script src="js/views/ingest.js?v=186"></script>
+<script src="js/views/mineru.js?v=186"></script>
+<script src="js/views/books.js?v=186"></script>
+<script src="js/views/pdftool.js?v=186"></script>
+<script src="js/views/settings.js?v=186"></script>
+<script src="js/tpl/shell-open.js?v=186"></script>
+<script src="js/tpl/view-practice.js?v=186"></script>
+<script src="js/tpl/view-books.js?v=186"></script>
+<script src="js/tpl/view-mock.js?v=186"></script>
+<script src="js/tpl/view-bank.js?v=186"></script>
+<script src="js/tpl/view-stats.js?v=186"></script>
+<script src="js/tpl/view-ingest.js?v=186"></script>
+<script src="js/tpl/view-settings.js?v=186"></script>
+<script src="js/tpl/shell-close.js?v=186"></script>
+<script src="js/app-template.js?v=186"></script>
+<script src="js/app.js?v=186"></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(function(reg){
-      reg.update();
-      setInterval(function(){ reg.update(); }, 60*60*1000);
-    }).catch(function(){});
+    setTimeout(function(){
+      navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(function(reg){
+        reg.update();
+        setInterval(function(){ reg.update(); }, 60*60*1000);
+      }).catch(function(){});
+    }, 1500);
     // 注意：不要在 controllerchange 时 window.location.reload()。
     // 那会在后台检测到新版本(或 SW 重新激活)时随机刷新页面，可能打断用户正在进行的操作
     // （例如 AI 正在生成到一半被刷掉）。本站同源资源走 networkFirst，用户下次自然打开即拿到最新，无需强制刷新。
