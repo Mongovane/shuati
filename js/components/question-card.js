@@ -68,14 +68,38 @@ const QuestionCard={
         (m,n)=>'<span class="cloze'+(parseInt(n,10)===this.clozeNo?' cur':'')+'">'+n+'</span>'); },
     subjMap(){ return SUBJ_MAP; }, typeMap(){ return TYPE_MAP; },
     revealed(){ return this.mode==='exam'?this.examReveal:(this.studyMode||this.localRevealed); },
-    // 剥离追加在 analysis 尾部的 "**AI 解析**" / "**知识点卡片**" 块，展示题库自带的参考解析
+    // 剥离追加在 analysis 尾部的 "**AI 解析**" / "**知识点卡片**" 块，展示题库自带的参考解析；
+    // 若非自动判分题（简答/填空/编程）的 analysis 与上方「参考答案」(refText/ansDisplay) 完全相同，则不再重复渲染第二遍
     baseAnalysis(){
       const a=String((this.q&&this.q.analysis)||'').trim();
       if(!a)return '';
       const i=a.search(/\*\*(AI 解析|知识点卡片)\*\*/);
-      if(i===0)return '';
-      if(i>0)return a.slice(0,i).replace(/\n*---\s*$/,'').trim();
-      return a;
+      const raw = i===0 ? '' : (i>0 ? a.slice(0,i).replace(/\n*---\s*$/,'').trim() : a);
+      if(!raw)return '';
+      if(!AUTO.includes(this.q&&this.q.type)){
+        const ref = (this.q&&this.q.type==='fill_blank') ? this.ansDisplay : this.refText;
+        const nr = normAns(raw), nf = normAns(ref);
+        if(!nr) return '';
+        if(nf && (nr===nf || nf.includes(nr) || nr.includes(nf))) return '';
+      } else {
+        if(normAns(raw)===normAns(this.answerKeys.join(','))) return '';
+      }
+      return raw;
+    },
+    cleanChapter(){
+      const c=String((this.q&&this.q.chapter)||'').trim();
+      if(!c)return '';
+      if(/^\s*[0-9０-９]+\s*[.．、]/.test(c) || /\$|\\frac|\\int|\\lim|\\mathrm|试利用|讨论函数|求下列/.test(c) || c.length>28) return '';
+      return c;
+    },
+    displayTags(){
+      const tags=Array.isArray(this.q&&this.q.tags)?this.q.tags:[];
+      const ch=String((this.q&&this.q.chapter)||'').trim();
+      return tags.map(t=>String(t||'').trim()).filter(t=>{
+        if(!t || t===ch || t===this.cleanChapter) return false;
+        if(/^\s*[0-9０-９]+\s*[.．、]/.test(t) || /\$|\\/.test(t) || t.length>20) return false;
+        return true;
+      });
     },
     isObjective(){ return OBJECTIVE.includes(this.q.type); },
     isChoice(){ return this.q.type==='single_choice'||this.q.type==='multiple_choice'; },
@@ -218,8 +242,8 @@ const QuestionCard={
     <div class="q-head">
       <span class="chip accent">{{ subjMap[q.subject]||q.subject }}</span>
       <span class="chip">{{ typeMap[q.type]||q.type }}</span>
-      <span v-if="q.chapter" class="chip">{{ q.chapter }}</span>
-      <span v-if="q.tags && q.tags.length" class="q-tags"><span v-for="tg in q.tags" :key="tg" class="tag">#{{ tg }}</span></span>
+      <span v-if="cleanChapter" class="chip chip-chap">{{ cleanChapter }}</span>
+      <span v-if="displayTags.length" class="q-tags"><span v-for="tg in displayTags" :key="tg" class="tag">#{{ tg }}</span></span>
       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
       <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
     </div>

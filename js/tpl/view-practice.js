@@ -110,8 +110,8 @@ const TPL_VIEW_PRACTICE = `
             <span v-if="streak>=2" class="streak" :class="{hot:streak>=5}"><icon name="flame" :size="15" /> 连对 {{ streak }}</span>
             <div class="q-info-ops" style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <button class="filter-chip" :class="{on:studyMode}" @click="toggleStudyMode" title="背题模式：直接展开参考答案与解析，无需逐题作答"><icon name="book-open" :size="13" /> 背题</button>
-              <button class="filter-chip" :class="{on:instantSubmit}" @click="toggleInstantSubmit" title="单选/判断题点选选项后立即判分，省去点提交按钮">点选即交</button>
-              <button class="filter-chip" :class="{on:autoNext}" @click="toggleAutoNext" title="客观题答对后自动切到下一题（答错则停留在当前题看解析）">答对下题</button>
+              <button v-if="!studyMode && curIsAuto" class="filter-chip" :class="{on:instantSubmit}" @click="toggleInstantSubmit" title="单选/判断题点选选项后立即判分，省去点提交按钮">点选即交</button>
+              <button v-if="!studyMode && curIsAuto" class="filter-chip" :class="{on:autoNext}" @click="toggleAutoNext" title="客观题答对后自动切到下一题（答错则停留在当前题看解析）">答对下题</button>
               <select class="bk-mini" :value="cur.subject" @change="setQuestionSubject($event.target.value)" title="发现分类错了？直接改，立即生效"><option v-for="s in subjects" :key="s.v" :value="s.v">{{ s.t }}</option></select>
               <button class="btn subtle xs" v-if="view==='wrong'" @click="dropFromReview" title="标记为已掌握，从待复习队列移除；题目仍保留在题库"><icon name="check" :size="15" /> 移出复习</button>
               <button class="bk-del-min" @click="deleteCurrentQuestion" title="从题库彻底删除本题（用于清理 OCR 坏题，不可恢复）">删除</button>

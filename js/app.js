@@ -134,7 +134,7 @@ const App={
     bookCurBookPage(){ const m=this.currentPageMat; return (m&&m.page)?m.page:0; },
     ocrModelName(){ return this.ai.visionModel || this.ai.model || '未读取模型'; },
     sessionMode(){ if(this.view==='wrong')return this.reviewScope==='due'?'due':'wrong'; if(this.view==='favorite')return'favorite'; return this.f._mode||'all'; },
-    chaptersForSubject(){ return this.meta.chapters.filter(c=> this.f.subject==='all'||c.subject===this.f.subject); },
+    chaptersForSubject(){ return this.meta.chapters.filter(c=> (this.f.subject==='all'||c.subject===this.f.subject) && c.chapter && c.chapter.length<=28 && !/^\s*[0-9０-９]+\s*[.．、]|\$|\\/.test(c.chapter)); },
     mockChapters(){ const seen=new Set(); const out=[];
       for(const c of this.meta.chapters){ if(this.mock.subject!=='all'&&c.subject!==this.mock.subject)continue; if(!seen.has(c.chapter)){ seen.add(c.chapter); out.push(c.chapter); } }
       return out; },
@@ -142,6 +142,7 @@ const App={
     sourcePreview(){ return this.makeSource(); },
     wrongTotal(){ if(this.stats&&Array.isArray(this.stats.bySubject))return this.stats.bySubject.reduce((s,r)=>s+(r.wrong_open||0),0); return (this.meta&&this.meta.wrong_open)||0; },
     cur(){ return this.queue[this.qi]||null; },
+    curIsAuto(){ return !!(this.cur && AUTO.includes(this.cur.type)); },
     // 版本号只有 js/constants.js 的 APP_VERSION 一份（npm run bump 会同步它）。
     // 以前这里另有一个手写的 APP_VER 常量，bump 不管它，界面版本号从 v4.4 起就冻住了。
     appVer(){ return APP_VERSION; },

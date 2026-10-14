@@ -193,7 +193,7 @@ async pdfToMaterialLocal(){
 _fullToHalf(s){ return String(s||'').replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)); },
 mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,''); const lines=text.split('\n');
       let chapter=ctx.chapter||''; const items=[]; let cur=null;
-      const xiti=/(习题|练习|复习题|总习题|自测题|思考题|例题)\s*[0-9０-９]/; const zhang=/第\s*[0-9０-９一二三四五六七八九十百]+\s*[章节]/;
+      const xiti=/^(?:第\s*[0-9０-９一二三四五六七八九十百]+\s*[章节部分]\s*)?(习题|练习|复习题|总习题|自测题|思考题|例题)\s*[0-9０-９一二三四五六七八九十-]/; const zhang=/第\s*[0-9０-９一二三四五六七八九十百]+\s*[章节]/;
       const headRe=/^#{1,6}\s+(.+?)\s*#*$/; const boldRe=/^\s*\*\*(.+?)\*\*\s*$/; const numRe=/^\s*\*{0,2}\s*([0-9０-９]{1,3})\s*[.．、)）]\s*(.+)$/;
       const braRe=/^\s*\*{0,2}\s*[（(]\s*([0-9０-９]{1,3})\s*[）)]\s*(.+)$/;
       const xitiHead=/^(习\s*题|练\s*习|复习题|总习题|自测题|思考题)/;
@@ -304,7 +304,7 @@ mdToQuestions(md, ctx){ ctx=ctx||{}; const text=String(md||'').replace(/\r/g,'')
             || /^(Passage|Text|Part)\s*[A-E0-9]/i.test(t)
             || /阅读下(列|面)/.test(t)
             || /^第\s*[一二三四五六七八九十0-9０-９]+\s*[节部]/.test(t);
-          if(xiti.test(t)||zhang.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; inReading=false; continue; }
+          if((xiti.test(t)||zhang.test(t)) && t.length<=36 && !/\$/.test(t) && !/^\s*[0-9０-９]+\s*[.．、]/.test(t)){ flush(); chapter=t; curPassage=''; passageBuf=[]; inReading=false; continue; }
           if(isReadingMarker){ flush(); flushPassage(); curPassage=''; passageBuf=[]; inReading=true; }
           // 短文中间的小标题是材料的一部分,不能丢——丢了就看不出哪段讲哪个国家。
           // 但这只在阅读区内成立：区外（教材正文）的标题必须像 9eaa3fb 那样重置材料，
