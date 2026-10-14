@@ -115,3 +115,41 @@ describe('选段模式 seg-mode 通知父组件（修回顶按钮遮挡）', () 
     expect(ctx.segCount).toBe(0);
   });
 });
+
+
+describe('参考解析提取（baseAnalysis）与刷题快捷模式（studyMode / instantSubmit）', () => {
+  it('baseAnalysis 提取题库原生解析并剥离追加的 AI 解析段', () => {
+    const fn = QC.computed.baseAnalysis;
+    expect(fn.call({ q: { analysis: '【精析】由洛必达法则得极限为 2。' } })).toBe('【精析】由洛必达法则得极限为 2。');
+    expect(fn.call({ q: { analysis: '原生解析内容\n\n---\n\n**AI 解析**\n\nAI生成的详细步骤' } })).toBe('原生解析内容');
+    expect(fn.call({ q: { analysis: '**AI 解析**\n\n只有AI解析没有原生解析' } })).toBe('');
+    expect(fn.call({ q: { analysis: '' } })).toBe('');
+  });
+
+  it('studyMode=true 时无需作答即处于 revealed 状态', () => {
+    const q = { id: 'q1', type: 'single_choice', answer: ['A'] };
+    expect(QC.computed.revealed.call({ mode: 'practice', studyMode: false, localRevealed: false, q })).toBe(false);
+    expect(QC.computed.revealed.call({ mode: 'practice', studyMode: true, localRevealed: false, q })).toBe(true);
+  });
+
+  it('instantSubmit=true 时单选与判断题点选后立即触发 submit()，多选题不误触', () => {
+    let submitted = 0;
+    const singleCtx = {
+      q: { id: 'q1', type: 'single_choice', answer: ['B'] },
+      mode: 'practice', revealed: false, isMulti: false, instantSubmit: true, sel: [],
+      submit() { submitted++; },
+    };
+    QC.methods.pick.call(singleCtx, 'B');
+    expect(singleCtx.sel).toEqual(['B']);
+    expect(submitted).toBe(1);
+
+    const multiCtx = {
+      q: { id: 'q2', type: 'multiple_choice', answer: ['A', 'B'] },
+      mode: 'practice', revealed: false, isMulti: true, instantSubmit: true, sel: [],
+      submit() { submitted++; },
+    };
+    QC.methods.pick.call(multiCtx, 'A');
+    expect(multiCtx.sel).toEqual(['A']);
+    expect(submitted).toBe(1);
+  });
+});

@@ -4,37 +4,38 @@
    - CDN 静态资源（Vue / marked / highlight.js / KaTeX 的 CSS·JS·字体）：缓存优先 → 只下一次，之后离线可用
    - /api/*：始终走网络（题目/统计等动态数据、带鉴权，不缓存）
    改了应用文件想强制刷新预缓存时，把下面 VERSION 加一即可（联网时其实已自动拿最新）。 */
-const VERSION = 'v185';
+const VERSION = 'v186';
 const CACHE = 'shuati-' + VERSION;
 const CDN_ORIGIN = 'https://cdnjs.cloudflare.com';
 const CORE = [
   './', './index.html', './manifest.json',
-  './css/style.css?v=185',
-  './js/constants.js?v=185',
-  './js/components/rich-text.js?v=185',
-  './js/components/question-card.js?v=185',
-  './js/api.js?v=185',
-  './js/components/reader.js?v=185',
-  './js/views/practice.js?v=185',
-  './js/views/bank.js?v=185',
-  './js/views/saved.js?v=185',
-  './js/views/mock-stats.js?v=185',
-  './js/views/ingest.js?v=185',
-  './js/views/mineru.js?v=185',
-  './js/views/books.js?v=185',
-  './js/views/pdftool.js?v=185',
-  './js/views/settings.js?v=185',
-  './js/tpl/shell-open.js?v=185',
-  './js/tpl/view-practice.js?v=185',
-  './js/tpl/view-books.js?v=185',
-  './js/tpl/view-mock.js?v=185',
-  './js/tpl/view-bank.js?v=185',
-  './js/tpl/view-stats.js?v=185',
-  './js/tpl/view-ingest.js?v=185',
-  './js/tpl/view-settings.js?v=185',
-  './js/tpl/shell-close.js?v=185',
-  './js/app-template.js?v=185',
-  './js/app.js?v=185',
+  './css/style.css?v=186',
+  './js/constants.js?v=186',
+  './js/components/rich-text.js?v=186',
+  './js/components/icon.js?v=186',
+  './js/components/question-card.js?v=186',
+  './js/api.js?v=186',
+  './js/components/reader.js?v=186',
+  './js/views/practice.js?v=186',
+  './js/views/bank.js?v=186',
+  './js/views/saved.js?v=186',
+  './js/views/mock-stats.js?v=186',
+  './js/views/ingest.js?v=186',
+  './js/views/mineru.js?v=186',
+  './js/views/books.js?v=186',
+  './js/views/pdftool.js?v=186',
+  './js/views/settings.js?v=186',
+  './js/tpl/shell-open.js?v=186',
+  './js/tpl/view-practice.js?v=186',
+  './js/tpl/view-books.js?v=186',
+  './js/tpl/view-mock.js?v=186',
+  './js/tpl/view-bank.js?v=186',
+  './js/tpl/view-stats.js?v=186',
+  './js/tpl/view-ingest.js?v=186',
+  './js/tpl/view-settings.js?v=186',
+  './js/tpl/shell-close.js?v=186',
+  './js/app-template.js?v=186',
+  './js/app.js?v=186',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-180.png'
 ];
 
@@ -66,10 +67,11 @@ async function cacheFirst(req) {
   return res;
 }
 
-// 静态资源：缓存优先秒开；同时后台悄悄拉新写回缓存（下次即最新），兼顾快与新
+// 静态资源：缓存优先秒开；带 ?v= 版本号的同源资源命中缓存直接返回（不并发抢占首屏 API 带宽）
 async function staticCacheFirst(req) {
   const c = await caches.open(CACHE);
   const cached = await c.match(req);
+  if (cached && req.url.includes('?v=')) return cached;
   const fetching = fetch(req).then((res) => {
     if (res && res.ok) c.put(req, res.clone());
     return res;

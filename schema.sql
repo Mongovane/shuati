@@ -10,8 +10,8 @@
 -- （见 functions/api/_utils.js 的 ensure* 系列），旧库无需手动处理。
 --
 -- 【本文件包含的优化 · 索引】
---   · questions(subject) / (chapter) / (type) / (subject,chapter 复合)
---     —— 按科目、章节筛选取题时走索引，题量上万也不慢
+--   · questions(subject) / (chapter) / (type) / (status) / (subject,chapter 复合)
+--     —— 按科目、章节、草稿状态筛选取题时走索引，题量上万也不慢
 --   · progress(mastered) / (favorited) / (wrong_count)
 --     —— 错题本/收藏/掌握越攒越多时，「仅错题/仅收藏/已掌握」筛选不再全表扫
 --   · materials(subject) / (source)
@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS questions (
 );
 CREATE INDEX IF NOT EXISTS idx_q_subject ON questions(subject);
 CREATE INDEX IF NOT EXISTS idx_q_shape ON questions(shape_key);
+CREATE INDEX IF NOT EXISTS idx_q_status ON questions(status);
 CREATE INDEX IF NOT EXISTS idx_q_chapter ON questions(chapter);
 CREATE INDEX IF NOT EXISTS idx_q_type    ON questions(type);
 CREATE INDEX IF NOT EXISTS idx_q_subject_chapter ON questions(subject, chapter);
