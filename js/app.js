@@ -222,10 +222,10 @@ const App={
         const savedText = this._extractSavedAi(nc) || '';
         if(savedCards.length || savedText){
           const view = savedCards.length ? 'concept' : 'explain';
-          this.aiX={ id:nid, view:view, text:savedText, busy:false, chat:[], asking:false, model:'', cards:savedCards, cardsModel:'', flip:{}, reasoning:'', reasonOpen:true };
+          this.aiX={ id:nid, view:view, text:savedText, busy:false, chat:[], asking:false, model:'', cards:savedCards, cardsModel:'', flip:{}, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null };
           this.aiStates[nid]={ id:nid, view:view, text:savedText, chat:[], model:'', cards:savedCards, cardsModel:'', flip:{} };
         } else {
-          this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true };
+          this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', cardsReasoning:'', reasonOpen:true, usage:null, cardsUsage:null };
         }
       }
       if(oid && this.scratch){
@@ -345,7 +345,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         if(headerFallback && onDelta) onDelta({fallback:headerFallback});
         const ct = res.headers.get('content-type')||'';
         if(useStream && ct.includes('text/event-stream') && res.body){
-          let acc=''; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+          let acc='', thinkMode=0, thinkTagBuf='', thinkSent=0; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
           try{
             let lastGuard=0, stopped=false;
             const LOOP_MAX_CHARS=400000;   // 最后一道闸：40 万字，正常解析远达不到
@@ -374,17 +374,37 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                 // Grok/部分中转站: delta.reasoning
                 // QwQ/某些适配层: delta.thinking 或 delta.think
                 const rt=dt&&(dt.reasoning_content||dt.reasoning||dt.thinking||dt.think);
-                if(rt){ this._hasReasonField=true; if(onDelta) onDelta({reasoning:rt}); }
+                if(rt){ this._hasReasonField=true; thinkMode=2; if(onDelta) onDelta({reasoning:rt}); }
                 const t=dt&&dt.content;
-                // <think> tag parsing: only for models that don't use reasoning fields, only at stream start
+                // <think> tag parsing: 支持跨 chunk 拆分的 <think> 与 </think>，且绝不在 </think> 时重复发射整段思维链
                 if(t && !rt && !this._hasReasonField){
-                  if(!this._thinkBuf && !acc && t.trimStart().startsWith('<think>')){ this._thinkBuf=''; }
-                  if(typeof this._thinkBuf==='string'){
-                    const end=t.indexOf('</think>');
-                    if(end>=0){ this._thinkBuf+=t.slice(0,end); if(onDelta)onDelta({reasoning:this._thinkBuf}); this._thinkBuf=undefined;
-                      const after=t.slice(end+8); if(after){ acc+=after; if(onDelta)onDelta({text:after, acc}); } }
-                    else { this._thinkBuf+=t.replace('<think>',''); if(onDelta)onDelta({reasoning:t.replace('<think>','')}); }
-                  } else { acc+=t; if(onDelta)onDelta({text:t, acc}); }
+                  let chunk=t;
+                  if(thinkMode===0 && !acc){
+                    thinkTagBuf+=chunk; chunk='';
+                    const tr=thinkTagBuf.trimStart();
+                    if(!tr){ /* 仅空白，继续等 */ }
+                    else if(tr.startsWith('<think>')){ thinkMode=1; this._thinkBuf=tr.slice(7); thinkSent=0; thinkTagBuf=''; }
+                    else if('<think>'.startsWith(tr)){ /* 可能是半截 <thi，继续等下一帧 */ }
+                    else { thinkMode=2; acc+=thinkTagBuf; if(onDelta)onDelta({text:thinkTagBuf, acc}); thinkTagBuf=''; }
+                  }
+                  if(thinkMode===1 && typeof this._thinkBuf==='string'){
+                    if(chunk) this._thinkBuf+=chunk;
+                    const end=this._thinkBuf.indexOf('</think>');
+                    if(end>=0){
+                      const rDelta=this._thinkBuf.slice(thinkSent, end);
+                      if(rDelta && onDelta) onDelta({reasoning:rDelta});
+                      const after=this._thinkBuf.slice(end+8).replace(/^\s+/,'');
+                      this._thinkBuf=undefined; thinkMode=2;
+                      if(after){ acc+=after; if(onDelta)onDelta({text:after, acc}); }
+                    } else {
+                      const safeEnd=Math.max(thinkSent, this._thinkBuf.length-7);
+                      if(safeEnd>thinkSent){
+                        const rDelta=this._thinkBuf.slice(thinkSent, safeEnd);
+                        thinkSent=safeEnd;
+                        if(onDelta) onDelta({reasoning:rDelta});
+                      }
+                    }
+                  } else if(thinkMode===2 && chunk){ acc+=chunk; if(onDelta)onDelta({text:chunk, acc}); }
                 } else if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); }
                 // 跑飞防护：每多出 ~400 字查一次复读；命中就停下并保留已生成内容。
                 // 不 throw —— 已经写出来的部分通常有用，只是尾巴在打转。
@@ -394,6 +414,8 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                   else if(this._isLooping(acc)){ if(onDelta)onDelta({runawayStop:'loop'}); stopped=true; }
                 }
                 } if(stopped)break; }
+            if(thinkMode===0 && thinkTagBuf){ acc+=thinkTagBuf; if(onDelta)onDelta({text:thinkTagBuf, acc}); thinkTagBuf=''; }
+            else if(thinkMode===1 && typeof this._thinkBuf==='string' && this._thinkBuf.length>thinkSent){ const rDelta=this._thinkBuf.slice(thinkSent); thinkSent=this._thinkBuf.length; if(rDelta&&onDelta)onDelta({reasoning:rDelta}); }
             if(stopped){ try{ await reader.cancel(); }catch(_){} return { res, text:acc, ok:true, runaway:true }; }
             return { res, text:acc, ok:true };
           }catch(e){
@@ -405,8 +427,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         try{
           const d = await res.json();
           if(d && d.error) return { res, text:'', ok:false, errText:d.error };
-          const txt = (d && d.text) || '';
+          let txt = (d && d.text) || '';
+          let rTxt = (d && d.reasoning) || '';
+          if(txt && !rTxt){
+            const tm = txt.match(/^\s*<think>([\s\S]*?)<\/think>\s*/i);
+            if(tm){ rTxt = tm[1].trim(); txt = txt.slice(tm[0].length); }
+          }
           if(d && d.model && onDelta) onDelta({model:d.model});
+          if(rTxt && onDelta) onDelta({reasoning:rTxt});
           if(d && d.usage && onDelta){ const u=d.usage;
             const det=u.completion_tokens_details||u.output_tokens_details||{};
             onDelta({ usage:{
@@ -610,7 +638,7 @@ onFocus(){ if(this.stealth.autoHide) this.stealth.hidden=false; }
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('focus', this.onFocus);
     try{ const oc=JSON.parse(localStorage.getItem('zb_ocrcfg')||'null'); if(oc&&typeof oc==='object'){ this.ocrCfg.model=oc.model||''; this.ocrCfg.base=oc.base||''; this.ocrCfg.key=oc.key||''; } }catch(_){}
-    try{ const ec=JSON.parse(localStorage.getItem('zb_explaincfg')||'null'); if(ec&&typeof ec==='object'){ this.explainCfg.base=ec.base||''; this.explainCfg.key=ec.key||''; this.explainCfg.model=ec.model||''; } }catch(_){}
+    try{ const ec=JSON.parse(localStorage.getItem('zb_explaincfg')||'null'); if(ec&&typeof ec==='object'){ this.explainCfg.base=ec.base||''; this.explainCfg.key=ec.key||''; this.explainCfg.model=ec.model||''; if(ec.maxTokens!=null)this.explainCfg.maxTokens=Math.max(0,parseInt(ec.maxTokens,10)||0); } }catch(_){}
     try{ this.autoSaveAi = localStorage.getItem('zb_autosave_ai')==='1'; }catch(_){}
     try{ this.explainStable = localStorage.getItem('zb_explain_stable')==='1'; }catch(_){}
     try{ const mc=JSON.parse(localStorage.getItem('zb_mineru_cfg')||'null'); if(mc&&typeof mc==='object'){ if(mc.pageLimit!=null)this.mineruCfg.pageLimit=mc.pageLimit; if(mc.fileLimit!=null)this.mineruCfg.fileLimit=mc.fileLimit; this.mineruCfg.tokenExp=mc.tokenExp||''; this.mineruCfg.token=mc.token||''; } }catch(_){}

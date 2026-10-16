@@ -43,19 +43,23 @@ async startSession(keep){ if(!this.token||this.loading)return;
 // 按需补齐当前题的 analysis / ai_cards（列表用 light=1 没取）。
 // 只在真的要看时发一次小请求，比每批多传 94KB 划算得多。
 async ensureFullQuestion(q){
-  if(!q || !q._lite || q._fullLoading || q._full)return;
+  if(!q || !q._lite || q._full)return;
+  if(q._fullProm)return q._fullProm;
   if(!q.has_analysis && !q.has_cards){ q._full=true; return; }   // 本来就没有，不用跑一趟
   q._fullLoading=true;
-  try{
-    const d=await this.api('/api/questions?ids='+encodeURIComponent(q.id)+'&limit=1');
-    const full=(d.items||[])[0];
-    if(full){
-      q.analysis=full.analysis||''; q.ai_cards=full.ai_cards||null;
-      if(typeof this._syncSavedAiForQuestion==='function') this._syncSavedAiForQuestion(q);
-    }
-    q._full=true;
-  }catch(e){ if(e.message==='unauth')throw e; }
-  finally{ q._fullLoading=false; }
+  q._fullProm=(async()=>{
+    try{
+      const d=await this.api('/api/questions?ids='+encodeURIComponent(q.id)+'&limit=1');
+      const full=(d.items||[])[0];
+      if(full){
+        q.analysis=full.analysis||''; q.ai_cards=full.ai_cards||null;
+        if(typeof this._syncSavedAiForQuestion==='function') this._syncSavedAiForQuestion(q);
+      }
+      q._full=true;
+    }catch(e){ if(e.message==='unauth')throw e; }
+    finally{ q._fullLoading=false; q._fullProm=null; }
+  })();
+  return q._fullProm;
 },
 // 当 light=1 按需补回 analysis / ai_cards 后，把已保存的 AI 解析或知识点卡片同步进 aiStates 与当前 aiX
 _syncSavedAiForQuestion(q){
@@ -297,7 +301,7 @@ async dropFromReview(){ const q=this.cur; if(!q)return; if(!this.token){ this.fl
 // 退出「错题回顾」独立会话，回到常规错题本
 exitReviewSession(){ this.reviewSession=null; this.filterLock=false; this.startSession(); },
 async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(true); this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
-findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
+findQ(id){ return (this.queue||[]).find(q=>q.id===id)||((this.mock&&this.mock.questions)||[]).find(q=>q.id===id)||(this.cur&&this.cur.id===id?this.cur:null); },
 async onAnswered(p){
       // 取消自评：主观题清除本题作答记录（答题卡圆点恢复灰色）；客观题恢复自动判分状态并同步后端
       if(p.cancel){
@@ -337,37 +341,48 @@ async onMaster(p){ const q=this.findQ(p.id); const prev=q&&q.mastered; if(q)q.ma
 async onNote(p){ const q=this.findQ(p.id); const prev=q&&q.note; if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth'){ if(q)q.note=prev; this.flash('笔记保存失败，已撤回：'+e.message,true); } } }
 
 ,
-// 解析 concept 返回的 JSON 卡片（极健壮：兼容各种模型的 JSON 输出怪癖）
-_parseConceptCards(raw){ let s=String(raw||'').trim();
+// 解析 concept 返回的 JSON 卡片（极健壮：兼容各种模型的 JSON 输出怪癖、LaTeX 特殊转义与前置区间文本）
+_parseConceptCards(raw, subj){ let s=String(raw||'').trim();
+  // 0. 剥离可能残留的 <think>...</think> 思维链块
+  s=s.replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
   // 1. 剥离所有代码围栏（可能有多层或不成对）
   s=s.replace(/```(?:json|javascript|js)?\s*/gi,'').replace(/```/g,'').trim();
-  // 2. 提取数组或对象片段
-  const a=s.indexOf('['), b=s.lastIndexOf(']');
+  // 2. 提取数组或对象片段（优先匹配 [{ 避免前置说明里的 [0,1] 等数学区间干扰）
+  const arrStart=s.match(/\[\s*\{/);
+  const a=arrStart ? arrStart.index : s.indexOf('['), b=s.lastIndexOf(']');
   const c=s.indexOf('{'), d=s.lastIndexOf('}');
-  if(a>=0 && b>a) s=s.slice(a,b+1);
+  if(a>=0 && b>a && (c<0 || a<c || arrStart)) s=s.slice(a,b+1);
   else if(c>=0 && d>c) s='['+s.slice(c,d+1)+']'; // 单对象 → 包成数组
   else return [];
   const tryParse=(str)=>{ try{ const r=JSON.parse(str); return Array.isArray(r)?r:(r&&typeof r==='object'?[r]:null); }catch(_){ return null; } };
-  // 3. LaTeX 反斜杠修复
-  const fixBackslash=(str)=> str.replace(/\\\\|\\u[0-9a-fA-F]{4}|\\([a-zA-Z])/g, (m,c)=> c ? '\\\\'+c : m);
-  // 4. 尝试多级解析：原始 → 修反斜杠 → 修 key 引号 → 修尾逗号
+  // 3. LaTeX 反斜杠修复：既修复 \frac/\nabla 等多字母命令，也修复 \, \; \! \{ \} \| \_ 等非字母 LaTeX 转义
+  const fixBackslash=(str)=> str.replace(/\\\\|\\"|\\\/|\\u[0-9a-fA-F]{4}|\\([a-zA-Z]{2,}|[^"\\/bfnrtu])/g, (m,g)=> g ? '\\\\'+g : m);
+  // 4. 尝试多级解析：修反斜杠 → 原始 → 修 key 引号 → 修尾逗号
   const fixKeys=(str)=> str.replace(/([{,]\s*)([a-zA-Z_]\w*)\s*:/g, '$1"$2":');
   const fixTrailing=(str)=> str.replace(/,\s*([}\]])/g, '$1');
   let arr = tryParse(fixBackslash(s)) || tryParse(s)
          || tryParse(fixKeys(fixBackslash(s))) || tryParse(fixTrailing(fixBackslash(s)))
          || tryParse(fixTrailing(fixKeys(fixBackslash(s))));
-  // 5. 最后手段：尝试逐行提取多个 JSON 对象
+  // 5. 最后手段：按引号感知的大括号配对逐个提取顶层 JSON 对象（兼容含 LaTeX {x} 的卡片及尾部截断）
   if(!arr){
-    const objs=[]; const re=/\{[^{}]{10,}\}/g; let m;
-    while((m=re.exec(s))!==null){ const o=tryParse(fixBackslash(m[0]))||tryParse(m[0]); if(o)objs.push(...o); }
+    const objs=[]; let depth=0, start=-1, inStr=false, esc=false;
+    for(let i=0;i<s.length;i++){
+      const ch=s[i];
+      if(inStr){ if(esc){ esc=false; } else if(ch==='\\'){ esc=true; } else if(ch==='"'){ inStr=false; } continue; }
+      if(ch==='"'){ inStr=true; continue; }
+      if(ch==='{'){ if(depth===0)start=i; depth++; }
+      else if(ch==='}'){ depth--; if(depth===0 && start>=0){ const frag=s.slice(start,i+1); const o=tryParse(fixBackslash(frag))||tryParse(fixTrailing(fixKeys(fixBackslash(frag))))||tryParse(frag); if(o)objs.push(...o); start=-1; } }
+    }
     if(objs.length)arr=objs;
   }
   if(!arr||!arr.length)return [];
-  // 后处理：给 plain / example 里裸露的数学符号自动补 $...$ 包裹 + 编号换行
+  const isEng = (subj || (this.cur && this.cur.subject)) === 'english';
+  // 后处理：给 plain / example 里裸露的数学符号自动补 $...$ 包裹 + 编号换行（英语卡片只做编号换行，避免把英文单词/词性括注误包成公式）
   const wrapMath=(text)=>{
     if(!text)return text;
     // ①②③ 等编号前加换行，让条目分行显示
     text=text.replace(/([^\n])([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮])/g, '$1\n\n$2');
+    if(isEng) return text;
     const parts=[]; let last=0, inside=false, i=0;
     while(i<text.length){
       if(text[i]==='$' && (i===0||text[i-1]!=='\\')){
@@ -380,7 +395,7 @@ _parseConceptCards(raw){ let s=String(raw||'').trim();
     return parts.map(p=>{
       if(p.m)return p.t;
       return p.t
-        .replace(/(?<!\$)(\b[a-zA-ZΦΨαβγδεζηθλμξρσφψω][a-zA-Z0-9_]*['′]?\s*\([^)]{1,30}\))(?!\$)/g, (m)=>'$'+m.trim()+'$')
+        .replace(/(?<!\$)(\b(?:[a-zA-ZΦΨαβγδεζηθλμξρσφψω]['′]?|(?:sin|cos|tan|cot|sec|csc|arcsin|arccos|arctan|ln|log|lim|max|min|sup|inf|det|rank|dim|cov|var|grad|div|rot))\s*\([^)\u4e00-\u9fff]{1,30}\))(?!\$)/g, (m)=>'$'+m.trim()+'$')
         .replace(/(?<=[\u4e00-\u9fff\s，。；：、])([a-zA-ZΔΣΠαβγδεθλμξρσφψω][_0-9₀-₉]*)(?=[\u4e00-\u9fff\s，。；：、])/g, '$$$1$$')
         .replace(/(?<!\$)(\b[a-zA-Z][a-zA-Z0-9_]*\s*[><=≥≤≠]+\s*[0-9a-zA-Z]+)(?!\$)/g, '$$$1$$');
     }).join('');
@@ -392,6 +407,10 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   if(!this.token){ this.flash('请先在设置中填写访问码',true); return; }
   const isConcept=kind==='concept';
   const qid=q.id;
+  // 若 light=1 题目本身已有保存的解析/卡片但尚未拉回，先等待补齐避免误触发重新生成
+  if(!force && q._lite && !q._full && ((isConcept && q.has_cards) || (!isConcept && q.has_analysis)) && typeof this.ensureFullQuestion==='function'){
+    await (this.ensureFullQuestion(q).catch(()=>{}));
+  }
   // 同题：若目标内容已生成且非强制重做，只切换显示、不重新请求
   // 切视图前，先从缓存把该题已生成的内容同步到 aiX（后台生成完但当时没在看这个视图的情况）
   const cache=this.aiStates[qid];
@@ -403,10 +422,14 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
     if(isConcept && this.aiX.cards && this.aiX.cards.length){ this.aiX.view='concept'; this.aiX.busy=!!(this._aiJobs&&this._aiJobs[qid+':c']); return; }
     if(!isConcept && this.aiX.text){ this.aiX.view='explain'; this.aiX.busy=!!(this._aiJobs&&this._aiJobs[qid+':e']); return; }
   }
-  // 该题该类型若已在生成中，仅切换显示（不重复发起）
+  // 该题该类型若已在生成中，仅切换显示（不重复发起）；若强制重新生成则先中止旧请求
   if(!this._aiJobs)this._aiJobs={};
   const jobKey=qid+':'+(isConcept?'c':'e');
-  if(this._aiJobs[jobKey] && !force){ if(this.aiX.id===qid){ this.aiX.view=isConcept?'concept':'explain'; this.aiX.busy=true; } return; }
+  if(this._aiJobs[jobKey]){
+    if(!force){ if(this.aiX.id===qid){ this.aiX.view=isConcept?'concept':'explain'; this.aiX.busy=true; } return; }
+    try{ this._aiJobs[jobKey].abort(); }catch(_){} delete this._aiJobs[jobKey];
+  }
+  if(force){ if(isConcept) q._conceptSaved=false; else q._aiSaved=false; }
   // 确保 aiStates 有该题条目（承载后台生成结果，切题也不丢）
   const st=this.aiStates[qid] || (this.aiStates[qid]={ id:qid, view:'', text:'', chat:[], model:'', cards:[], cardsModel:'', flip:{} });
   st.view=isConcept?'concept':'explain';
@@ -485,7 +508,7 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
     if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.go('settings'); throw new Error('访问码无效'); }
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
     if(isConcept){
-      let cards=this._parseConceptCards(acc);
+      let cards=this._parseConceptCards(acc, q.subject);
       // 首次解析失败 → 自动重试一次（某些模型第一轮输出不稳定但第二轮能成功）
       if(!cards.length && !force && !this._conceptRetried){
         this._conceptRetried=true; if(showing())this.flash('卡片解析失败，自动重试中…');
@@ -512,13 +535,14 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
   if(this._aiJobs[jobKey]===ctrl) delete this._aiJobs[jobKey];
   // 生成完成：结果已在 st（aiStates）里；若仍在显示这道题，同步结束态
   if(showing() && this.aiX.id===qid){ if(!this._aiJobs[qid+':e'] && !this._aiJobs[qid+':c'])this.aiX.busy=false; else if((isConcept&&this.aiX.view==='concept')||(!isConcept&&this.aiX.view==='explain'))this.aiX.busy=false; }
-  // 自动保存（默认关）：生成成功后静默存入题目，不打扰
-  if(this.autoSaveAi){ try{ if(isConcept){ if(st.cards&&st.cards.length)await this._autoSaveConcept(qid, st.cards); } else { if(st.text)await this._autoSaveExplain(qid, st.text, st.chat); } }catch(_){} }
+  // 自动保存（默认关）：生成成功后静默存入题目，不打扰（用户主动取消时不保存半截内容）
+  if(this.autoSaveAi && !ctrl.signal.aborted){ try{ if(isConcept){ if(st.cards&&st.cards.length)await this._autoSaveConcept(qid, st.cards, force); } else { if(st.text)await this._autoSaveExplain(qid, st.text, st.chat, force); } }catch(_){} }
 },
 // 自动保存 AI 解析到题目「解析」字段（静默，供 autoSaveAi 用）
-async _autoSaveExplain(qid, text, chat){ const q=this.findQ(qid); if(!q||!text)return; if(q._aiSaved)return;
-  let aiBlock='**AI 解析**\n\n'+String(text).trim();
-  const cs=(chat||[]).filter(c=>c.a&&!c.a.startsWith('_回答失败'));
+async _autoSaveExplain(qid, text, chat, force){ const q=this.findQ(qid); if(!q||!text)return; if(q._aiSaved && !force)return;
+  const cleanText=String(text).replace(/\n\n\*\*追问记录\*\*[\s\S]*$/,'').trim();
+  let aiBlock='**AI 解析**\n\n'+cleanText;
+  const cs=(chat||[]).filter(c=>((c.kind||'explain')==='explain')&&c.a&&!c.err&&!c.a.startsWith('_回答失败')&&!c.a.startsWith('_（'));
   if(cs.length){ aiBlock+='\n\n**追问记录**\n\n'+cs.map(c=>'> '+c.q+'\n\n'+c.a.trim()).join('\n\n'); }
   // 已有 AI 解析段时替换而非追加（防止刷新后重新生成导致无限膨胀）
   const existing=String(q.analysis||'').trim();
@@ -526,16 +550,21 @@ async _autoSaveExplain(qid, text, chat){ const q=this.findQ(qid); if(!q||!text)r
   let merged; if(aiIdx>0){ merged=existing.slice(0,aiIdx).replace(/\n*---\s*$/, '').trim()+'\n\n---\n\n'+aiBlock; } else if(aiIdx===0){ merged=aiBlock; } else { merged=(existing?existing+'\n\n---\n\n':'')+aiBlock; }
   await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[qid],analysis:merged})}); q.analysis=merged; q._aiSaved=true; this.bankDirty=true;
 },
-// 自动保存知识点卡片（转 markdown 追加到题目「解析」）
-async _autoSaveConcept(qid, cards){ const q=this.findQ(qid); if(!q||!cards||!cards.length)return; if(q._conceptSaved)return;
+// 自动保存知识点卡片（存结构化 ai_cards）
+async _autoSaveConcept(qid, cards, force){ const q=this.findQ(qid); if(!q||!cards||!cards.length)return; if(q._conceptSaved && !force)return;
   await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[qid],ai_cards:cards})}); q.ai_cards=cards.slice(); q._conceptSaved=true; this.bankDirty=true;
 },
-async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id || !this.aiX.text)return;
-  let merged=(q.analysis?String(q.analysis).trim()+'\n\n---\n\n':'')+'**AI 解析**\n\n'+this.aiX.text.trim();
-  const chat=(this.aiX.chat||[]).filter(c=>c.a&&!c.a.startsWith('_回答失败'));
-  if(chat.length){ merged+='\n\n**追问记录**\n\n'+chat.map(c=>'> '+c.q+'\n\n'+c.a.trim()).join('\n\n'); }
-  try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],analysis:merged})});
-    q.analysis=merged; this.bankDirty=true; this.flash('已保存进本题解析（可在 Bank 编辑中查看）');
+async aiSaveToAnalysis(){ const q=this.cur; if(!q || this.aiX.id!==q.id)return;
+  if(this.aiX.view==='concept'){
+    const cards=this.aiX.cards||[]; if(!cards.length)return;
+    try{ await this._autoSaveConcept(q.id, cards, true);
+      this.flash('已保存知识点卡片到本题');
+    }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); }
+    return;
+  }
+  if(!this.aiX.text)return;
+  try{ await this._autoSaveExplain(q.id, this.aiX.text, this.aiX.chat, true);
+    this.flash('已保存进本题解析（可在 Bank 编辑中查看）');
   }catch(e){ if(e.message!=='unauth')this.flash('保存失败：'+e.message,true); }
 }
 
@@ -623,6 +652,10 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
   }
   if(this.aiX.id===q.id) this.aiX.asking=false;
   if(this._aiCtrl===ctrl) this._aiCtrl=null;
+  const st=this.aiStates[q.id]; if(st && this.aiX.id===q.id) st.chat=(this.aiX.chat||[]).slice();
+  if(this.autoSaveAi && !ctrl.signal.aborted && entry.a && !entry.err && kind==='explain' && this.aiX.text){
+    this._autoSaveExplain(q.id, this.aiX.text, this.aiX.chat, true).catch(()=>{});
+  }
 },
 aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
   const add='**'+p.q.trim()+'**\n\n'+p.a.trim();
@@ -632,7 +665,20 @@ aiNoteFromChat(p){ const q=this.cur; if(!q||!p||!p.a)return;
 
 
 ,
-aiStopAsk(){ if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; } this.aiX.asking=false; this.flash('已停止生成'); },
+aiStopAsk(){
+  if(this._aiCtrl){ try{ this._aiCtrl.abort(); }catch(_){} this._aiCtrl=null; }
+  if(this.aiX && this.aiX.asking){
+    const last=this.aiX.chat&&this.aiX.chat[this.aiX.chat.length-1];
+    if(last && !last.a) last.a='_（已停止）_';
+    this.aiX.asking=false;
+  }
+  if(this.aiX && this.aiX.busy && this.cur && this._aiJobs){
+    const jk=this.cur.id+':'+(this.aiX.view==='concept'?'c':'e');
+    if(this._aiJobs[jk]){ try{ this._aiJobs[jk].abort(); }catch(_){} delete this._aiJobs[jk]; }
+    this.aiX.busy=false;
+  }
+  this.flash('已停止生成');
+},
 aiClearChat(){ const kind=(this.aiX.view==='concept')?'concept':'explain';
   const mine=(this.aiX.chat||[]).filter(c=>((c.kind||'explain')===kind));
   if(!mine.length)return;

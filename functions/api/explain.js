@@ -177,8 +177,10 @@ const isQuota = (t) => /quota|insufficient|balance|欠费|余额|额度|配额|b
         return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
       }
       const d = await up2.json();
-      const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
-      return json({ text, model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
+      const m2 = (d.choices && d.choices[0] && d.choices[0].message) || {};
+      const text = m2.content || '';
+      const reasoning = m2.reasoning_content || m2.reasoning || m2.thinking || m2.think || '';
+      return json({ text, ...(reasoning ? { reasoning } : {}), model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
     }
     const up = await call(false);
     if (!up.ok) {
@@ -187,8 +189,10 @@ const isQuota = (t) => /quota|insufficient|balance|欠费|余额|额度|配额|b
       return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
     }
     const d = await up.json();
-    const text = (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
-    return json({ text, model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
+    const m1 = (d.choices && d.choices[0] && d.choices[0].message) || {};
+    const text = m1.content || '';
+    const reasoning = m1.reasoning_content || m1.reasoning || m1.thinking || m1.think || '';
+    return json({ text, ...(reasoning ? { reasoning } : {}), model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
   } catch (e) {
     if (e && e.name === 'AbortError') return json({ error: '已取消' }, 499);
     return json({ error: '连接 AI 中转站失败：' + e.message }, 502);

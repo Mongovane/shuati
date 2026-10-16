@@ -15,7 +15,8 @@ const QuestionCard={
   watch:{
     q(){ this.reset(); },
     segMode(v){ this.$emit('seg-mode', v); },
-    aiKind(nv, ov){ if(nv&&ov&&nv!==ov){ this.$nextTick(()=>{ try{ const el=this.$refs.aiBox; if(el&&el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){} }); } },
+    aiCards(v){ const n=Array.isArray(v)?v.length:0; if(this.kcardIdx>=n) this.kcardIdx=Math.max(0,n-1); },
+    aiKind(nv, ov){ if(this.segMode){ this.segMode=false; this._segClear(); } this.showRaw=false; if(nv&&ov&&nv!==ov){ this.$nextTick(()=>{ try{ const el=this.$refs.aiBox; if(el&&el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){} }); } },
     aiReasoning(){ this.$nextTick(()=>{ const el=this.$refs.reasonBody; if(el&&this.aiBusy)el.scrollTop=el.scrollHeight; }); },
     aiText(v){ if(this.aiBusy) this._chatScroll(); if(v && this.localReasonOpen && this.aiReasoning && !this._reasonAutoCollapsed){ this.localReasonOpen=false; this._reasonAutoCollapsed=true; } },
     aiChat:{ deep:true, handler(){ if(this.aiAsking) this._chatScroll(); } },
@@ -228,7 +229,7 @@ const QuestionCard={
     // 英语卡片的 formula 放的是句型结构（not only ... but also ...），不是 LaTeX，
     // 拿不到 .kcard-formula .katex 那个高亮胶囊，单独标一下好上样式
     isTextFormula(f){ return !!String(f||'').trim() && !/\$/.test(f); },
-    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; this.stickBottom=true; this.chatReasonOpen={}; this.zoomImg=''; if(this.segMode){ this.segMode=false; this.segCount=0; } },
+    reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; this.stickBottom=true; this.chatReasonOpen={}; this.zoomImg=''; this.kcardIdx=0; this.showRaw=false; if(this.segMode){ this.segMode=false; this.segCount=0; } },
     // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
     snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed, t0:this.t0 }; },
     restoreState(s){ if(!s||typeof s!=='object')return;
@@ -270,7 +271,7 @@ const QuestionCard={
     _flashAns(ok){ const el=this.$el; if(!el)return; const cls=ok?'ans-correct':'ans-wrong'; el.classList.remove('ans-correct','ans-wrong'); void el.offsetWidth; el.classList.add(cls); setTimeout(()=>el.classList.remove(cls),400); },
     kcardPrev(){ if(this.kcardIdx>0) this.kcardIdx--; },
     kcardNext(){ if(this.kcardIdx<this.aiCards.length-1) this.kcardIdx++; },
-    kcardTap(){ this.$emit('card-flip', this.kcardIdx); },
+    kcardTap(){ if(this.aiFlip && this.aiFlip[this.kcardIdx] && this.kcardIdx < (this.aiCards?this.aiCards.length:0)-1){ this.kcardIdx++; return; } this.$emit('card-flip', this.kcardIdx); },
     toggleFav(){ this.$emit('favorite',{id:this.q.id,value:!this.q.favorited}); },
     markMastered(){ this.$emit('master',{id:this.q.id,value:!this.q.mastered}); },
     saveNote(){ this.$emit('note',{id:this.q.id,note:this.noteDraft}); this.showNote=false; },
@@ -337,7 +338,7 @@ const QuestionCard={
         <button class="btn subtle sg sg-easy" :class="{on:selfGrade==='easy'}" @click="grade4('easy')" title="秒答，间隔大步拉长">简单 <em class="sg-iv">{{ srsLabels.easy }}</em></button>
       </div>
       <div v-if="canAi || aiText || aiBusy || aiCards.length" class="ref" :class="{'seg-on':segMode}" ref="aiBox" @click="segClick" style="margin-top:10px">
-        <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : 'ai-concept')" :title="aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）'"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span><span v-if="usageText" class="muted usage-chip" :title="usageTitle">{{ usageText }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
+        <h5><button v-if="canAi" class="ai-kind-sw" @click.stop="$emit(aiKind==='concept' ? 'ai-explain' : (aiKind==='explain' ? 'ai-concept' : 'ai-explain'))" :title="!aiKind ? '点击生成解题解析' : (aiKind==='concept' ? '切换到解题解析（已生成过则直接切，未生成会调用 AI）' : '切换到知识点卡片（已生成过则直接切，未生成会调用 AI）')"><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }} <icon v-if="aiKind" name="arrow-left-right" :size="11" /></button><span v-else><icon :name="aiKind==='concept'?'book-open':'sparkles'" :size="15" /> {{ aiKind==='concept' ? '知识点卡片' : '解题解析' }}</span> <span v-if="aiModel" class="muted" style="font-weight:400;font-size:11px">· {{ aiModel }}</span><span v-if="usageText" class="muted usage-chip" :title="usageTitle">{{ usageText }}</span> <span v-if="aiBusy" class="spin"></span><button v-if="aiBusy" type="button" class="btn subtle xs" style="float:right;padding:1px 8px;font-size:11px" @click.stop="$emit('ai-stop')" title="停止本次 AI 生成"><icon name="square" :size="11" /> 停止</button><button v-if="aiText && !aiBusy && aiKind!=='concept'" class="btn subtle" style="float:right;padding:0 8px;font-size:10.5px" @click="showRaw=!showRaw" title="查看/复制 AI 输出的原始 Markdown（渲染异常时把这里的内容发给开发者）">{{ showRaw?"渲染":"原文" }}</button><span v-if="aiBusy" class="muted" style="font-weight:400;font-size:12px">生成中…可继续做题</span></h5>
         <div v-if="aiReasoning" class="reason-box">
           <button class="reason-head" @click.stop="localReasonOpen=!localReasonOpen" :title="localReasonOpen?'收起推理过程':'展开推理过程'">
             <icon name="brain" :size="13" />
@@ -372,7 +373,7 @@ const QuestionCard={
           </div>
         </div>
         <div v-else class="kcard-single">
-          <div class="kcard-lg-wrap">
+          <div class="kcard-lg-wrap" v-if="aiCards[kcardIdx]">
             <div v-if="!aiFlip[kcardIdx]" class="kcard-lg-face kcard-lg-front" @click="kcardTap">
               <div class="kcard-idx">{{ kcardIdx+1 }}/{{ aiCards.length }}</div>
               <div class="kcard-term" style="font-size:22px"><rich-text :content="aiCards[kcardIdx].term" /></div>
@@ -405,7 +406,7 @@ const QuestionCard={
           <div class="ai-acts-sub" v-if="!aiBusy && (aiText || (aiKind==='concept'&&hasConcept))">
             <button class="ai-chip" v-if="aiKind==='concept' && hasConcept" @click="$emit('ai-concept-redo')" title="重新生成知识点卡片"><icon name="rotate-cw" :size="13" />重新生成</button>
             <button class="ai-chip" v-if="aiKind!=='concept' && aiText" @click="$emit('ai-explain-redo')" title="重新生成解题解析"><icon name="rotate-cw" :size="13" />重新生成</button>
-            <button class="ai-chip" v-if="aiText && aiKind!=='concept'" @click="$emit('ai-save')" title="把 AI 解析追加保存到本题的「解析」字段（永久）"><icon name="save" :size="13" />存入解析</button>
+            <button class="ai-chip" v-if="(aiText && aiKind!=='concept') || (aiKind==='concept' && hasConcept)" @click="$emit('ai-save')" :title="aiKind==='concept' ? '把知识点卡片保存到本题（永久）' : '把 AI 解析保存到本题的「解析」字段（永久）'"><icon name="save" :size="13" />{{ aiKind==='concept' ? '存入本题' : '存入解析' }}</button>
             <button class="ai-chip" v-if="aiText && aiKind!=='concept'" :class="{on:segMode}" @click="segToggle" title="进入选段模式：点选段落/公式/代码块，再合并复制或引用到追问"><icon :name="segMode?'x':'text-cursor-input'" :size="13" /><span>{{ segMode?'退出选段':'选段' }}</span></button>
           </div>
         </div>
@@ -449,6 +450,7 @@ const QuestionCard={
           <span style="flex:1"></span>
           <button class="btn subtle" :disabled="!segCount" @click="segCopy">{{ copied==='seg'?'已复制 ✓':'合并复制' }}</button>
           <button class="btn subtle" :disabled="!segCount" @click="segQuote">引用到追问</button>
+          <button class="btn subtle" @click="segToggle">退出</button>
         </div>
       </div>
       <button class="note-toggle" @click="showNote=!showNote; if(showNote){ noteEdit=!q.note; noteDraft=q.note||''; }">{{ showNote?'隐藏笔记':(q.note?'查看 / 编辑笔记':'+ 添加笔记') }}</button>
