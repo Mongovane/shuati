@@ -386,8 +386,31 @@ async function callAI(env, ov, input, subject, chapter, source, kind, vision) {
     return { error: `AI 中转站返回 ${resp.status}${extra}`, detail: t.slice(0, 400), status: 502 };
   }
   const data = await resp.json().catch(() => null);
-  const out = data?.choices?.[0]?.message?.content || '';
-  const parsed = safeParse(out);
+  const msg0 = data?.choices?.[0]?.message || {};
+  let out = msg0.content || '';
+  let parsed = safeParse(out);
+  const rContent = msg0.reasoning_content || msg0.reasoning || msg0.thinking || '';
+  if (!parsed.questions.length && !parsed.materials.length && rContent) {
+    try {
+      const resp2 = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model, temperature: 0.1,
+          messages: [
+            ...messages,
+            { role: 'assistant', content: '【已完成思考过程】\n' + String(rContent).slice(-4000) },
+            { role: 'user', content: '不要再展开思考过程了，请直接输出最终的 JSON 对象，不要任何额外解释或代码块围栏。' },
+          ],
+        }),
+      });
+      if (resp2 && resp2.ok) {
+        const d2 = await resp2.json().catch(() => null);
+        out = d2?.choices?.[0]?.message?.content || out;
+        parsed = safeParse(out);
+      }
+    } catch (_) {}
+  }
   if (!parsed.questions.length && !parsed.materials.length) {
     return { error: 'AI 未解析出有效内容，可换更强的模型或缩短单次输入', raw: String(out).slice(0, 800), status: 422 };
   }
@@ -397,13 +420,50 @@ async function callAI(env, ov, input, subject, chapter, source, kind, vision) {
 function safeParse(text) {
   const empty = { kind: 'unknown', questions: [], materials: [] };
   if (!text) return empty;
-  let t = String(text).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  let obj;
-  try { obj = JSON.parse(t); }
-  catch {
+  let t = String(text).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const te = t.toLowerCase().lastIndexOf('</think>');
+  if (te >= 0) t = t.slice(te + 8).trim();
+  else t = t.replace(/<think>[\s\S]*$/i, '').trim();
+  t = t.replace(/```(?:json|javascript|js)?\s*/gi, '').replace(/```/g, '').trim();
+  if (!t) return empty;
+  const fixLatex = (s) => String(s || '').replace(/\\\\|\\"|\\\/|\\u[0-9a-fA-F]{4}|\\([a-zA-Z]{2,}|[^"\\/bfnrtu])/g, (m, g) => (g ? '\\\\' + g : m));
+  const tryObj = (s) => {
+    try { return JSON.parse(s); } catch {
+      try { return JSON.parse(fixLatex(s)); } catch { return null; }
+    }
+  };
+  let obj = tryObj(t);
+  if (!obj) {
     const m = t.match(/[\[{][\s\S]*[\]}]/);
-    if (!m) return empty;
-    try { obj = JSON.parse(m[0]); } catch { return empty; }
+    if (m) obj = tryObj(m[0]);
+  }
+  if (!obj) {
+    // 尾部被截断时，逐个抢救已闭合的题目或教材对象
+    const qs = [], ms = [];
+    let depth = 0, start = -1, inStr = false, esc = false;
+    const arrIdx = t.indexOf('[');
+    const scan = arrIdx >= 0 ? t.slice(arrIdx) : t;
+    for (let i = 0; i < scan.length; i++) {
+      const ch = scan[i];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') { if (depth === 0) start = i; depth++; }
+      else if (ch === '}') {
+        if (depth > 0) {
+          depth--;
+          if (depth === 0 && start >= 0) {
+            const it = tryObj(scan.slice(start, i + 1));
+            if (it && typeof it === 'object') {
+              if (it.stem) qs.push(it);
+              else if (it.content_md || it.content) ms.push(it);
+            }
+            start = -1;
+          }
+        }
+      }
+    }
+    if (qs.length || ms.length) return { kind: qs.length && ms.length ? 'mixed' : (qs.length ? 'questions' : 'material'), questions: qs, materials: ms };
+    return empty;
   }
   // 兼容：模型有时直接返回题目数组
   if (Array.isArray(obj)) return { kind: 'questions', questions: obj.filter((q) => q && q.stem), materials: [] };

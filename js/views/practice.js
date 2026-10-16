@@ -341,18 +341,45 @@ async onMaster(p){ const q=this.findQ(p.id); const prev=q&&q.mastered; if(q)q.ma
 async onNote(p){ const q=this.findQ(p.id); const prev=q&&q.note; if(q)q.note=p.note; this.flash('笔记已保存'); try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'note',question_id:p.id,note:p.note})}); }catch(e){ if(e.message!=='unauth'){ if(q)q.note=prev; this.flash('笔记保存失败，已撤回：'+e.message,true); } } }
 
 ,
+// 清理被截断的知识点卡片 JSON 草稿：只保留已闭合的完整 {...} 卡片对象，剔除尾部半截未闭合的字符串/对象，防止续写拼接时引号错位
+_salvageConceptPartial(raw){
+  let s=String(raw||'').trim();
+  if(!s) return { clean:'', count:0, complete:false };
+  const te=s.toLowerCase().lastIndexOf('</think>');
+  if(te>=0) s=s.slice(te+8).trim();
+  else if(/^\s*<think>/i.test(s)) return { clean:'', count:0, complete:false };
+  s=s.replace(/```(?:json|javascript|js)?\s*/gi,'').replace(/```/g,'').trim();
+  let depth=0, inStr=false, esc=false, lastClose=-1, firstOpen=-1, count=0;
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(inStr){ if(esc){ esc=false; } else if(ch==='\\'){ esc=true; } else if(ch==='"'){ inStr=false; } continue; }
+    if(ch==='"'){ inStr=true; continue; }
+    if(ch==='{'){ if(depth===0 && firstOpen<0)firstOpen=i; depth++; }
+    else if(ch==='}'){ if(depth>0){ depth--; if(depth===0){ lastClose=i; count++; } } }
+  }
+  if(count===0 || firstOpen<0 || lastClose<firstOpen) return { clean:'', count:0, complete:false };
+  const hasOpenArr = /^\s*\[/.test(s);
+  const tail=s.slice(lastClose+1).trim();
+  const complete = depth===0 && !inStr && (!hasOpenArr || /^\]/.test(tail));
+  const prefix = '[' + s.slice(firstOpen, lastClose+1) + (complete ? ']' : '');
+  return { clean:prefix, count, complete };
+},
 // 解析 concept 返回的 JSON 卡片（极健壮：兼容各种模型的 JSON 输出怪癖、LaTeX 特殊转义与前置区间文本）
 _parseConceptCards(raw, subj){ let s=String(raw||'').trim();
-  // 0. 剥离可能残留的 <think>...</think> 思维链块
+  // 0. 剥离可能残留的 <think>...</think>、无头 </think> 前缀、或未闭合的 <think> 思维链块
   s=s.replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
+  const te=s.toLowerCase().lastIndexOf('</think>');
+  if(te>=0) s=s.slice(te+8).trim();
+  else s=s.replace(/<think>[\s\S]*$/i,'').trim();
   // 1. 剥离所有代码围栏（可能有多层或不成对）
   s=s.replace(/```(?:json|javascript|js)?\s*/gi,'').replace(/```/g,'').trim();
   // 2. 提取数组或对象片段（优先匹配 [{ 避免前置说明里的 [0,1] 等数学区间干扰）
   const arrStart=s.match(/\[\s*\{/);
   const a=arrStart ? arrStart.index : s.indexOf('['), b=s.lastIndexOf(']');
   const c=s.indexOf('{'), d=s.lastIndexOf('}');
-  if(a>=0 && b>a && (c<0 || a<c || arrStart)) s=s.slice(a,b+1);
-  else if(c>=0 && d>c) s='['+s.slice(c,d+1)+']'; // 单对象 → 包成数组
+  // 注意：若数组尾部被截断（缺外层 ]），而卡片内容含 $[a,b]$ 等区间，b 会小于 d；此时必须要求 b>d 才按 [a..b] 切，否则按 {c..d} 包成数组
+  if(a>=0 && b>a && b>d && (c<0 || a<c || arrStart)) s=s.slice(a,b+1);
+  else if(c>=0 && d>c) s='['+s.slice(c,d+1)+']'; // 单对象或外层缺 ] → 按首尾花括号包成数组
   else return [];
   const tryParse=(str)=>{ try{ const r=JSON.parse(str); return Array.isArray(r)?r:(r&&typeof r==='object'?[r]:null); }catch(_){ return null; } };
   // 3. LaTeX 反斜杠修复：既修复 \frac/\nabla 等多字母命令，也修复 \, \; \! \{ \} \| \_ 等非字母 LaTeX 转义
@@ -373,6 +400,12 @@ _parseConceptCards(raw, subj){ let s=String(raw||'').trim();
       if(ch==='{'){ if(depth===0)start=i; depth++; }
       else if(ch==='}'){ depth--; if(depth===0 && start>=0){ const frag=s.slice(start,i+1); const o=tryParse(fixBackslash(frag))||tryParse(fixTrailing(fixKeys(fixBackslash(frag))))||tryParse(frag); if(o)objs.push(...o); start=-1; } }
     }
+    if(objs.length)arr=objs;
+  }
+  // 6. 终极兜底：若前序片段因半截未闭合引号导致状态机错位，按 {"term":...} 模式逐块拯救卡片对象
+  if(!arr||!arr.length){
+    const objs=[]; const re=/\{\s*"?term"?\s*:[\s\S]*?\}(?=\s*(?:,\s*\{|\]|$))/g; let m;
+    while((m=re.exec(s))!==null){ const o=tryParse(fixBackslash(m[0]))||tryParse(fixTrailing(fixKeys(fixBackslash(m[0]))))||tryParse(m[0]); if(o)objs.push(...o); }
     if(objs.length)arr=objs;
   }
   if(!arr||!arr.length)return [];
@@ -400,7 +433,14 @@ _parseConceptCards(raw, subj){ let s=String(raw||'').trim();
         .replace(/(?<!\$)(\b[a-zA-Z][a-zA-Z0-9_]*\s*[><=≥≤≠]+\s*[0-9a-zA-Z]+)(?!\$)/g, '$$$1$$');
     }).join('');
   };
-  return arr.filter(x=>x&&typeof x==='object'&&(x.term||x.plain)).slice(0,8).map(x=>({ term:String(x.term||'').trim()||'知识点', formula:String(x.formula||'').trim(), plain:wrapMath(String(x.plain||'').trim()), example:wrapMath(String(x.example||'').trim()) })); },
+  const seenTerms=new Set();
+  return arr.filter(x=>{
+    if(!x||typeof x!=='object'||!(x.term||x.plain))return false;
+    const k=String(x.term||'').trim();
+    if(k && seenTerms.has(k))return false;
+    if(k)seenTerms.add(k);
+    return true;
+  }).slice(0,8).map(x=>({ term:String(x.term||'').trim()||'知识点', formula:String(x.formula||'').trim(), plain:wrapMath(String(x.plain||'').trim()), example:wrapMath(String(x.example||'').trim()) })); },
 toggleCard(i){ const f={ ...(this.aiX.flip||{}) }; f[i]=!f[i]; this.aiX.flip=f; },
 toggleAllCards(){ const cards=this.aiX.cards||[]; if(!cards.length)return; const allNow=cards.every((_,i)=>this.aiX.flip&&this.aiX.flip[i]); const f={}; if(!allNow){ cards.forEach((_,i)=>{ f[i]=true; }); } this.aiX.flip=f; },
 async aiExplain(kind, force){ const q=this.cur; if(!q)return;
@@ -468,33 +508,60 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
       truncated=false;
       const body={ ...ov, ...(isConcept?{kind:'concept'}:{}), question };
       contBase = cont>0 ? (isConcept?acc:(st.text||'')) : '';
-      if(cont>0){ if(kickoff)body.continue_kickoff=1; else body.continue_from=contBase.slice(-6000); }
+      const reasonBase = cont>0 ? (this.aiX[RK]||'') : '';
+      if(cont>0){
+        const pr=reasonBase.slice(-4000);
+        if(pr) body.prior_reasoning=pr;
+        if(kickoff) body.continue_kickoff=1; else body.continue_from=contBase.slice(-6000);
+      }
+      let roundRunaway=false;
       r=await this.aiFetch(body, ctrl.signal,
       (d)=>{
         // 思维链只写 aiX（内存），不写 st（aiStates 缓存），因此切题/刷新即消失，也不会被自动保存写库
         if(d.reasoning && showing()){ this.aiX[RK]=(this.aiX[RK]||'')+d.reasoning; }
-        if(d.reset && showing()){ this.aiX[RK]=''; }
+        if(d.reset && showing()){ this.aiX[RK]=reasonBase; }
         if(d.fallback && showing()){ this.flash('⚠ 模型 '+d.fallback+' 不可用，已降级到 '+(d.model||'备选模型')); }
         if(d.streamFallback && showing()){ this.flash('流式中断，已切换为一次性返回'); }
         // 跑飞被拦下：告诉用户为什么停了，否则会以为是网络断了
-        if(d.runawayStop && showing()){ truncated=false;   // 别再自动续写，续了还是会打转
+        if(d.runawayStop && showing()){ truncated=false; roundRunaway=true;   // 别再自动续写，续了还是会打转
           this.flash(d.runawayStop==='loop' ? '⚠ 模型开始重复输出，已自动停止（已生成的内容保留）'
                                             : '⚠ 输出过长已自动停止（已生成的内容保留）', true); }
         // 用量：累加各轮（含续写轮），让「谁吃掉了预算」变成可观测的数字而不是推测
         if(d.usage && showing()){ const u=d.usage; const a=this.aiX[UK]||{prompt:0,completion:0,reasoning:0,rounds:0};
           this.aiX[UK]={ prompt:(a.prompt||0)+(u.prompt||0), completion:(a.completion||0)+(u.completion||0),
             reasoning:(a.reasoning||0)+(u.reasoning||0), rounds:(a.rounds||0)+1 }; }
-        if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.text)acc=contBase+d.acc; }
-        else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.text){ st.text=contBase+d.acc; if(showing()&&this.aiX.view==='explain')this.aiX.text=st.text; } }
+        if(isConcept){ if(d.model){ st.cardsModel=d.model; if(showing())this.aiX.cardsModel=d.model; } if(d.resetText || d.text!==undefined)acc=contBase+(d.acc||''); }
+        else { if(d.model){ st.model=d.model; if(showing())this.aiX.model=d.model; } if(d.resetText || d.text!==undefined){ st.text=contBase+(d.acc||''); if(showing()&&this.aiX.view==='explain')this.aiX.text=st.text; } }
         // 正文开始输出 → 自动收起思维链（用户想看再点开）
         if(d.text && showing() && this.aiX.reasonOpen && (this.aiX[RK]||'').length) this.aiX.reasonOpen=false;
         // 被截断 → 记下来，退出流后自动续写（不再要求用户手动追问「请继续」）
-        if(d.finish_reason==='length') truncated=true;
+        if(d.finish_reason==='length' && !roundRunaway) truncated=true;
       });
       if(r.res && r.res.status===401)break;
       if(!r.ok)break;
       // 额度用完时绝不能续写 —— 续写就是再发一次请求，只会再失败一次
       if(this._isQuotaErr && this._isQuotaErr(r.errText||'' ))break;
+      if(r.truncated && !roundRunaway) truncated=true;
+      // 知识点卡片特殊保护：若流中途被截断在半个 JSON 字符串/对象里，先对齐到最后一个完整闭合的 '}'，防止下一轮拼接时引号反转
+      if(isConcept && typeof this._salvageConceptPartial==='function'){
+        if(!acc.trim() && (this.aiX[RK]||'').length && !roundRunaway) truncated=true;
+        else if(acc.trim()){
+          const sv=this._salvageConceptPartial(acc);
+          if(!sv.complete){
+            // 若是复读拦截但已生成至少 1 张完整卡片，保留已完成的卡片直接结束；若连 1 张都没闭合则置空走 kickoff 重取
+            if(roundRunaway){
+              acc = sv.count>0 ? (sv.clean+']') : '';
+              if(sv.count===0 && cont<MAX_CONT) truncated=true;
+            } else {
+              truncated=true;
+              acc = sv.count>0 ? sv.clean : '';
+              if(sv.count>=4 || (sv.count>=2 && cont>=1)){ acc=sv.clean+']'; truncated=false; }
+            }
+          }
+        }
+      } else if(!isConcept && !st.text && (this.aiX[RK]||'').length && !roundRunaway){
+        truncated=true;
+      }
       if(!truncated || cont>=MAX_CONT)break;
       // 正文一个字都没有 = 预算被思维链吃光，下一轮让它跳过思考直接给结论
       kickoff = isConcept ? !acc : !st.text;
@@ -509,6 +576,12 @@ async aiExplain(kind, force){ const q=this.cur; if(!q)return;
     if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
     if(isConcept){
       let cards=this._parseConceptCards(acc, q.subject);
+      if(!cards.length && (this.aiX[RK]||'').includes('"term"')) cards=this._parseConceptCards(this.aiX[RK], q.subject);
+      if(!cards.length && cont>=MAX_CONT && (this.aiX[RK]||'').length){
+        const u=this.aiX[UK];
+        const detail=u&&u.completion ? ('（本次用量：输出 '+u.completion+' token'+(u.reasoning?('，其中推理 '+u.reasoning):'')+'）') : '';
+        throw new Error(MAX_CONT+' 轮都只有推理、没有正文'+detail+'。可在「设置 → AI 解析」里把输出上限调大（如 16000）或换一个非推理模型再试');
+      }
       // 首次解析失败 → 自动重试一次（某些模型第一轮输出不稳定但第二轮能成功）
       if(!cards.length && !force && !this._conceptRetried){
         this._conceptRetried=true; if(showing())this.flash('卡片解析失败，自动重试中…');
@@ -622,20 +695,22 @@ async aiAsk(text){ const q=this.cur; if(!q||this.aiX.id!==q.id)return; if(!this.
       if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } }
         if(isCtxErr(msg) && trimLevel<2){ continue; } // 上下文超限 → 下一级 trim 重试
         throw new Error(msg); }
+      if(!entry.a && entry.r) askTruncated=true;
       // 追问同样自动续写：被 token 上限截断就接着写，不要求用户手动打「请继续」
       while(askTruncated && askCont<ASK_MAX_CONT && !ctrl.signal.aborted && !(this._isQuotaErr && this._isQuotaErr((entry.a)||''))){
         askCont++; askTruncated=false;
-        this.flash('回答较长，正在自动续写…（'+askCont+'/'+ASK_MAX_CONT+'）');
         const base=entry.a||'';
+        this.flash(base ? ('回答较长，正在自动续写…（'+askCont+'/'+ASK_MAX_CONT+'）') : ('只输出了推理、回答为空，正在直接索取回答…（'+askCont+'/'+ASK_MAX_CONT+'）'));
         const r2=await this.aiFetch({ ...ov, question:{ stem:q.stem, passage:q.passage, options:q.options, answer:q.answer, type:q.type, subject:q.subject },
           analysis:analysisCtx.slice(0,6000), history, ask:text, trim_level:trimLevel,
-          continue_from:base.slice(-6000) }, ctrl.signal,
+          ...(base ? { continue_from:base.slice(-6000) } : { continue_kickoff:1, prior_reasoning:(entry.r||'').slice(-4000) }) }, ctrl.signal,
           (d)=>{
             if(d.reasoning)entry.r=(entry.r||'')+d.reasoning;
             if(d.text)entry.a=base+d.acc;
             if(d.finish_reason==='length')askTruncated=true;
           });
         if(!r2 || !r2.ok)break;
+        if(!entry.a && entry.r) askTruncated=true;
       }
       if(!entry.a){ entry.a='_（模型没有返回内容）_'; }
       done=true;

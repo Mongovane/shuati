@@ -38,7 +38,7 @@ const ReaderMixin = {
       const mat=this.currentPageMat; if(!mat)return;
       if(this._rdCtrl){ try{ this._rdCtrl.abort(); }catch(_){} }
       const ctrl=new AbortController(); this._rdCtrl=ctrl;
-      const entry={ q, a:'' }; this.rdAi.chat.push(entry); this.rdAi.asking=true; this.rdAi.input='';
+      this.rdAi.chat.push({ q, a:'', r:'' }); const entry=this.rdAi.chat[this.rdAi.chat.length-1]; this.rdAi.asking=true; this.rdAi.input='';
       this._scrollRaiList('rdAiList');
       const history=[]; for(const c of this.rdAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
       try{
@@ -49,15 +49,17 @@ const ReaderMixin = {
           question:{ stem:this.rdAi.quote||'（未选段，就整页材料提问）', passage:String(this.cleanPageMd(mat.content_md)||'').slice(0,4000), type:'short_answer', subject:mat.subject },
           analysis:'', history, ask:q };
         let r=await this.aiFetch(body, ctrl.signal,
-          (d)=>{ if(d.reset)entry.a=''; if(d.text){ entry.a=d.acc; this._scrollRaiList('rdAiList'); }
+          (d)=>{ if(d.reset){ entry.a=''; entry.r=''; } if(d.reasoning)entry.r=(entry.r||'')+d.reasoning; if(d.text){ entry.a=d.acc; this._scrollRaiList('rdAiList'); }
                  if(d.finish_reason==='length')cut=true;
                  if(d.runawayStop){ cut=false; this.flash(d.runawayStop==='loop'?'⚠ 模型开始重复输出，已自动停止':'⚠ 输出过长已自动停止', true); } });
+        if(!entry.a && entry.r) cut=true;
         while(r && r.ok && cut && cont<MAXC && !ctrl.signal.aborted){
           cont++; cut=false; const base=entry.a||'';
-          r=await this.aiFetch({ ...body, continue_from:base.slice(-6000) }, ctrl.signal,
-            (d)=>{ if(d.text){ entry.a=base+d.acc; this._scrollRaiList('rdAiList'); }
+          r=await this.aiFetch({ ...body, ...(base ? { continue_from:base.slice(-6000) } : { continue_kickoff:1, prior_reasoning:(entry.r||'').slice(-4000) }) }, ctrl.signal,
+            (d)=>{ if(d.reasoning)entry.r=(entry.r||'')+d.reasoning; if(d.text){ entry.a=base+d.acc; this._scrollRaiList('rdAiList'); }
                    if(d.finish_reason==='length')cut=true;
                  if(d.runawayStop){ cut=false; this.flash(d.runawayStop==='loop'?'⚠ 模型开始重复输出，已自动停止':'⚠ 输出过长已自动停止', true); } });
+          if(!entry.a && entry.r) cut=true;
         }
         if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.readerClose(); this.go('settings'); throw new Error('访问码无效'); }
         if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }

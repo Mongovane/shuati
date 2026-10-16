@@ -62,7 +62,9 @@ export async function onRequestPost({ request, env }) {
   }
   const data = await resp.json().catch(() => null);
   const choice = data?.choices?.[0];
-  let text = String(choice?.message?.content || '').trim();
+  let text = String(choice?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const te = text.toLowerCase().lastIndexOf('</think>');
+  if (te >= 0) text = text.slice(te + 8).trim();
   text = text.replace(/^```(?:markdown|md)?\s*/i, '').replace(/\s*```$/, '').trim();
   return json({ text, model, finish: choice?.finish_reason || '' });
 }

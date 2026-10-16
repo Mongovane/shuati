@@ -323,7 +323,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         const ctrl = new AbortController();
         const onAbort = ()=>{ try{ ctrl.abort(); }catch(_){} };
         if(signal){ if(signal.aborted)onAbort(); else signal.addEventListener('abort', onAbort, {once:true}); }
-        let watchdog = useStream ? setTimeout(onAbort, 25000) : null;
+        let watchdog = useStream ? setTimeout(onAbort, 45000) : null;
         let res;
         try{
           res = await fetch('/api/explain', { method:'POST', signal:ctrl.signal,
@@ -345,12 +345,13 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
         if(headerFallback && onDelta) onDelta({fallback:headerFallback});
         const ct = res.headers.get('content-type')||'';
         if(useStream && ct.includes('text/event-stream') && res.body){
-          let acc='', thinkMode=0, thinkTagBuf='', thinkSent=0; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+          let acc='', rAcc='', thinkMode=0, thinkTagBuf='', thinkSent=0, sawFinish=false; this._thinkBuf=undefined; this._hasReasonField=false; const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
           try{
-            let lastGuard=0, stopped=false;
+            let lastGuard=0, lastReasonGuard=0, stopped=false, reasonCut=false;
             const LOOP_MAX_CHARS=400000;   // 最后一道闸：40 万字，正常解析远达不到
-            while(true){ const {done,value}=await reader.read(); if(done)break;
-              buf+=dec.decode(value,{stream:true});
+            while(true){ const {done,value}=await reader.read();
+              if(value) buf+=dec.decode(value,{stream:!done});
+              if(done && buf.trim()) buf+='\n';
               let i; while((i=buf.indexOf('\n'))>=0){ const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
                 if(!line.startsWith('data:'))continue; const p=line.slice(5).trim();
                 if(!p||p==='[DONE]')continue; let j=null; try{ j=JSON.parse(p); }catch(_){ continue; }
@@ -368,15 +369,15 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                   } }); }
                 const dt=j.choices&&j.choices[0]&&j.choices[0].delta;
                 const fr=j.choices&&j.choices[0]&&j.choices[0].finish_reason;
-                if(fr && onDelta) onDelta({finish_reason:fr});
+                if(fr){ sawFinish=true; if(onDelta) onDelta({finish_reason:fr}); }
                 // 推理模型思维链——兼容多种格式：
                 // DeepSeek-R1: delta.reasoning_content
                 // Grok/部分中转站: delta.reasoning
                 // QwQ/某些适配层: delta.thinking 或 delta.think
                 const rt=dt&&(dt.reasoning_content||dt.reasoning||dt.thinking||dt.think);
-                if(rt){ this._hasReasonField=true; thinkMode=2; if(onDelta) onDelta({reasoning:rt}); }
+                if(rt){ this._hasReasonField=true; thinkMode=2; rAcc+=rt; if(onDelta) onDelta({reasoning:rt}); }
                 const t=dt&&dt.content;
-                // <think> tag parsing: 支持跨 chunk 拆分的 <think> 与 </think>，且绝不在 </think> 时重复发射整段思维链
+                // <think> tag parsing: 支持跨 chunk 拆分的 <think> 与 </think>、服务端预置 <think> 仅输出 </think>，且绝不重复发射
                 if(t && !rt && !this._hasReasonField){
                   let chunk=t;
                   if(thinkMode===0 && !acc){
@@ -392,7 +393,7 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                     const end=this._thinkBuf.indexOf('</think>');
                     if(end>=0){
                       const rDelta=this._thinkBuf.slice(thinkSent, end);
-                      if(rDelta && onDelta) onDelta({reasoning:rDelta});
+                      if(rDelta){ rAcc+=rDelta; if(onDelta) onDelta({reasoning:rDelta}); }
                       const after=this._thinkBuf.slice(end+8).replace(/^\s+/,'');
                       this._thinkBuf=undefined; thinkMode=2;
                       if(after){ acc+=after; if(onDelta)onDelta({text:after, acc}); }
@@ -400,12 +401,30 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                       const safeEnd=Math.max(thinkSent, this._thinkBuf.length-7);
                       if(safeEnd>thinkSent){
                         const rDelta=this._thinkBuf.slice(thinkSent, safeEnd);
-                        thinkSent=safeEnd;
+                        thinkSent=safeEnd; rAcc+=rDelta;
                         if(onDelta) onDelta({reasoning:rDelta});
                       }
                     }
-                  } else if(thinkMode===2 && chunk){ acc+=chunk; if(onDelta)onDelta({text:chunk, acc}); }
+                  } else if(thinkMode===2 && chunk){
+                    acc+=chunk;
+                    // 兼容部分中转站模板预置了 <think>，流里直接吐思考文本并以 </think> 结束的情况
+                    const te=acc.indexOf('</think>');
+                    if(te>=0){
+                      const rPart=acc.slice(0,te);
+                      if(rPart){ rAcc+=rPart; if(onDelta)onDelta({reasoning:rPart}); }
+                      acc=acc.slice(te+8).replace(/^\s+/,'');
+                      if(onDelta)onDelta({resetText:true, text:acc, acc});
+                    } else if(onDelta){ onDelta({text:chunk, acc}); }
+                  }
                 } else if(t){ acc+=t; if(onDelta)onDelta({text:t, acc}); }
+                // 思维链复读防护：若模型在思考链里陷入死循环重复，主动截断并通知上层走 continue_kickoff 直接索取结果
+                if(!acc && rAcc.length - lastReasonGuard >= 600){
+                  lastReasonGuard=rAcc.length;
+                  if(rAcc.length > LOOP_MAX_CHARS || this._isLooping(rAcc)){
+                    if(onDelta)onDelta({finish_reason:'length'});
+                    reasonCut=true; stopped=true;
+                  }
+                }
                 // 跑飞防护：每多出 ~400 字查一次复读；命中就停下并保留已生成内容。
                 // 不 throw —— 已经写出来的部分通常有用，只是尾巴在打转。
                 if(acc.length - lastGuard >= 400){
@@ -413,13 +432,20 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
                   if(acc.length > LOOP_MAX_CHARS){ if(onDelta)onDelta({runawayStop:'length'}); stopped=true; }
                   else if(this._isLooping(acc)){ if(onDelta)onDelta({runawayStop:'loop'}); stopped=true; }
                 }
-                } if(stopped)break; }
+                } if(stopped || done)break; }
             if(thinkMode===0 && thinkTagBuf){ acc+=thinkTagBuf; if(onDelta)onDelta({text:thinkTagBuf, acc}); thinkTagBuf=''; }
-            else if(thinkMode===1 && typeof this._thinkBuf==='string' && this._thinkBuf.length>thinkSent){ const rDelta=this._thinkBuf.slice(thinkSent); thinkSent=this._thinkBuf.length; if(rDelta&&onDelta)onDelta({reasoning:rDelta}); }
+            else if(thinkMode===1 && typeof this._thinkBuf==='string' && this._thinkBuf.length>thinkSent){ const rDelta=this._thinkBuf.slice(thinkSent); thinkSent=this._thinkBuf.length; rAcc+=rDelta; if(rDelta&&onDelta)onDelta({reasoning:rDelta}); }
+            if(reasonCut){ try{ await reader.cancel(); }catch(_){} return { res, text:acc, ok:true, truncated:true }; }
             if(stopped){ try{ await reader.cancel(); }catch(_){} return { res, text:acc, ok:true, runaway:true }; }
+            if(!sawFinish && rAcc && !acc){ if(onDelta)onDelta({finish_reason:'length'}); return { res, text:acc, ok:true, truncated:true }; }
             return { res, text:acc, ok:true };
           }catch(e){
             if(signal && signal.aborted) throw e;
+            // 若已经流式收到了一部分推理或正文后连接才断开，不要清空重走慢速非流式，直接标为截断交给上层流式续写
+            if((acc || rAcc) && isNet(e)){
+              if(onDelta) onDelta({finish_reason:'length'});
+              return { res, text:acc, ok:true, truncated:true };
+            }
             if(onDelta) onDelta({reset:true, streamFallback:true});
             return attempt(false, tries);
           }
@@ -432,9 +458,14 @@ bookReadPct(b){ try{ let i; if(this.currentBookId===b.key){ i=this.bookIdx; } el
           if(txt && !rTxt){
             const tm = txt.match(/^\s*<think>([\s\S]*?)<\/think>\s*/i);
             if(tm){ rTxt = tm[1].trim(); txt = txt.slice(tm[0].length); }
+            else {
+              const te = txt.indexOf('</think>');
+              if(te>=0){ rTxt = txt.slice(0,te).replace(/^\s*<think>/i,'').trim(); txt = txt.slice(te+8).trim(); }
+            }
           }
           if(d && d.model && onDelta) onDelta({model:d.model});
           if(rTxt && onDelta) onDelta({reasoning:rTxt});
+          if(d && d.finish_reason && onDelta) onDelta({finish_reason:d.finish_reason});
           if(d && d.usage && onDelta){ const u=d.usage;
             const det=u.completion_tokens_details||u.output_tokens_details||{};
             onDelta({ usage:{

@@ -34,18 +34,53 @@ const SYS = [
   '8) items 必须与输入的题一一对应，id 原样回填，不要增删、不要改写 id。',
 ].join('\n');
 
+function fixJsonLatex(str) {
+  return String(str || '').replace(/\\\\|\\"|\\\/|\\u[0-9a-fA-F]{4}|\\([a-zA-Z]{2,}|[^"\\/bfnrtu])/g, (m, g) => (g ? '\\\\' + g : m));
+}
+
 function safeParseItems(text) {
   if (!text) return [];
-  let t = String(text).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  let obj = null;
-  try { obj = JSON.parse(t); } catch {
+  let t = String(text).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const te = t.toLowerCase().lastIndexOf('</think>');
+  if (te >= 0) t = t.slice(te + 8).trim();
+  else t = t.replace(/<think>[\s\S]*$/i, '').trim();
+  t = t.replace(/```(?:json|javascript|js)?\s*/gi, '').replace(/```/g, '').trim();
+  if (!t) return [];
+  const tryObj = (s) => {
+    try { return JSON.parse(s); } catch {
+      try { return JSON.parse(fixJsonLatex(s)); } catch { return null; }
+    }
+  };
+  let obj = tryObj(t);
+  if (!obj) {
     const m = t.match(/[[{][\s\S]*[\]}]/);
-    if (!m) return [];
-    try { obj = JSON.parse(m[0]); } catch { return []; }
+    if (m) obj = tryObj(m[0]);
   }
   if (Array.isArray(obj)) return obj;
   const arr = obj && (obj.items || obj.answers || obj.data || obj.questions);
-  return Array.isArray(arr) ? arr : [];
+  if (Array.isArray(arr)) return arr;
+  // 若尾部因推理过长被截断导致外层 JSON 未闭合，逐个抢救已闭合的条目对象 {"id":...}
+  const rescued = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  const itemsIdx = t.indexOf('[');
+  const scan = itemsIdx >= 0 ? t.slice(itemsIdx) : t;
+  for (let i = 0; i < scan.length; i++) {
+    const ch = scan[i];
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '{') { if (depth === 0) start = i; depth++; }
+    else if (ch === '}') {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          const item = tryObj(scan.slice(start, i + 1));
+          if (item && typeof item === 'object' && item.id) rescued.push(item);
+          start = -1;
+        }
+      }
+    }
+  }
+  return rescued;
 }
 
 export async function onRequestPost({ request, env }) {
@@ -146,8 +181,35 @@ export async function onRequestPost({ request, env }) {
     return json({ error: `AI 中转站返回 ${resp.status}`, detail: t.slice(0, 400) }, 502);
   }
   const data = await resp.json().catch(() => null);
-  const out = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
-  const parsed = safeParseItems(out);
+  const msg0 = (data && data.choices && data.choices[0] && data.choices[0].message) || {};
+  let out = msg0.content || '';
+  let parsed = safeParseItems(out);
+  const rContent = msg0.reasoning_content || msg0.reasoning || msg0.thinking || '';
+  // 若推理模型把预算全花在思维链上导致正文为空或被截断未产出完整条目，带上已完成思考补发一轮直接索取 JSON
+  if (!parsed.length && rContent) {
+    try {
+      const resp2 = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+        signal: request.signal,
+        body: JSON.stringify({
+          model, temperature: 0.1,
+          ...(ovMax > 0 ? { max_tokens: Math.min(200000, Math.max(256, ovMax)) } : {}),
+          messages: [
+            { role: 'system', content: SYS },
+            { role: 'user', content: `请为下面 ${qs.length} 道题补出参考答案：\n\n${blocks.join('\n\n')}` },
+            { role: 'assistant', content: '【已完成思考过程】\n' + String(rContent).slice(-4000) },
+            { role: 'user', content: '不要再展开思考过程了，请直接输出最终的 JSON 对象 {"items":[...]}，不要任何额外解释或代码块围栏。' },
+          ],
+        }),
+      });
+      if (resp2 && resp2.ok) {
+        const d2 = await resp2.json().catch(() => null);
+        out = (d2 && d2.choices && d2.choices[0] && d2.choices[0].message && d2.choices[0].message.content) || out;
+        parsed = safeParseItems(out);
+      }
+    } catch (_) {}
+  }
   if (!parsed.length) {
     return json({ error: 'AI 未返回可用的答案（可换更强的模型）', raw: String(out).slice(0, 600) }, 422);
   }

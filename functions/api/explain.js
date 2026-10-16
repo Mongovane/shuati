@@ -72,6 +72,7 @@ export async function onRequestPost({ request, env }) {
     userText = seg.join('\n\n') || '（见下方图片/材料）';
   } else {
     userText = parts.join('\n\n');
+    if (concept) userText += '\n\n（注意：思考过程请只列知识点的提纲关键词，切勿在思考过程中预写完整卡片正文或 JSON，把输出额度留给最终的 JSON 数组）';
   }
   const firstUser = pageImage
     ? { role: 'user', content: [ { type: 'text', text: (userText || '（请阅读下图这一页教材内容）') }, { type: 'image_url', image_url: { url: pageImage } } ] }
@@ -82,21 +83,31 @@ export async function onRequestPost({ request, env }) {
   // reasoning_content 上，一个正文字都没吐出来就 finish_reason=length。
   // 以前这种情况客户端直接报「模型没有返回内容」并把整段思维链丢掉。
   const contFrom = String(b.continue_from || '').slice(-6000);
+  const priorReasoning = String(b.prior_reasoning || '').trim().slice(-4000);
   if (!ask && contFrom) {
     messages.push({ role: 'assistant', content: contFrom });
-    messages.push({ role: 'user', content: '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头，直接从断掉的地方续上。' });
+    messages.push({ role: 'user', content: concept
+      ? '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头，直接接着输出剩余的 JSON 卡片对象并以 ] 闭合数组（不要展开思考过程，不要代码块围栏）。'
+      : '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头，直接从断掉的地方续上。' });
   } else if (!ask && b.continue_kickoff) {
-    // 思考占满预算、正文还是空的：让它跳过再思考，直接给结论
-    messages.push({ role: 'user', content: '不要再展开思考过程了，请直接开始输出解析正文。' });
+    // 思考占满预算、正文还是空的：把上一轮已完成的推理摘要回填为 assistant 上下文（同时保证 user/assistant 角色严格交替，防中转站报 400），让模型跳过重想直接给结果
+    messages.push({ role: 'assistant', content: '【已完成思考过程】\n' + (priorReasoning || '（已完成本题考点与解题思路分析）') });
+    messages.push({ role: 'user', content: concept
+      ? '不要再展开思考过程了，请基于上述分析直接输出最终的知识点卡片 JSON 数组（格式：[{"term":"...","formula":"...","plain":"...","example":"..."}]），不要任何额外文字或代码块围栏。'
+      : '不要再展开思考过程了，请直接开始输出解析正文。' });
   }
   if (ask) {
     if (priorAnalysis) messages.push({ role: 'assistant', content: priorAnalysis }); // 已生成的解析作为上一轮回答
+    else if (!history.length || history[0].role === 'user') messages.push({ role: 'assistant', content: '（已阅读上述材料与内容，请提问）' });
     messages.push(...history);                                                        // 之前的追问轮次
     messages.push({ role: 'user', content: ask });                                    // 本次追问
-    // 追问的回答也会被 token 上限截断，同样要能续写
+    // 追问的回答也会被 token 上限截断，同样要能续写（含思考占满预算时的 kickoff）
     if (contFrom) {
       messages.push({ role: 'assistant', content: contFrom });
       messages.push({ role: 'user', content: '接着上面的内容继续写完，不要重复已经写过的部分，不要重新开头。' });
+    } else if (b.continue_kickoff) {
+      messages.push({ role: 'assistant', content: '【已完成思考过程】\n' + (priorReasoning || '（已完成问题分析）') });
+      messages.push({ role: 'user', content: '不要再展开思考过程了，请直接开始输出回答正文。' });
     }
   }
   // 用户覆盖的输出上限：太小会导致推理模型永远写不到正文，太大会被上游拒绝，
@@ -177,10 +188,11 @@ const isQuota = (t) => /quota|insufficient|balance|欠费|余额|额度|配额|b
         return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
       }
       const d = await up2.json();
-      const m2 = (d.choices && d.choices[0] && d.choices[0].message) || {};
+      const c2 = (d.choices && d.choices[0]) || {};
+      const m2 = c2.message || {};
       const text = m2.content || '';
       const reasoning = m2.reasoning_content || m2.reasoning || m2.thinking || m2.think || '';
-      return json({ text, ...(reasoning ? { reasoning } : {}), model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
+      return json({ text, ...(reasoning ? { reasoning } : {}), ...(c2.finish_reason ? { finish_reason: c2.finish_reason } : {}), model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
     }
     const up = await call(false);
     if (!up.ok) {
@@ -189,10 +201,11 @@ const isQuota = (t) => /quota|insufficient|balance|欠费|余额|额度|配额|b
       return json({ error: 'AI 中转站错误：' + msg, quota: isQuota(msg) }, isQuota(msg) ? 402 : 502);
     }
     const d = await up.json();
-    const m1 = (d.choices && d.choices[0] && d.choices[0].message) || {};
+    const c1 = (d.choices && d.choices[0]) || {};
+    const m1 = c1.message || {};
     const text = m1.content || '';
     const reasoning = m1.reasoning_content || m1.reasoning || m1.thinking || m1.think || '';
-    return json({ text, ...(reasoning ? { reasoning } : {}), model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
+    return json({ text, ...(reasoning ? { reasoning } : {}), ...(c1.finish_reason ? { finish_reason: c1.finish_reason } : {}), model: (d && d.model) || payload.model, usage: (d && d.usage) || null });
   } catch (e) {
     if (e && e.name === 'AbortError') return json({ error: '已取消' }, 499);
     return json({ error: '连接 AI 中转站失败：' + e.message }, 502);

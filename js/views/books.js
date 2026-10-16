@@ -226,7 +226,7 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
     if(!pageText){ pageText=await this.pdfvPageText(pageNo); this.pdfAi._cacheP=pageNo; this.pdfAi._cacheT=pageText; }
     if(this._pdfAiCtrl){ try{ this._pdfAiCtrl.abort(); }catch(_){} }
     const ctrl=new AbortController(); this._pdfAiCtrl=ctrl;
-    const entry={ q, a:'', page:pageNo }; this.pdfAi.chat.push(entry); this.pdfAi.asking=true; this.pdfAi.input='';
+    this.pdfAi.chat.push({ q, a:'', r:'', page:pageNo }); const entry=this.pdfAi.chat[this.pdfAi.chat.length-1]; this.pdfAi.asking=true; this.pdfAi.input='';
     this._scrollRaiList('pdfAiList');
     const history=[]; for(const c of this.pdfAi.chat.slice(0,-1)){ history.push({role:'user',content:c.q}); if(c.a&&!c.err)history.push({role:'assistant',content:c.a}); }
     try{
@@ -246,15 +246,17 @@ async pdfAiSend(){ const q=(this.pdfAi.input||'').trim(); if(!q||this.pdfAi.aski
       }
       // 被 token 上限截断时自动续写（以前连 finish_reason 都没接，直接留半截话）
       let cut=false, cont=0; const MAXC=2;
-      let r=await this.aiFetch(reqBody, ctrl.signal, (d)=>{ if(d.reset)entry.a=''; if(d.text){ entry.a=d.acc; this._scrollRaiList('pdfAiList'); }
+      let r=await this.aiFetch(reqBody, ctrl.signal, (d)=>{ if(d.reset){ entry.a=''; entry.r=''; } if(d.reasoning)entry.r=(entry.r||'')+d.reasoning; if(d.text){ entry.a=d.acc; this._scrollRaiList('pdfAiList'); }
         if(d.finish_reason==='length')cut=true;
                  if(d.runawayStop){ cut=false; this.flash(d.runawayStop==='loop'?'⚠ 模型开始重复输出，已自动停止':'⚠ 输出过长已自动停止', true); } });
+      if(!entry.a && entry.r) cut=true;
       while(r && r.ok && cut && cont<MAXC && !ctrl.signal.aborted){
         cont++; cut=false; const base=entry.a||'';
-        r=await this.aiFetch({ ...reqBody, continue_from:base.slice(-6000) }, ctrl.signal,
-          (d)=>{ if(d.text){ entry.a=base+d.acc; this._scrollRaiList('pdfAiList'); }
+        r=await this.aiFetch({ ...reqBody, ...(base ? { continue_from:base.slice(-6000) } : { continue_kickoff:1, prior_reasoning:(entry.r||'').slice(-4000) }) }, ctrl.signal,
+          (d)=>{ if(d.reasoning)entry.r=(entry.r||'')+d.reasoning; if(d.text){ entry.a=base+d.acc; this._scrollRaiList('pdfAiList'); }
                  if(d.finish_reason==='length')cut=true;
                  if(d.runawayStop){ cut=false; this.flash(d.runawayStop==='loop'?'⚠ 模型开始重复输出，已自动停止':'⚠ 输出过长已自动停止', true); } });
+        if(!entry.a && entry.r) cut=true;
       }
       if(r.res && r.res.status===401){ this.token=''; localStorage.removeItem('zb_token'); this.pdfvClose(); this.go('settings'); throw new Error('访问码无效'); }
       if(!r.ok){ let msg=r.errText||''; if(!msg){ try{ const d=await r.res.json(); msg=(d&&d.error)||('HTTP '+r.res.status); }catch(_){ msg='HTTP '+(r.res?r.res.status:'?'); } } throw new Error(msg); }
