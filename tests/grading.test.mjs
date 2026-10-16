@@ -204,3 +204,39 @@ describe('参考解析提取（baseAnalysis）与刷题快捷模式（studyMode 
     QC.methods.reset.call(ctx);
     expect(ctx.zoomImg).toBe('');
   });
+
+  it('v189: 客观题点击「蒙对？加复习」后 finalCorrect 为 false，再次点击取消时携带 restoreAuto 恢复原状态', () => {
+    const q = { id: 'q1', type: 'single_choice', answer: ['A'] };
+    const ctx = cardCtx(QC, q, { sel: ['A'], selfGrade: null, self: null, t0: Date.now() - 1500 });
+    const emits = [];
+    ctx.$emit = (ev, payload) => emits.push([ev, payload]);
+    ctx._flashAns = () => {};
+    ctx.elapsedMs = QC.methods.elapsedMs.bind(ctx);
+    expect(fc(ctx)).toBe(true);
+
+    // 第一次点「蒙对？加复习」-> selfGrade='again'，finalCorrect 变为 false
+    QC.methods.grade4.call(ctx, 'again');
+    expect(ctx.selfGrade).toBe('again');
+    expect(fc(ctx)).toBe(false);
+    expect(emits[0][1]).toMatchObject({ id: 'q1', correct: false, grade: 'again' });
+
+    // 第二次点「已加复习 ✓」取消 -> 恢复 selfGrade=null，且携带 restoreAuto: true
+    QC.methods.grade4.call(ctx, 'again');
+    expect(ctx.selfGrade).toBeNull();
+    expect(fc(ctx)).toBe(true);
+    expect(emits[1][1]).toMatchObject({ id: 'q1', cancel: true, restoreAuto: true });
+  });
+
+  it('v189: snapState 与 restoreState 保存并恢复 t0 种子，确保开启选项乱序后返回上一题选项顺序不跳变', () => {
+    const opts = [{ key: 'A', text: '1' }, { key: 'B', text: '2' }, { key: 'C', text: '3' }, { key: 'D', text: '4' }];
+    const ctx1 = { q: { id: 'q9', options: opts }, shuffleOpts: true, mode: 'practice', sel: ['B'], blanks: '', blanksArr: [], text: '', self: null, selfGrade: null, localRevealed: true, t0: 1712345678, blankCount: 1 };
+    const order1 = QC.computed.displayOptions.call(ctx1).map((o) => o.key);
+    const snap = QC.methods.snapState.call(ctx1);
+    expect(snap.t0).toBe(1712345678);
+
+    const ctx2 = { q: { id: 'q9', options: opts }, shuffleOpts: true, mode: 'practice', sel: [], blanks: '', blanksArr: [], text: '', self: null, selfGrade: null, localRevealed: false, t0: 9999999999, blankCount: 1 };
+    QC.methods.restoreState.call(ctx2, snap);
+    expect(ctx2.t0).toBe(1712345678);
+    const order2 = QC.computed.displayOptions.call(ctx2).map((o) => o.key);
+    expect(order2).toEqual(order1);
+  });

@@ -26,7 +26,7 @@
   --c-kw:#C792EA; --c-str:#7FD89B; --c-num:#E0A06A; --c-com:#6B7686; --c-fn:#8AA0FF; --c-ty:#5CC9D8;
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;overscroll-behavior-y:none;overflow-x:hidden;max-width:100%}
+html,body{margin:0;padding:0;overflow-x:clip;max-width:100%}
 html{background:var(--bg);touch-action:manipulation}
 body{background:var(--bg);min-height:100vh;color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.6}
 button{font-family:inherit;cursor:pointer}
@@ -593,7 +593,7 @@ a{color:var(--accent)}
 
 @media (max-width:640px){
   /* 全局：防止任何超宽子元素撑出视口产生横向滚动条 */
-  body,#app{overflow-x:hidden}
+  body,#app{overflow-x:clip}
   /* 顶栏标题超长省略 */
   .topbar .brand{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
   /* 阅读器/PDF 顶栏标题省略 */
@@ -1547,7 +1547,7 @@ h2{margin:.2em 0 .6em}
 
 /* ===================== v188：深度交互体验与高频刷题痛点优化 ===================== */
 /* 简答题默认紧凑自适应输入框：不打字时只占单行高度，避免霸占手机首屏 */
-textarea.sa-ta{min-height:54px;height:54px;padding:12px 14px;resize:vertical;transition:border-color .15s}
+textarea.sa-ta{min-height:46px;height:46px;padding:11px 14px;resize:none;overflow-y:hidden;transition:border-color .15s}
 /* SRS 四档自评按钮内嵌下次复习间隔预览（Anki 式直观间隔） */
 .selfgrade .sg .sg-iv{font-style:normal;font-size:11px;font-weight:500;opacity:.75;margin-left:3px;font-variant-numeric:tabular-nums}
 /* 客观题「蒙对？加复习」快捷回炉按钮 */
@@ -1570,4 +1570,4 @@ textarea.sa-ta{min-height:54px;height:54px;padding:12px 14px;resize:vertical;tra
 .scratch-swatch.on{border-color:var(--surface);box-shadow:0 0 0 2px var(--accent);transform:scale(1.12)}
 .scratch-cv{display:block;width:100%;height:210px;touch-action:none;cursor:crosshair;background-color:#FCFDF9;background-image:radial-gradient(rgba(0,0,0,.09) 1px, transparent 0);background-size:18px 18px}
 [data-theme=dark] .scratch-cv{background-color:#181D27;background-image:radial-gradient(rgba(255,255,255,.08) 1px, transparent 0)}
-@media(max-width:560px){ .scratch-cv{height:185px} }
+@media(max-width:560px){ .scratch-cv{height:185px} .stem img,.passage img,.ref img{max-height:175px;margin:6px auto} .q-head{gap:6px;margin-bottom:10px} .q-head .chip{padding:2px 8px;font-size:11.5px} textarea.sa-ta{min-height:46px;height:46px;padding:10px 12px;font-size:14px} .q-actions{margin-top:12px} }
