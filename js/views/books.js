@@ -284,7 +284,10 @@ pdfvTouchStart(e){ const t=e.touches&&e.touches[0]; this._pdfvTx=t?t.clientX:0; 
   if(e.touches&&e.touches.length===2){ const a=e.touches[0],b=e.touches[1];
     this._pinch0=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY); this._pinchScale0=this.pdfv.scale; this._pinching=true; } },
 pdfvTouchMove(e){
-  if(!this._pinching && (Number(this.pdfv.scale)||1)<=1.05 && this.pdfv.mode==='page'){ if(e.cancelable)e.preventDefault(); }
+  if(!this._pinching && (Number(this.pdfv.scale)||1)<=1.05 && this.pdfv.mode==='page' && e.touches && e.touches.length===1){
+    const dx=Math.abs(e.touches[0].clientX-(this._pdfvTx||0)), dy=Math.abs(e.touches[0].clientY-(this._pdfvTy||0));
+    if(dx>10 && dx>dy*1.2 && e.cancelable) e.preventDefault();
+  }
   if(this._pinching && e.touches && e.touches.length===2){ e.preventDefault();
   const a=e.touches[0],b=e.touches[1]; const d=Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY);
   if(this._pinch0>0){ const raw=this._pinchScale0*(d/this._pinch0); this._pinchPreview=Math.min(3,Math.max(0.5,raw));

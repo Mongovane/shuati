@@ -97,6 +97,8 @@ const QuestionCard={
     cleanSource(){
       const s=String((this.q&&this.q.source)||'').split(' · ')[0].trim();
       if(!s || s.length>28 || /\$|\\/.test(s)) return '';
+      const subj = (this.subjMap && this.q && this.subjMap[this.q.subject]) || (this.q && this.q.subject) || '';
+      if(s === subj && this.q && this.q.page) return '';
       return s;
     },
     srsLabels(){
@@ -158,7 +160,7 @@ const QuestionCard={
       }
       return false;
     },
-    finalCorrect(){ if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
+    finalCorrect(){ if(this.selfGrade==='again')return false; if(AUTO.includes(this.q.type))return this.autoCorrect; if(this.q.type==='fill_blank')return this.self!=null?this.self:this.autoCorrect; return this.self===true; },
     graded(){ if(AUTO.includes(this.q.type))return true; return this.self!=null; },
   },
   mounted(){ this.reset(); if(this.initState){ this.restoreState(this.initState); }
@@ -228,8 +230,9 @@ const QuestionCard={
     isTextFormula(f){ return !!String(f||'').trim() && !/\$/.test(f); },
     reset(){ this.sel=[]; this.blanks=''; this.blanksArr=Array.from({length:this.blankCount},()=>''); this.text=''; this.localRevealed=false; this.self=null; this.selfGrade=null; this.t0=Date.now(); this.showNote=false; this.noteDraft=this.q.note||''; this.passageOpen=false; this.stickBottom=true; this.chatReasonOpen={}; this.zoomImg=''; if(this.segMode){ this.segMode=false; this.segCount=0; } },
     // —— 作答状态快照 / 恢复（模考断点续考用；由父组件通过 $refs 调用）——
-    snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed }; },
+    snapState(){ return { sel:this.sel.slice(), blanks:this.blanks, blanksArr:this.blanksArr.slice(), text:this.text, self:this.self, selfGrade:this.selfGrade, revealed:this.localRevealed, t0:this.t0 }; },
     restoreState(s){ if(!s||typeof s!=='object')return;
+      if(Number.isFinite(s.t0) && s.t0>0) this.t0=s.t0;
       this.sel=Array.isArray(s.sel)?s.sel.slice():[];
       this.blanks=typeof s.blanks==='string'?s.blanks:'';
       if(Array.isArray(s.blanksArr)){ const a=Array.from({length:this.blankCount},(_,i)=>String(s.blanksArr[i]||'')); this.blanksArr=a; }
@@ -251,8 +254,13 @@ const QuestionCard={
       }
       if(this.q.type==='fill_blank'&&this.autoCorrect){ this.self=true; this.selfGrade='good'; this.$emit('answered',{id:this.q.id,correct:true,grade:'good',ms}); } },
     grade4(g){ if(!['again','hard','good','easy'].includes(g))return;
-      // 再次点击同一档 → 取消自评，通知父组件清除本题作答记录
-      if(this.selfGrade===g){ this.selfGrade=null; this.self=null; this.$emit('answered',{id:this.q.id,cancel:true}); return; }
+      // 再次点击同一档 → 取消自评；若为客观题则恢复原自动判分结果，主观题则清除本题作答记录
+      if(this.selfGrade===g){
+        this.selfGrade=null; this.self=null;
+        const isAuto = AUTO.includes(this.q&&this.q.type);
+        this.$emit('answered', isAuto ? {id:this.q.id,cancel:true,restoreAuto:this.autoCorrect,ms:this.elapsedMs()} : {id:this.q.id,cancel:true});
+        return;
+      }
       this.selfGrade=g; this.self=(g!=='again');
       this.$emit('answered',{id:this.q.id,correct:this.self,grade:g,ms:this.elapsedMs()});
       // 动画反馈：重来=抖动，困难=无动画（中性），良好/简单=弹跳
@@ -274,7 +282,7 @@ const QuestionCard={
       <span class="chip accent">{{ subjMap[q.subject]||q.subject }}</span>
       <span class="chip">{{ typeMap[q.type]||q.type }}</span>
       <span v-if="cleanChapter" class="chip chip-chap">{{ cleanChapter }}</span>
-      <button v-if="cleanSource || q.page" type="button" class="chip chip-src" @click.stop="onSourceClick" :title="q.page ? '点击跳转到《'+(cleanSource||'教材')+'》第 '+q.page+' 页' : ('来源：'+cleanSource)"><icon name="book" :size="12" /> {{ cleanSource || '教材' }}<template v-if="q.page"> · P{{ q.page }}</template></button>
+      <button v-if="cleanSource || q.page" type="button" class="chip chip-src" @click.stop="onSourceClick" :title="q.page ? '点击跳转到《'+(cleanSource||subjMap[q.subject]||'教材')+'》第 '+q.page+' 页' : ('来源：'+cleanSource)"><icon name="book" :size="12" /> <template v-if="cleanSource">{{ cleanSource }}<template v-if="q.page"> · P{{ q.page }}</template></template><template v-else>P{{ q.page }}</template></button>
       <span v-if="displayTags.length" class="q-tags"><span v-for="tg in displayTags" :key="tg" class="tag">#{{ tg }}</span></span>
       <span class="diff" :title="'难度 '+q.difficulty">{{ '★'.repeat(q.difficulty||3) }}</span>
       <button class="star" :class="{on:q.favorited}" @click="toggleFav" title="收藏"><icon name="star" :size="16" /></button>
@@ -309,7 +317,7 @@ const QuestionCard={
       <input v-else class="inp" style="width:100%" v-model="blanks" :disabled="revealed" placeholder="输入答案（大小写、全半角、空格不影响判分）" @keyup.enter="!revealed && canSubmit() && submit()" />
     </template>
     <template v-else>
-      <textarea :class="{code:q.type==='code', 'sa-ta':q.type!=='code'}" v-model="text" :disabled="revealed" @input="taGrow($event)" @focus="taGrow($event)" :placeholder="q.type==='code' ? '在这里写代码（对照参考答案自查）' : '写下答题要点（可选，也可点上方「草稿」手写演算或直接点下方看参考答案）'"></textarea>
+      <textarea :class="{code:q.type==='code', 'sa-ta':q.type!=='code'}" v-model="text" :disabled="revealed" @input="taGrow($event)" @focus="taGrow($event)" :placeholder="q.type==='code' ? '在这里写代码（对照参考答案自查）' : '写下答题要点（或点「草稿」手写演算）'"></textarea>
     </template>
     <template v-if="revealed">
       <div v-if="AUTO.includes(q.type)" class="verdict" :class="(studyMode && !localRevealed) ? 'ok' : (autoCorrect?'ok':(mcPartial?'part':'bad'))">

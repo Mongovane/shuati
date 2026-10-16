@@ -143,7 +143,12 @@ jumpToQuestion(i){
 },
 async openQuestionSource(q){
   if(!q)return;
-  const bookName=this.srcBook(q.source);
+  if(this.view==='mock' && this.mock && this.mock.started){
+    this.flash('模考进行中，交卷复盘后可点击跳回原书对应页');
+    return;
+  }
+  const rawBook=this.srcBook(q.source).replace(/^教材出题[-—:：\s]*/,'').replace(/[-_\s]*P\d+.*$/i,'').trim();
+  const bookName=rawBook || this.srcBook(q.source);
   const pg=Number(q.page)||0;
   try{
     if(!this.materials.loaded && !this.materials.loading && typeof this.loadMaterials==='function'){
@@ -294,8 +299,16 @@ exitReviewSession(){ this.reviewSession=null; this.filterLock=false; this.startS
 async setQuestionSubject(subj){ const q=this.cur; if(!q||!subj||subj===q.subject)return; if(!this.token){ this.flash('请先在设置中填写访问码',true); return; } try{ await this.api('/api/questions',{method:'PATCH',body:JSON.stringify({ids:[q.id],subject:subj})}); q.subject=subj; this.flash('已改为「'+this.subjName(subj)+'」'); this.loadMeta(true); this.bankDirty=true; }catch(e){ if(e.message!=='unauth')this.flash('改科目失败：'+e.message,true); } },
 findQ(id){ return this.queue.find(q=>q.id===id)||(this.mock.questions||[]).find(q=>q.id===id); },
 async onAnswered(p){
-      // 取消自评：清除本题作答记录（答题卡圆点恢复灰色）
-      if(p.cancel){ delete this.sessionAns[p.id]; if(this._persistSoon)this._persistSoon(); return; }
+      // 取消自评：主观题清除本题作答记录（答题卡圆点恢复灰色）；客观题恢复自动判分状态并同步后端
+      if(p.cancel){
+        if(p.restoreAuto!==undefined){
+          this.sessionAns[p.id]=!!p.restoreAuto;
+          if(this._persistSoon)this._persistSoon();
+          try{ await this.api('/api/progress',{method:'POST',body:JSON.stringify({action:'answer',question_id:p.id,is_correct:!!p.restoreAuto,grade:p.restoreAuto?'good':'again',duration_ms:p.ms||undefined})}); this.statsDirty=true; }catch(_){}
+          return;
+        }
+        delete this.sessionAns[p.id]; if(this._persistSoon)this._persistSoon(); return;
+      }
       // 揭晓答案 = 马上要看参考解析了，这时才把 analysis / ai_cards 取回来。
       // 不 await：让计分和界面先走，解析到了自然渲染出来。
       { const q=(this.queue||[]).find(x=>x&&x.id===p.id); if(q)this.ensureFullQuestion(q).catch(()=>{}); }

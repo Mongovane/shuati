@@ -228,6 +228,16 @@ const App={
           this.aiX={ id:'', view:'', text:'', busy:false, chat:[], asking:false, model:'', cards:[], cardsModel:'', flip:{}, reasoning:'', reasonOpen:true };
         }
       }
+      if(oid && this.scratch){
+        const qst = this.qStates[oid] || (this.qStates[oid]={});
+        qst._strokes = (this.scratch.strokes||[]).slice();
+      }
+      if(this.scratch){
+        const nst = nid ? this.qStates[nid] : null;
+        this.scratch.strokes = (nst && Array.isArray(nst._strokes)) ? nst._strokes.slice() : [];
+        this.scratch.drawing = false;
+        if(this.scratch.open && typeof this._scratchRedraw==='function') this.$nextTick(()=>this._scratchRedraw());
+      }
       if(nc && nc._lite && !nc._full && !nc._fullLoading && (this.studyMode || (this.qStates[nc.id] && this.qStates[nc.id].revealed))){ this.ensureFullQuestion(nc).catch(()=>{}); }
       if(nid && oid && nid!==oid && typeof this._scrollQuestionTop==='function'){ this.$nextTick(()=>this._scrollQuestionTop()); }
       if(this._persistSoon)this._persistSoon();
@@ -465,6 +475,8 @@ go(v){
       const prev=this.view;
       // 记录当前视图滚动位置，切回来时恢复
       try{ scrollCache[prev]=window.pageYOffset||document.documentElement.scrollTop||0; }catch(_){}
+      if(this.reader && this.reader.open && typeof this.readerClose==='function'){ this.readerClose(); }
+      try{ if(document.body && document.body.style.overflow==='hidden') document.body.style.overflow=''; }catch(_){}
       if(this.pdfv && this.pdfv.open && typeof this.pdfvClose==='function'){ this.pdfvClose(); }
       // 模考进行中离开 Test 页：暂停计时器、保存快照，回来时恢复
       if(prev==='mock' && this.mock.started && v!=='mock'){ clearInterval(this.mock.timer); this.mock.timer=null; this.mockSnapSave(); this.flash('模考已暂停，回到 Test 页继续'); }
@@ -514,13 +526,21 @@ stealthHide(){ this.stealth.hidden=true; },
 stealthShow(){ this.stealth.hidden=false; },
 onKey(e){ const tag=(e.target&&e.target.tagName)||'';
       if(this.stealth.hidden){ e.preventDefault(); this.stealth.hidden=false; return; }
-      // Escape 关闭弹窗（优先级高于其它快捷键）
+      // Escape 关闭弹窗与放大预览（优先级高于其它快捷键）
       if(e.key==='Escape'){
+        if(this.$refs && this.$refs.curCard && this.$refs.curCard.zoomImg){ this.$refs.curCard.zoomImg=''; return; }
+        if(this.$refs && Array.isArray(this.$refs.mockCards)){
+          const mc=this.$refs.mockCards.find(c=>c&&c.zoomImg);
+          if(mc){ mc.zoomImg=''; return; }
+        }
+        if(this.subjChipDlg){ this.subjChipDlgClose(); return; }
+        if(this.bookSubjPick&&this.bookSubjPick.open){ this.bookSubjPick.open=false; return; }
         if(this.bankEdit&&this.bankEdit.open){ this.bankCloseEdit(); return; }
         if(this.dup&&this.dup.open&&!this.dup.busy){ this.dup.open=false; return; }
         if(this.extractPreview&&this.extractPreview.open){ this.extractClose(); return; }
         if(this.pdfAi&&this.pdfAi.open){ this.pdfAi.open=false; return; }
         if(this.pdfv&&this.pdfv.open){ this.pdfvClose(); return; }
+        if(this.scratch&&this.scratch.open){ this.scratch.open=false; return; }
       }
       if(this.reader.open){ if(e.key==='Escape'){ if(this.reader.tocOpen){this.reader.tocOpen=false;return;} if(this.reader.panel){this.reader.panel=false;return;} this.readerClose(); return; } if(tag==='INPUT'||tag==='TEXTAREA')return; if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); this.readerNext(); return; } if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.readerPrev(); return; } return; }
       // —— 内联阅读器（Books 页但未进沉浸模式）的键盘翻页 ——
@@ -533,10 +553,11 @@ onKey(e){ const tag=(e.target&&e.target.tagName)||'';
         if(e.key==='ArrowRight'||e.key==='PageDown'){ e.preventDefault(); this.bookNext(); return; }
         if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); this.bookPrev(); return; }
       }
-      // —— 刷题快捷键（练习/错题/收藏视图；输入框聚焦或按住修饰键时不拦截）——
-      if(['practice','wrong','favorite'].includes(this.view) && this.cur && !this.mock.started
-         && !e.metaKey && !e.ctrlKey && !e.altKey && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT'){
+      // —— 刷题快捷键（练习/错题/收藏视图；输入框聚焦、浮层打开或按住修饰键时不拦截）——
+      if(['practice','wrong','favorite'].includes(this.view) && this.cur && !this.mock.started && !this.anyOverlayOpen
+         && !e.metaKey && !e.ctrlKey && !e.altKey && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT' && !(e.target&&e.target.isContentEditable)){
         const card=this.$refs.curCard, k=e.key, kl=(k&&k.length===1)?k.toLowerCase():'';
+        if(card && card.zoomImg) return;
         if(k==='ArrowLeft'){ e.preventDefault(); this.prev(); return; }
         if(k==='ArrowRight'){ e.preventDefault(); this.next(); return; }
         if(card){
@@ -544,7 +565,7 @@ onKey(e){ const tag=(e.target&&e.target.tagName)||'';
             if(card.isChoice){
               let key='';
               if(/^[a-h]$/.test(kl)) key=kl.toUpperCase();
-              else if(/^[1-8]$/.test(kl)){ const o=(this.cur.options||[])[+kl-1]; key=o?o.key:''; }
+              else if(/^[1-8]$/.test(kl)){ const o=(card.displayOptions||this.cur.options||[])[+kl-1]; key=o?o.key:''; }
               if(key && (this.cur.options||[]).some(o=>o.key===key)){ e.preventDefault(); card.pick(key); return; }
             } else if(this.cur.type==='true_false'){
               if(kl==='1'||kl==='t'){ e.preventDefault(); card.pickTF('T'); return; }
@@ -553,7 +574,7 @@ onKey(e){ const tag=(e.target&&e.target.tagName)||'';
             if(k==='Enter'){ if(card.canSubmit()){ e.preventDefault(); card.submit(); } return; }
           } else {
             if(k==='Enter'){ e.preventDefault(); this.next(); return; }
-            if(!AUTO.includes(this.cur.type) && card.self==null){
+            if(!AUTO.includes(this.cur.type) && !this.studyMode){
               if(kl==='1'){ e.preventDefault(); card.grade4('again'); return; }
               if(kl==='2'){ e.preventDefault(); card.grade4('hard'); return; }
               if(kl==='3'){ e.preventDefault(); card.grade4('good'); return; }
