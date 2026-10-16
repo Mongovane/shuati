@@ -192,3 +192,30 @@ describe('切题状态缓存（qStates / aiStates 逻辑）', () => {
     expect(jobs['q1:c']).toBe('ctrlC'); // 知识点仍在跑
   });
 });
+
+describe('推理模型长思维链截断与卡片续写保护（v191）', () => {
+  it('外层缺 ] 但首张卡片含 $[a,b]$ 区间时，不被 lastIndexOf("]") 误切腰斩', () => {
+    const raw = '[{"term":"闭区间连续","formula":"$f(x) \\\\in C[a,b]$","plain":"最值与介值"},{"term":"牛顿-莱布尼茨","formula":"$F(b)-F(a)$","plain":"定积分计算"},{"term":"半截卡片","plain":"未写完被截断';
+    const r = parse(raw);
+    expect(r.length).toBe(2);
+    expect(r[0].term).toBe('闭区间连续');
+    expect(r[1].term).toBe('牛顿-莱布尼茨');
+  });
+  it('无头 </think>（服务端模板预置 <think>）剥离后正常解析卡片', () => {
+    const raw = '先分析这道题在 [0, 1] 上的积分性质，需要3张卡片</think>\n[{"term":"积分中值定理","plain":"存在一点使得函数值等于积分均值"}]';
+    const r = parse(raw);
+    expect(r.length).toBe(1);
+    expect(r[0].term).toBe('积分中值定理');
+  });
+  it('_salvageConceptPartial：第 2 张卡写到一半被截断时，对齐到第 1 张卡末尾 }，剔除未闭合引号', () => {
+    const sv = PracticeMixin.methods._salvageConceptPartial('[{"term":"卡1","plain":"完整"},{"term":"卡2","plain":"未闭合字符串');
+    expect(sv.count).toBe(1);
+    expect(sv.complete).toBe(false);
+    expect(sv.clean).toBe('[{"term":"卡1","plain":"完整"}');
+  });
+  it('_salvageConceptPartial：第 1 张卡还没写完就被截断时返回 count=0，触发 kickoff 重取而非带未闭合引号续写', () => {
+    const sv = PracticeMixin.methods._salvageConceptPartial('[{"term":"卡1","plain":"刚写了一半');
+    expect(sv.count).toBe(0);
+    expect(sv.clean).toBe('');
+  });
+});
