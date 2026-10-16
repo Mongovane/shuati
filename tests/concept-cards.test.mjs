@@ -1,21 +1,16 @@
-// 知识点卡片解析 _parseConceptCards 的健壮性（纯逻辑等价校验）
+// 知识点卡片解析 _parseConceptCards 的健壮性（纯逻辑等价校验 + 真实 PracticeMixin 深入回归）
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { ROOT } from './helpers.mjs';
 
-// 与 js/views/practice.js 的 _parseConceptCards 等价实现
-function parse(raw) {
-  let s = String(raw || '').trim();
-  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  const a = s.indexOf('['), b = s.lastIndexOf(']');
-  if (a >= 0 && b > a) s = s.slice(a, b + 1);
-  let arr;
-  try { arr = JSON.parse(s); } catch (_) { return []; }
-  if (!Array.isArray(arr)) return [];
-  return arr.filter((x) => x && typeof x === 'object' && (x.term || x.plain)).slice(0, 8).map((x) => ({
-    term: String(x.term || '').trim() || '知识点',
-    formula: String(x.formula || '').trim(),
-    plain: String(x.plain || '').trim(),
-    example: String(x.example || '').trim(),
-  }));
+const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+const PracticeMixin = new Function(read('js/views/practice.js') + '\nreturn PracticeMixin;')();
+const QC = new Function('RichText', read('js/constants.js') + '\n' + read('js/components/question-card.js') + '\nreturn QuestionCard;')({});
+
+// 与 js/views/practice.js 的 _parseConceptCards 真实实现绑定
+function parse(raw, subj = 'math') {
+  return PracticeMixin.methods._parseConceptCards.call({ cur: { subject: subj } }, raw, subj);
 }
 
 describe('_parseConceptCards', () => {
@@ -34,6 +29,36 @@ describe('_parseConceptCards', () => {
     const r = parse('好的，以下是卡片：[{"term":"连续","plain":"不断开"}] 希望有用');
     expect(r.length).toBe(1);
     expect(r[0].term).toBe('连续');
+  });
+  it('前置文字含数学闭区间 [0, 1] 时仍能准确定位 [{...}] 数组', () => {
+    const r = parse('本题讨论闭区间 [0, 1] 上的性质，知识点卡片如下：\n[{"term":"闭区间连续","formula":"$f(x) \\in C[a,b]$","plain":"最值定理"}]');
+    expect(r.length).toBe(1);
+    expect(r[0].term).toBe('闭区间连续');
+  });
+  it('剥离 <think>...</think> 思维链块后正常解析 JSON', () => {
+    const r = parse('<think>先提炼这道高数题的3个核心概念，注意在 [a,b] 上的积分</think>\n[{"term":"牛顿-莱布尼茨公式","formula":"$\\\\int_a^b f(x)\\\\,\\\\mathrm{d}x = F(b)-F(a)$","plain":"定积分与原函数的联系"}]');
+    expect(r.length).toBe(1);
+    expect(r[0].term).toBe('牛顿-莱布尼茨公式');
+  });
+  it('修复单反斜杠非字母 LaTeX 转义（\\, \\; \\! \\{ \\} \\| \\_）', () => {
+    const raw = '[{"term":"定积分","formula":"$\\\\int_0^1 2x\\,\\\\mathrm{d}x = 1$","plain":"集合 $\\{x \\\\mid x > 0\\}$ 上的积分 a\\_1"}]';
+    const r = parse(raw);
+    expect(r.length).toBe(1);
+    expect(r[0].formula).toContain('\\,');
+    expect(r[0].plain).toContain('\\{');
+  });
+  it('尾部截断但含 LaTeX 花括号 {x} 时仍能挽救已闭合的前置卡片', () => {
+    const raw = '[{"term":"分部积分","formula":"$\\\\int u\\\\,\\\\mathrm{d}v = uv - \\\\int v\\\\,\\\\mathrm{d}u$","plain":"用于乘积求积分"},{"term":"未写完的卡","formula":"$\\\\frac{1}{2';
+    const r = parse(raw);
+    expect(r.length).toBe(1);
+    expect(r[0].term).toBe('分部积分');
+  });
+  it('英语科目卡片不会把英文单词和中文词性括注误包进 $...$', () => {
+    const raw = '[{"term":"respondent","formula":"respondent /rɪˈspɒndənt/ n. 调查对象","plain":"① 由动词 respond(回答) 加后缀 -ent(表示人) 构成","example":"More than 60% of respondents agreed."}]';
+    const r = parse(raw, 'english');
+    expect(r.length).toBe(1);
+    expect(r[0].plain).not.toContain('$');
+    expect(r[0].example).not.toContain('$');
   });
   it('非法 JSON 返回空数组（触发重试）', () => {
     expect(parse('这不是JSON')).toEqual([]);
@@ -69,6 +94,58 @@ describe('toggleAllCards 全部翻开/收起逻辑', () => {
   it('无卡片时不变', () => {
     const aiX = { cards: [], flip: {} };
     expect(toggleAll(aiX)).toEqual({});
+  });
+});
+
+describe('逐张背诵模式 kcardTap 与越界保护', () => {
+  it('正面点击触发翻面，背面点击自动推进下一张（末张翻回正面）', () => {
+    const emitted = [];
+    const vm = {
+      kcardIdx: 0,
+      aiCards: [{ term: 'A' }, { term: 'B' }],
+      aiFlip: {},
+      $emit(ev, idx) { emitted.push([ev, idx]); },
+    };
+    QC.methods.kcardTap.call(vm);
+    expect(emitted).toEqual([['card-flip', 0]]);
+    // 翻到背面后再次点击 → 推进到第 2 张（kcardIdx=1）
+    vm.aiFlip = { 0: true };
+    QC.methods.kcardTap.call(vm);
+    expect(vm.kcardIdx).toBe(1);
+    // 末张背面点击 → 翻回正面
+    vm.aiFlip = { 0: true, 1: true };
+    QC.methods.kcardTap.call(vm);
+    expect(emitted[emitted.length - 1]).toEqual(['card-flip', 1]);
+  });
+  it('aiCards 变短时自动钳制 kcardIdx 防越界报错', () => {
+    const vm = { kcardIdx: 5 };
+    QC.watch.aiCards.call(vm, [{ term: 'A' }, { term: 'B' }]);
+    expect(vm.kcardIdx).toBe(1);
+  });
+});
+
+describe('AI 自动保存与手动保存防重复追加', () => {
+  it('aiSaveToAnalysis 多次点击不会重复追加 **AI 解析** 与 **追问记录**', async () => {
+    const patches = [];
+    const q = { id: 'q1', analysis: '原题参考解析' };
+    const ctx = {
+      cur: q,
+      aiX: { id: 'q1', view: 'explain', text: '第一次生成的AI解析', chat: [{ q: '为什么？', a: '因为连续', kind: 'explain' }] },
+      findQ: () => q,
+      bankDirty: false,
+      flash() {},
+      _autoSaveExplain: PracticeMixin.methods._autoSaveExplain,
+      async api(p, o) { patches.push(JSON.parse(o.body)); return {}; },
+    };
+    await PracticeMixin.methods.aiSaveToAnalysis.call(ctx);
+    expect((q.analysis.match(/\*\*AI 解析\*\*/g) || []).length).toBe(1);
+    expect((q.analysis.match(/\*\*追问记录\*\*/g) || []).length).toBe(1);
+    // 模拟从已存 analysis 恢复后再点一次保存
+    ctx.aiX.text = q.analysis.slice(q.analysis.indexOf('**AI 解析**')).replace(/^\*\*AI 解析\*\*\s*/, '');
+    await PracticeMixin.methods.aiSaveToAnalysis.call(ctx);
+    expect((q.analysis.match(/\*\*AI 解析\*\*/g) || []).length).toBe(1);
+    expect((q.analysis.match(/\*\*追问记录\*\*/g) || []).length).toBe(1);
+    expect(q.analysis).toContain('原题参考解析');
   });
 });
 
